@@ -187,7 +187,9 @@ void CMainMenu::Activate(bool bActivate)
 	if (g_dedicated_server && bActivate) return;
 
 	//Discord
+	Discord_Lock();
 	discord_gameinfo.mainmenu = bActivate;
+	Discord_Unlock();
 
 	// demonized: handled in separate thread
 	/*if (bActivate && psDeviceFlags2.test(rsDiscord))

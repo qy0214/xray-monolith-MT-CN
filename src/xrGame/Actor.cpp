@@ -1343,6 +1343,7 @@ void CActor::UpdateCL()
 	//Discord
 	if (psDeviceFlags2.test(rsDiscord))
 	{
+		Discord_Lock();
 		//God
 		bool isGodmode = psActorFlags.test(AF_GODMODE);
 		discord_gameinfo.godmode = isGodmode;
@@ -1358,7 +1359,7 @@ void CActor::UpdateCL()
 
 		//Current Time
 		str_c current_time = InventoryUtilities::GetGameTimeAsString(InventoryUtilities::etpTimeToMinutes).c_str();
-		discord_gameinfo.currenttime = current_time;
+		xr_strcpy(discord_gameinfo.currenttime, current_time);
 
 		// Update once after a loadscreen
 		if (!discord_gameinfo.loadscreen && discord_gameinfo.ex_update)
@@ -1394,7 +1395,7 @@ void CActor::UpdateCL()
 				srand(time(0));
 				int level_icon_id = rand() % 3 + 1;
 				discord_gameinfo.level_icon_index = level_icon_id;
-				discord_gameinfo.level = g_pGameLevel->name().c_str();
+				xr_strcpy(discord_gameinfo.level, g_pGameLevel->name().c_str());
 			}
 
 			//Story Mode
@@ -1437,6 +1438,7 @@ void CActor::UpdateCL()
 
 			discord_gameinfo.ex_update = false;
 		}
+		Discord_Unlock();
 	}
 
 	//for LV shaders
@@ -1472,7 +1474,7 @@ void CActor::RPC_UpdateFaction()
 		if (real_faction)
 		{
 			LPCSTR faction_name = real_faction();
-			discord_gameinfo.faction = faction_name;
+			xr_strcpy(discord_gameinfo.faction, faction_name);
 			char buffer[128];
 			// review P3: the name comes from Lua, so the splice must be bounded
 			snprintf(buffer, sizeof(buffer), "st_faction_%s", faction_name);
