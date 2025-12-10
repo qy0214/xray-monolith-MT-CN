@@ -21,6 +21,11 @@ class CMapManager
 
 	xr_vector<SRemovedSpot> m_removed_spots;
 	void QueueRemovedNotify(const shared_str& spot_type, u16 id);
+
+	// upstream v0.2.2: PDA map caching (fixes map stutters)
+	xr_vector<u16> m_cached_spot_objects;
+	void AddToCache(u16 id);
+	void RemoveFromCache(u16 id);
 public:
 	// called from the main thread only
 	void FlushRemovedNotify();
@@ -30,6 +35,7 @@ public:
 	void __stdcall Update();
 	/*ICF */
 	Locations& Locations(); //{return *m_locations;}
+	const xr_vector<u16>& GetCachedSpotObjects() const { return m_cached_spot_objects; }
 	CMapLocation* AddMapLocation(const shared_str& spot_type, u16 id);
 	CMapLocation* AddRelationLocation(CInventoryOwner* pInvOwner);
 	void RemoveRelationLocation(CInventoryOwner* pInvOwner);
