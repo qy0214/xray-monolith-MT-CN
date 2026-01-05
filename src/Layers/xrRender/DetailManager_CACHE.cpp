@@ -63,9 +63,12 @@ void CDetailManager::cache_Task(int gx, int gz, Slot* D)
 	for (u32 i = 0; i < dm_obj_in_slot; i++)
 	{
 		D->G[i].id = DS.r_id(i);
-		for (u32 clr = 0; clr < D->G[i].items.size(); clr++)
-			poolSI.destroy(D->G[i].items[clr]);
-		D->G[i].items.clear();
+		{
+			xrCriticalSectionGuard lock(pool_mutex);
+			for (u32 clr = 0; clr < D->G[i].items.size(); clr++)
+				poolSI.destroy(D->G[i].items[clr]);
+			D->G[i].items.clear();
+		}
 	}
 
 	if (old_type != stPending)
