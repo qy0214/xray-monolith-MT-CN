@@ -312,32 +312,43 @@ bool CInventory::DropItem(CGameObject* pObj, bool just_before_destroy, bool dont
 
 	pIItem->m_pInventory = NULL;
 
-
-	m_pOwner->OnItemDrop(smart_cast<CInventoryItem*>(pObj), just_before_destroy);
-
-	CalcTotalWeight();
-	InvalidateState();
-	m_drop_last_frame = true;
-
-	if (CurrentGameUI())
+	if (m_pOwner != nullptr)
 	{
-		CObject* pActor_owner = smart_cast<CObject*>(m_pOwner);
+		m_pOwner->OnItemDrop(smart_cast<CInventoryItem*>(pObj), just_before_destroy);
 
-		if (Level().CurrentViewEntity() == pActor_owner)
-			CurrentGameUI()->OnInventoryAction(pIItem, GE_OWNERSHIP_REJECT);
-	};
-	CActor* actor_owner = smart_cast<CActor*>(m_pOwner);
-	if (actor_owner && !dont_create_shell && smart_cast<CWeapon*>(pObj))
-	{
-		Fvector dir = actor_owner->cam_Active()->vDirection;
-		dir.y = 0.f;
-		float speed = 7.f * dir.magnitude();
-		dir.normalize_safe();
-		dir.y = sin(-45.f * PI / 180.f);
-		dir.normalize();
-		smart_cast<CWeapon*>(pObj)->SetActivationSpeedOverride(dir.mul(speed));
+		CalcTotalWeight();
+		InvalidateState();
+		m_drop_last_frame = true;
+
+		if (CurrentGameUI())
+		{
+			CObject* pActor_owner = smart_cast<CObject*>(m_pOwner);
+
+			if (Level().CurrentViewEntity() == pActor_owner)
+				CurrentGameUI()->OnInventoryAction(pIItem, GE_OWNERSHIP_REJECT);
+		};
+
+		// our line's refined toss kept over the upstream variant: null-safe
+		// owner, camera direction, speed from the horizontal magnitude, and
+		// H_SetParent applies to every dropped item, not only weapons
+		CActor* actor_owner = smart_cast<CActor*>(m_pOwner);
+		if (actor_owner && !dont_create_shell && smart_cast<CWeapon*>(pObj))
+		{
+			Fvector dir = actor_owner->cam_Active()->vDirection;
+			dir.y = 0.f;
+			float speed = 7.f * dir.magnitude();
+			dir.normalize_safe();
+			dir.y = sin(-45.f * PI / 180.f);
+			dir.normalize();
+			smart_cast<CWeapon*>(pObj)->SetActivationSpeedOverride(dir.mul(speed));
+		}
+		pObj->H_SetParent(nullptr, dont_create_shell);
 	}
-	pObj->H_SetParent(nullptr, dont_create_shell);
+	else
+	{
+		return false;
+	}
+
 	return true;
 }
 
