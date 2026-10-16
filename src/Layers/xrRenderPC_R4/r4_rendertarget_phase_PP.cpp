@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "r4_rendertarget.h"
+#include "../../xrEngine/customhud.h"
 
 void CRenderTarget::u_calc_tc_noise(Fvector2& p0, Fvector2& p1)
 {
@@ -195,10 +196,33 @@ void CRenderTarget::phase_dlss_postprocess()
 	RCache.set_Geometry(g_combine);
 	RCache.Render(D3DPT_TRIANGLELIST, offset, 0, 4, 0, 2);
 
-	// NOTE: pipdlss additionally reprojects the render-sized scene depth into the
-	// native depth buffer and defers wearable/PDA (native UI) draws here. That needs
-	// the dsgraph native-UI extraction (r__dsgraph_render.cpp), not ported yet, so
-	// native UI still runs at render resolution and is upscaled with the scene.
+	// The PDA screens and wearable screen glass were held back from the scene
+	// (r_dsgraph_extract_native_ui) so they are drawn here, at display resolution,
+	// with the unjittered HUD projection instead of being upscaled with the scene.
+	const bool renderHudUi = RImplementation.GMBase.RGraph.hasNativeHudAttachments &&
+		g_hud && g_hud->RenderActiveItemUIQuery();
+	if (renderHudUi || !RImplementation.GMBase.RGraph.mapHUDNativeUi.empty())
+	{
+		if (!reported_native_ui)
+		{
+			Msg("[Upscaler] HUD UI drawn after reconstruction: native=%ux%u, scene=%ux%u, meshes=%u, item_ui=%u",
+				Device.dwWidth, Device.dwHeight, dlss::RenderWidth(), dlss::RenderHeight(),
+				unsigned(RImplementation.GMBase.RGraph.mapHUDNativeUi.size()), unsigned(renderHudUi));
+			reported_native_ui = true;
+		}
+		// Reproject the render-sized scene depth into the native depth buffer so
+		// hands and casing still hide the handheld screen.
+		u_setrt(rt_dlss_post_source, nullptr, nullptr, HW.pBaseZB);
+		RCache.set_Element(s_dlss_ui_depth->E[0]);
+		RCache.set_c("dlss_ui_depth_params", float(dlss::RenderWidth()) / w,
+			float(dlss::RenderHeight()) / h, sceneJitter.x, sceneJitter.y);
+		RCache.set_ZFunc(D3DCMP_ALWAYS);
+		RCache.set_ColorWriteEnable(0);
+		RCache.Render(D3DPT_TRIANGLELIST, offset, 0, 4, 0, 2);
+		RCache.set_ColorWriteEnable();
+		RCache.set_CullMode(CULL_CCW);
+		RImplementation.GMBase.r_dsgraph_render_native_ui(renderHudUi);
+	}
 
 	// Screen-locked overlays belong on the display-resolution source, so they are
 	// drawn after reconstruction instead of being fed back into DLSS history.

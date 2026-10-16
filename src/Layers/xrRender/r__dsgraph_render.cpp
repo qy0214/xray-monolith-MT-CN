@@ -5,6 +5,7 @@
 #include "../../xrEngine/igame_persistent.h"
 #include "../../xrEngine/environment.h"
 #include "../../xrEngine/CustomHUD.h"
+#include "../xrRenderPC_R4/Dlss/DlssNativeUi.h"
 
 #include "FBasicVisual.h"
 #include "CHudInitializer.h"
@@ -240,6 +241,49 @@ void CDSGraphManager::r_dsgraph_render_hud()
 		RImplementation.rmNormal();
 	}
 }
+
+#if RENDER == R_R4
+void CDSGraphManager::r_dsgraph_extract_native_ui()
+{
+	// Hold PDA screens and wearable-device screen glass for the display-resolution
+	// pass that runs after the temporal upscaler reconstructed the scene. The
+	// queues keep the original draw packets, so skinning/transforms still apply.
+	RGraph.hasNativeHudAttachments = false;
+	dlss::ExtractNativeUi(RGraph.mapHUDSorted.Sorted, RGraph.mapHUDNativeUi, [this](const auto& item)
+	{
+		for (const auto& pass : item.pSE->passes)
+		{
+			if (!pass->T) continue;
+			for (const auto& texture : *pass->T)
+			{
+				if (!texture.second) continue;
+				if (texture.second->cName == "$user$ui") return true;
+				if (dlss::IsWearableScreenGlass(texture.second->cName.c_str()))
+				{
+					RGraph.hasNativeHudAttachments = true;
+					return true;
+				}
+			}
+		}
+		return false;
+	});
+	// Do not leave a second copy in an emissive or distortion scene pass.
+	dlss::RemoveNativeUiDuplicates(RGraph.mapHUDSorted.Emissive, RGraph.mapHUDNativeUi);
+	dlss::RemoveNativeUiDuplicates(RGraph.mapHUDSorted.Distort, RGraph.mapHUDNativeUi);
+}
+
+void CDSGraphManager::r_dsgraph_render_native_ui(bool renderHudUi)
+{
+	PROF_EVENT("r_dsgraph_render_native_ui");
+	// Draw widgets once, at display resolution with the unjittered HUD projection,
+	// before the sorted PDA/glass meshes, preserving the forward-pass ordering.
+	if (renderHudUi) r_dsgraph_render_hud_ui();
+	CHudInitializer initializer(true);
+	RImplementation.rmNear();
+	r_dsgraph_render_graph_sorted(RGraph.mapHUDNativeUi, true);
+	RImplementation.rmNormal();
+}
+#endif
 
 void CDSGraphManager::r_dsgraph_render_hud_ui()
 {

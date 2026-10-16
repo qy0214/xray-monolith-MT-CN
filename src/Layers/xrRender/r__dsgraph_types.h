@@ -243,6 +243,12 @@ namespace R_dsgraph
 		mapDSGraphItems<float, false> mapHUD;
 		mapSorted<float, true, false, false, false> mapHUDSorted;
 
+		// DLSS: PDA screens and wearable-screen glass are held here during the
+		// scene so they can be drawn after reconstruction, at display resolution,
+		// instead of being upscaled together with the scene.
+		mapDSGraphItems<float, true> mapHUDNativeUi;
+		bool hasNativeHudAttachments = false;
+
 		mapDSGraphItems<float, false> mapLOD;
 
 		// Anomaly
@@ -320,6 +326,8 @@ namespace R_dsgraph
 				mapHUDSorted.Emissive.clear_and_free();
 				mapHUDSorted.Sorted.clear_and_free();
 				mapHUDSorted.Distort.clear_and_free();
+				mapHUDNativeUi.clear_and_free();
+				hasNativeHudAttachments = false;
 				mapCamAttached.clear_and_free();
 				mapCamAttachedSorted.Wmark.clear_and_free();
 				mapCamAttachedSorted.Emissive.clear_and_free();
@@ -338,6 +346,8 @@ namespace R_dsgraph
 				mapHUDSorted.Emissive.clear();
 				mapHUDSorted.Sorted.clear();
 				mapHUDSorted.Distort.clear();
+				mapHUDNativeUi.clear();
+				hasNativeHudAttachments = false;
 				mapCamAttached.clear();
 				mapCamAttachedSorted.Wmark.clear();
 				mapCamAttachedSorted.Emissive.clear();

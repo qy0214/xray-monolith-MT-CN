@@ -207,6 +207,8 @@ void CRender::Render()
 		// level
 		Target->phase_scene_begin();
 		GMBase.r_dsgraph_capture_hud();
+		// DLSS: move the PDA/glass items out of the scene so they are not upscaled.
+		if (dlss::Configured()) GMBase.r_dsgraph_extract_native_ui();
 		GMBase.r_dsgraph_render_hud();
 		GMBase.r_dsgraph_render_lods(true,true);
 		if (Details) Details->Render();
@@ -383,7 +385,7 @@ void CRender::render_forward()
 		if (g_hud)
 		{
 			PROF_EVENT("render_hud");
-			if (g_hud->RenderActiveItemUIQuery())
+			if (!GMBase.RGraph.hasNativeHudAttachments && g_hud->RenderActiveItemUIQuery())
 				GMBase.r_dsgraph_render_hud_ui();
 			if (g_hud->RenderCamAttachedUIQuery())
 				GMBase.r_dsgraph_render_cam_ui();
