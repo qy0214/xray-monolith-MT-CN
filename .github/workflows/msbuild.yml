@@ -388,3 +388,4 @@ jobs:
       with:
         # Artifacts older than this will be deleted (e.g. "2 months", "1 day"). Parsed by moment.
         age: "1 second"
+# force reindex
