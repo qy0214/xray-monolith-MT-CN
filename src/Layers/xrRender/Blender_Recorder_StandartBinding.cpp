@@ -8,6 +8,7 @@
 
 #include "ResourceManager.h"
 #include "RenderDimensions.h"
+#include "UpscalerCompat.h"
 #include "blenders\Blender_Recorder.h"
 #include "blenders\Blender.h"
 
@@ -1239,6 +1240,109 @@ static class upscaler_reproject : public R_constant_setup
         RCache.set_c(C, reproject);
     }
 } binder_upscaler_reproject;
+
+// ---------------------------------------------------------------------------
+// MOD compatibility: the modpack's PiP scope-lens shaders (models_scope_reticle.ps
+// and friends) read the constants below. The engine feeds them from the
+// scope_lense_* console values plus its own PiP state, so a pack's own lens
+// shaders keep working without the pack being modified.
+// The live "main view effects" path needs an engine-side effect buffer and is
+// reported as off, which makes those shaders take their non-live path.
+// ---------------------------------------------------------------------------
+static class scope_lense_color : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        RCache.set_c(C, compat::scope_lense_brightness, compat::scope_lense_contrast,
+                     compat::scope_lense_saturation, compat::scope_lense_gamma);
+    }
+} binder_scope_lense_color;
+
+static class scope_lense_surface : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        RCache.set_c(C, compat::scope_lense_grain, compat::scope_lense_dirt,
+                     float(compat::scope_lense_tint), compat::scope_lense_tint_intensity);
+    }
+} binder_scope_lense_surface;
+
+static class scope_lense_imaging : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        // x: PiP NVG on, y: PiP thermal on, gated like the mod's own toggles.
+        const float nvg = (ps_r2_nightvision > 0 && compat::scope_lense_allow_nvg) ? 1.0f : 0.0f;
+        const float thermal = (ps_r2_heatvision > 0 && compat::scope_lense_allow_thermal) ? 1.0f : 0.0f;
+        RCache.set_c(C, nvg, thermal, 0.0f, 0.0f);
+    }
+} binder_scope_lense_imaging;
+
+static class scope_lense_detail : public R_constant_setup
+{
+    void setup(R_constant* C) override { RCache.set_c(C, compat::scope_lense_sharpness, 0.0f, 0.0f, 0.0f); }
+} binder_scope_lense_detail;
+
+static class scope_lense_quality : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        // y/z hold the lens source size the shaders use for texel math, scaled by
+        // the mod's quality percentage.
+        float w = float(RenderScreenWidth()), h = float(RenderScreenHeight());
+        if (RImplementation.Target && RImplementation.Target->rt_secondVP)
+        {
+            w = float(RImplementation.Target->rt_secondVP->dwWidth);
+            h = float(RImplementation.Target->rt_secondVP->dwHeight);
+        }
+        const float k = float(clampr(compat::scope_lense_quality_percent, 25, 100)) * 0.01f;
+        RCache.set_c(C, 0.0f, w * k, h * k, 0.0f);
+    }
+} binder_scope_lense_quality;
+
+static class scope_lense_main_view : public R_constant_setup
+{
+    void setup(R_constant* C) override { RCache.set_c(C, 1.0f, 1.0f, 0.5f, 0.5f); }
+} binder_scope_lense_main_view;
+
+static class scope_lense_live_effects : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        // The live path samples the main view's effects buffer, which this engine
+        // does not provide yet; report it off so the shaders use their legacy path.
+        RCache.set_c(C, 0.0f, 0.0f, 0.0f, 0.0f);
+    }
+} binder_scope_lense_live_effects;
+
+static class scope_lense_motion : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        // x: scene motion vectors usable, y/z/w: the shaders' rejection tolerances.
+        const float mv = Device.m_SecondViewport.IsSVPActive() ? 1.0f : 0.0f;
+        RCache.set_c(C, mv, 0.001f, 0.5f, 4.0f);
+    }
+} binder_scope_lense_motion;
+
+static class scope_lense_reproject : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        Fmatrix reproject;
+        reproject.mul(RCache.xforms.m_vp_prev, Device.mInvFullTransform);
+        RCache.set_c(C, reproject);
+    }
+} binder_scope_lense_reproject;
+
+static class scope_svp_state : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        RCache.set_c(C, Device.m_SecondViewport.IsSVPActive() ? 1.0f : 0.0f,
+                     Device.m_SecondViewport.IsSVPFrame() ? 1.0f : 0.0f, 0.0f, 0.0f);
+    }
+} binder_scope_svp_state;
 #endif
 
 static class ssfx_fTimeDelta : public R_constant_setup
@@ -1611,6 +1715,18 @@ void CBlender_Compile::SetMapping()
 	r_Constant("dlss_params", &binder_dlss_params);
 	r_Constant("dlss_temporal_jitter", &binder_dlss_temporal_jitter);
 	r_Constant("m_upscaler_reproject", &binder_upscaler_reproject);
+
+	// MOD compatibility: the modpack's PiP scope-lens shaders.
+	r_Constant("scope_lense_color", &binder_scope_lense_color);
+	r_Constant("scope_lense_surface", &binder_scope_lense_surface);
+	r_Constant("scope_lense_imaging", &binder_scope_lense_imaging);
+	r_Constant("scope_lense_detail", &binder_scope_lense_detail);
+	r_Constant("scope_lense_quality", &binder_scope_lense_quality);
+	r_Constant("scope_lense_main_view", &binder_scope_lense_main_view);
+	r_Constant("scope_lense_live_effects", &binder_scope_lense_live_effects);
+	r_Constant("scope_lense_motion", &binder_scope_lense_motion);
+	r_Constant("scope_lense_reproject", &binder_scope_lense_reproject);
+	r_Constant("scope_svp", &binder_scope_svp_state);
 #endif
 	r_Constant("ssfx_pom", &ssfx_pom);
 
