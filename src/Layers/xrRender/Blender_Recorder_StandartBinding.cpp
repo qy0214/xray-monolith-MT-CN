@@ -782,6 +782,7 @@ extern float ps_ssfx_hud_hemi;
 extern Fvector4 ps_ssfx_il;
 extern Fvector4 ps_ssfx_il_setup1;
 extern Fvector4 ps_ssfx_ao;
+extern float ps_r2_tnmp_exposure;
 extern Fvector4 ps_ssfx_ao_setup1;
 extern Fvector4 ps_ssfx_water;
 extern Fvector4 ps_ssfx_water_setup1;
@@ -1353,6 +1354,23 @@ static class cl_anthology_flora_style : public R_constant_setup
         RCache.set_c(C, float(compat::r__flora_style), 0.0f, 0.0f, 0.0f);
     }
 } binder_anthology_flora_style;
+
+// MOD compatibility: the pack's scope/HUD shaders read the output resolution.
+static class cl_output_res : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        const float w = float(Device.dwWidth), h = float(Device.dwHeight);
+        RCache.set_c(C, w, h, 1.0f / w, 1.0f / h);
+    }
+} binder_output_res;
+
+// MOD compatibility: the pack's colour-grading shaders read this exposure value
+// from the engine's r2_tnmp_exposure console variable.
+static class cl_tnmp_exposure : public R_constant_setup
+{
+    void setup(R_constant* C) override { RCache.set_c(C, ps_r2_tnmp_exposure); }
+} binder_tnmp_exposure;
 #endif
 
 static class ssfx_fTimeDelta : public R_constant_setup
@@ -1738,6 +1756,8 @@ void CBlender_Compile::SetMapping()
 	r_Constant("scope_lense_reproject", &binder_scope_lense_reproject);
 	r_Constant("scope_svp", &binder_scope_svp_state);
 	r_Constant("anthology_flora_style", &binder_anthology_flora_style);
+	r_Constant("output_res", &binder_output_res);
+	r_Constant("tnmp_exposure", &binder_tnmp_exposure);
 #endif
 	r_Constant("ssfx_pom", &ssfx_pom);
 
