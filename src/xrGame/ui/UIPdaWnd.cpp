@@ -532,4 +532,9 @@ bool CUIPdaWnd::OnKeyboardAction(int dik, EUIMessages keyboard_action)
 
 		return pda->Action(get_binded_action(dik), keyboard_action == WINDOW_KEY_PRESSED ? CMD_START : CMD_STOP);
 	}
+
+	// The window is hidden or the message is neither a key press nor a release:
+	// the key is not consumed here, so report it as unhandled instead of
+	// returning an indeterminate value.
+	return false;
 }

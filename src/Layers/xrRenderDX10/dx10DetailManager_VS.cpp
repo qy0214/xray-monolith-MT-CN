@@ -277,7 +277,21 @@ void CDetailManager::hw_Render_dump(const Fvector4& consts, const Fvector4& wave
 					                          &pVData, 0, 0);
 					c_storage = (Fvector4*)pVData;
 				}
-				VERIFY(c_storage);
+				// get_ConstantDirect() hands back a null pointer when the current pass does
+				// not declare the constant (custom shader sets may drop 'array'), and
+				// VERIFY() is compiled out of release builds. Skip the pass instead of
+				// writing the instance data through a null pointer.
+				if (!c_storage)
+				{
+					static bool reported_missing_array = false;
+					if (!reported_missing_array)
+					{
+						reported_missing_array = true;
+						Msg("! CDetailManager::hw_Render_dump: constant 'array' is missing in the "
+						    "current shader pass, details are skipped");
+					}
+					continue;
+				}
 
 				u32 dwBatch = 0;
 
@@ -362,7 +376,10 @@ void CDetailManager::hw_Render_dump(const Fvector4& consts, const Fvector4& wave
 								                          &pVData, 0, 0);
 								c_storage = (Fvector4*)pVData;
 							}
-							VERIFY(c_storage);
+							// Same constant and the same pass as above, so this cannot
+							// normally be null; never write through a null pointer if it is.
+							if (!c_storage)
+								return;
 						}
 					}
 				}

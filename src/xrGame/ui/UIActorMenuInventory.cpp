@@ -585,6 +585,11 @@ int CUIActorMenu::current_sort_mode()
 			return i;
 		}
 	}
+
+	// No tab is deselected (should not happen once the menu is initialised);
+	// fall back to the first kind instead of returning an indeterminate value,
+	// which would index m_sort_kinds out of bounds.
+	return 0;
 }
 
 void CUIActorMenu::SelectInventoryTab(int tab)

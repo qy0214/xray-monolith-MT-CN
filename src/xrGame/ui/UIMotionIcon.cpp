@@ -2,7 +2,10 @@
 #include "UIMainIngameWnd.h"
 #include "UIMotionIcon.h"
 #include "UIXmlInit.h"
-#include "../actor.cpp"
+// GetActorVisibility() is defined in actor.cpp and declared nowhere else.
+// Declare it here instead of including the whole actor.cpp translation unit,
+// which re-defined ~180 external symbols and produced LNK4006 on every link.
+float GetActorVisibility();
 
 const LPCSTR MOTION_ICON_XML = "motion_icon.xml";
 
