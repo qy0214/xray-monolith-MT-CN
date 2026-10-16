@@ -325,7 +325,10 @@ void CSheduler::Pop()
 	PopImpl();
 }
 
-int SchedulerBatchSize = 256;
+// 512 is the figure the upstream README recommends for heavy modpacks
+// (GAMMA-like object counts). Upstream default is 256; a smaller value makes
+// ProcessStep() collect fewer due items per pass, which shows up as stutter.
+int SchedulerBatchSize = 512;
 BOOL SchedulerLog = FALSE;
 extern ENGINE_API IGame_Level* g_pGameLevel;
 void CSheduler::ProcessStep()
