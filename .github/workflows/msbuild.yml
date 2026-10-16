@@ -7,9 +7,9 @@ name: MSBuild
 
 on:
   push:
-    branches: [ "all-in-one-vs2022-wpo" ]
+    branches: [ "all-in-one-vs2022-wpo", "all-in-one-vs2022-wpo-mt" ]
   pull_request:
-    branches: [ "all-in-one-vs2022-wpo" ]
+    branches: [ "all-in-one-vs2022-wpo", "all-in-one-vs2022-wpo-mt" ]
 
 permissions: write-all
 
@@ -67,6 +67,9 @@ jobs:
         
   build:
     name: build-job
+    # The MT branch is built by the build_mt job below; skip it here so the same
+    # revision is not compiled twice when pushing to all-in-one-vs2022-wpo-mt
+    if: github.ref != 'refs/heads/all-in-one-vs2022-wpo-mt' && github.base_ref != 'all-in-one-vs2022-wpo-mt'
     runs-on: windows-latest
 
     strategy:
