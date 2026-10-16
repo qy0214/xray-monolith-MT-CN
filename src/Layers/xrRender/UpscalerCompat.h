@@ -44,6 +44,25 @@ namespace compat
 	// engine-owned: 1 while the current ADS is a PiP (second viewport) ADS.
 	extern int		scope_lense_ads_is_pip;
 
+	// --- flora/season style (modpack runtime seasons) and its snow options.
+	// anthology_flora_style (bound in Blender_Recorder) is what the pack's terrain
+	// and snow wallmark shaders read; the r4_snow_* values drive the pack's MCM
+	// page and its snow interaction script.
+	extern int		r__flora_style;				// 1..6 season style written by the calendar script
+	extern int		r4_snow_enabled;
+	extern float	r4_snow_height;
+	extern float	r4_snow_distance;
+	extern float	r4_snow_density;
+	extern float	r4_snow_variation;
+	extern float	r4_snow_drift_size;
+	extern float	r4_snow_resistance;
+	extern int		r4_snow_fall_enabled;
+	extern float	r4_snow_flake_size;
+	extern float	r4_snow_fall_speed;
+	extern float	r4_snow_fall_density;
+	extern float	r4_snow_fall_distance;
+	extern float	r4_snow_wind;
+
 	// Registers every cvar above. Idempotent; called from xrRender_initconsole().
 	void RegisterConsoleVars();
 

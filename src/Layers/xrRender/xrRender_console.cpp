@@ -1358,6 +1358,22 @@ namespace compat
 
 	int		scope_lense_ads_is_pip = 0;
 
+	// --- flora/season style + snow options (see UpscalerCompat.h).
+	int		r__flora_style = 1;
+	int		r4_snow_enabled = 1;
+	float	r4_snow_height = 0.6f;
+	float	r4_snow_distance = 30.0f;
+	float	r4_snow_density = 0.5f;
+	float	r4_snow_variation = 0.5f;
+	float	r4_snow_drift_size = 8.0f;
+	float	r4_snow_resistance = 0.3f;
+	int		r4_snow_fall_enabled = 1;
+	float	r4_snow_flake_size = 1.0f;
+	float	r4_snow_fall_speed = 1.0f;
+	float	r4_snow_fall_density = 1.0f;
+	float	r4_snow_fall_distance = 30.0f;
+	float	r4_snow_wind = 1.0f;
+
 	xr_token upscaler_compat_token[] = {
 		{"off", 0}, {"fsr3", 1}, {"dlss", 2}, {nullptr, 0}
 	};
@@ -1397,6 +1413,22 @@ namespace compat
 
 		// engine-owned: mirrors SecondVP state (set in Tick())
 		CMD4(CCC_Integer, "scope_lense_ads_is_pip", &scope_lense_ads_is_pip, 0, 1);
+
+		// flora/season style + snow options (modpack runtime seasons).
+		CMD4(CCC_Integer, "r__flora_style", &r__flora_style, 1, 6);
+		CMD4(CCC_Integer, "r4_snow_enabled", &r4_snow_enabled, 0, 1);
+		CMD4(CCC_Float, "r4_snow_height", &r4_snow_height, 0.0f, 1.2f);
+		CMD4(CCC_Float, "r4_snow_distance", &r4_snow_distance, 5.0f, 60.0f);
+		CMD4(CCC_Float, "r4_snow_density", &r4_snow_density, 0.0f, 1.0f);
+		CMD4(CCC_Float, "r4_snow_variation", &r4_snow_variation, 0.0f, 1.0f);
+		CMD4(CCC_Float, "r4_snow_drift_size", &r4_snow_drift_size, 0.5f, 20.0f);
+		CMD4(CCC_Float, "r4_snow_resistance", &r4_snow_resistance, 0.0f, 0.9f);
+		CMD4(CCC_Integer, "r4_snow_fall_enabled", &r4_snow_fall_enabled, 0, 1);
+		CMD4(CCC_Float, "r4_snow_flake_size", &r4_snow_flake_size, 0.25f, 2.0f);
+		CMD4(CCC_Float, "r4_snow_fall_speed", &r4_snow_fall_speed, 0.25f, 4.0f);
+		CMD4(CCC_Float, "r4_snow_fall_density", &r4_snow_fall_density, 0.0f, 2.0f);
+		CMD4(CCC_Float, "r4_snow_fall_distance", &r4_snow_fall_distance, 5.0f, 60.0f);
+		CMD4(CCC_Float, "r4_snow_wind", &r4_snow_wind, 0.0f, 2.0f);
 	}
 
 	// ------------------------------------------------------------------

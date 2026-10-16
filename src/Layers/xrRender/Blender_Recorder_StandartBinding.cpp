@@ -1343,6 +1343,16 @@ static class scope_svp_state : public R_constant_setup
                      Device.m_SecondViewport.IsSVPFrame() ? 1.0f : 0.0f, 0.0f, 0.0f);
     }
 } binder_scope_svp_state;
+
+// MOD compatibility: the pack's terrain and snow-wallmark shaders read the season
+// style (x = 1..6) and fall back to the stock look when it is zero.
+static class cl_anthology_flora_style : public R_constant_setup
+{
+    void setup(R_constant* C) override
+    {
+        RCache.set_c(C, float(compat::r__flora_style), 0.0f, 0.0f, 0.0f);
+    }
+} binder_anthology_flora_style;
 #endif
 
 static class ssfx_fTimeDelta : public R_constant_setup
@@ -1727,6 +1737,7 @@ void CBlender_Compile::SetMapping()
 	r_Constant("scope_lense_motion", &binder_scope_lense_motion);
 	r_Constant("scope_lense_reproject", &binder_scope_lense_reproject);
 	r_Constant("scope_svp", &binder_scope_svp_state);
+	r_Constant("anthology_flora_style", &binder_anthology_flora_style);
 #endif
 	r_Constant("ssfx_pom", &ssfx_pom);
 
