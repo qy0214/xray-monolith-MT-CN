@@ -33,6 +33,7 @@
 #include "../../xrParticles/psystem.h"
 
 #include "../xrRender/HW.h"
+#include "Dlss/DlssIntegration.h"
 #include "../xrRender/Shader.h"
 #include "../xrRender/R_Backend.h"
 #include "../xrRender/R_Backend_Runtime.h"

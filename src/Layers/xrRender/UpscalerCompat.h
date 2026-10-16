@@ -1,0 +1,58 @@
+#pragma once
+// ---------------------------------------------------------------------------
+// MOD-name compatibility layer (ANTHOLOGY modpack contract).
+//
+// The engine keeps its native/pipdlss cvar names (r_upscaler, r_dlss_quality,
+// r__svp_*). The modpack's MCM pages and scripts, however, address the engine
+// by the names below (see anthology_upscaler_mcm.script and
+// rak_pip_quality_mcm.script). MCM resolves every declared "cmd" through the
+// console; a missing cvar yields nil and clamp(nil, min, max) aborts the script
+// engine ("_g.script:787 attempt to compare nil with number").
+//
+// Names, types and ranges here MUST match the MCM declarations verbatim.
+// Storage is defined once in xrRender_console.cpp (compiled per renderer DLL),
+// so only that TU owns the variables; other TUs read them via these externs.
+// ---------------------------------------------------------------------------
+
+namespace compat
+{
+	// --- upscaler (MOD name -> native r_upscaler family, wired in a later task)
+	extern u32		r4_upscaler;				// token: off=0, fsr3=1, dlss=2
+	extern u32		r4_upscaler_quality;		// token: native=0 .. ultra_performance=4, custom=5
+	extern float	r4_upscaler_custom_scale;	// 0.33 .. 1.00
+	extern float	r4_upscaler_sharpness;		// 0.0 .. 1.0
+
+	// --- PiP scope lens (MOD name -> engine SecondVP / scope_lense_* contract)
+	extern int		scope_lense_live_effects;	// 0/1
+	extern int		scope_lense_temporal_mode;	// 0 legacy, 1 sparse, 2 live
+	extern int		scope_lense_quality_percent; // 25 .. 100
+	extern int		scope_lense_update_interval; // 1 .. 8
+	extern float	scope_lense_aim_sensitivity; // 0.25 .. 2.0
+	extern int		scope_lense_allow_nvg;		// 0/1
+	extern int		scope_lense_allow_thermal;	// 0/1
+
+	extern float	scope_lense_brightness;		// 0.5 .. 1.5
+	extern float	scope_lense_contrast;		// 0.5 .. 1.5
+	extern float	scope_lense_saturation;		// 0.0 .. 2.0
+	extern float	scope_lense_gamma;			// 0.5 .. 1.5
+	extern float	scope_lense_sharpness;		// 0.0 .. 2.0
+	extern float	scope_lense_grain;			// 0.0 .. 1.0
+	extern float	scope_lense_dirt;			// 0.0 .. 2.0
+	extern int		scope_lense_tint;			// preset index 0 .. 4
+	extern float	scope_lense_tint_intensity;	// 0.0 .. 1.0
+
+	// engine-owned: 1 while the current ADS is a PiP (second viewport) ADS.
+	extern int		scope_lense_ads_is_pip;
+
+	// Registers every cvar above. Idempotent; called from xrRender_initconsole().
+	void RegisterConsoleVars();
+
+	// Pushes the MOD names onto the native upscaler names (and back) when either
+	// side changed. Called per frame by Tick() and once before the render targets
+	// are created, because the upscaler method/quality is latched at target
+	// creation (a vid_restart is needed afterwards to change it).
+	void SyncUpscalerAliases();
+
+	// Per-frame refresh of the engine-owned values (scope_lense_ads_is_pip).
+	void Tick();
+}

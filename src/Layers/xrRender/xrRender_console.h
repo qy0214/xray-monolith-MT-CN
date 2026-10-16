@@ -57,6 +57,18 @@ extern ECORE_API u32 ps_r_sun_quality; //	=	0;
 extern ECORE_API xr_token qsun_quality_token[];
 
 extern ECORE_API u32 ps_smaa_quality;
+
+// Temporal upscalers (DLSS / FSR3). MOD-facing aliases (r4_upscaler*) live in
+// UpscalerCompat.h and are mapped onto these native names.
+extern ECORE_API u32 ps_r_dlss_quality;
+extern ECORE_API u32 ps_r_upscaler;
+extern ECORE_API u32 ps_r_fsr3_quality;
+extern ECORE_API u32 ps_r_dlss_preset;
+extern ECORE_API float ps_r_dlss_sharpness;
+// 0 disables the raster jitter for the temporal upscalers.
+extern ECORE_API int ps_r_upscaler_jitter;
+// Camera-only motion-vector fallback: 1 = fill zero vectors, 2 = force camera-only, 0 = raw.
+extern ECORE_API int ps_r__upscaler_camera_mv;
 extern ECORE_API xr_token smaa_quality_token[];
 
 extern ECORE_API u32 ps_r3_msaa; //	=	0;

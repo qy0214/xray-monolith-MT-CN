@@ -3,10 +3,35 @@
 
 #include	"xrRender_console.h"
 #include	"dxRenderDeviceRender.h"
+#include	"UpscalerCompat.h"
 
 #include "../../build_config_defines.h"
 
 u32 ps_Preset = 2;
+u32 ps_r_dlss_quality = 0;
+// Default to DLSS selection for compatibility with existing DLSS-only configs.
+// Its quality defaults to Off, so a fresh installation still renders natively.
+u32 ps_r_upscaler = 1;
+u32 ps_r_fsr3_quality = 1;
+xr_token upscaler_token[] = {{"off", 0}, {"dlss", 1}, {"fsr3", 2}, {nullptr, 0}};
+xr_token fsr3_quality_token[] = {
+    {"native_aa", 0}, {"quality", 1}, {"balanced", 2},
+    {"performance", 3}, {"ultra_performance", 4}, {nullptr, 0}
+};
+u32 ps_r_dlss_preset = 0;
+float ps_r_dlss_sharpness = 0.0f;
+// 1 (default) = Halton raster jitter, 0 = disable it for the whole jitter chain.
+int ps_r_upscaler_jitter = 1;
+// 1 (default) = fill zero motion vectors with camera-only vectors from depth,
+// 2 = force camera-only, 0 = raw shader-pack buffer.
+int ps_r__upscaler_camera_mv = 1;
+xr_token dlss_preset_token[] = {
+    {"default", 0}, {"j", 10}, {"k", 11}, {"l", 12}, {"m", 13}, {nullptr, 0}
+};
+xr_token dlss_quality_token[] = {
+    {"off", 0}, {"dlaa", 1}, {"quality", 2}, {"balanced", 3},
+    {"performance", 4}, {"ultra_performance", 5}, {nullptr, 0}
+};
 xr_token qpreset_token [ ] = {
 	{"Minimum", 0},
 	{"Low", 1},
@@ -1303,6 +1328,164 @@ public:
 };
 
 //-----------------------------------------------------------------------
+// MOD-name compatibility cvars (ANTHOLOGY modpack contract).
+// Declared in UpscalerCompat.h. Types/ranges must match the MCM scripts:
+//   anthology_upscaler_mcm.script / rak_pip_quality_mcm.script
+namespace compat
+{
+	u32		r4_upscaler = 0;
+	u32		r4_upscaler_quality = 0;
+	float	r4_upscaler_custom_scale = 1.0f;
+	float	r4_upscaler_sharpness = 0.0f;
+
+	int		scope_lense_live_effects = 1;
+	int		scope_lense_temporal_mode = 2;
+	int		scope_lense_quality_percent = 100;
+	int		scope_lense_update_interval = 2;
+	float	scope_lense_aim_sensitivity = 1.0f;
+	int		scope_lense_allow_nvg = 1;
+	int		scope_lense_allow_thermal = 1;
+
+	float	scope_lense_brightness = 1.0f;
+	float	scope_lense_contrast = 1.0f;
+	float	scope_lense_saturation = 1.0f;
+	float	scope_lense_gamma = 1.0f;
+	float	scope_lense_sharpness = 1.0f;
+	float	scope_lense_grain = 0.0f;
+	float	scope_lense_dirt = 0.65f;
+	int		scope_lense_tint = 0;
+	float	scope_lense_tint_intensity = 0.3f;
+
+	int		scope_lense_ads_is_pip = 0;
+
+	xr_token upscaler_compat_token[] = {
+		{"off", 0}, {"fsr3", 1}, {"dlss", 2}, {nullptr, 0}
+	};
+	xr_token upscaler_quality_compat_token[] = {
+		{"native", 0}, {"quality", 1}, {"balanced", 2}, {"performance", 3},
+		{"ultra_performance", 4}, {"custom", 5}, {nullptr, 0}
+	};
+
+	void RegisterConsoleVars()
+	{
+		static bool registered = false;
+		if (registered)	return;
+		registered = true;
+
+		CMD3(CCC_Token, "r4_upscaler", &r4_upscaler, upscaler_compat_token);
+		CMD3(CCC_Token, "r4_upscaler_quality", &r4_upscaler_quality, upscaler_quality_compat_token);
+		CMD4(CCC_Float, "r4_upscaler_custom_scale", &r4_upscaler_custom_scale, 0.33f, 1.0f);
+		CMD4(CCC_Float, "r4_upscaler_sharpness", &r4_upscaler_sharpness, 0.0f, 1.0f);
+
+		CMD4(CCC_Integer, "scope_lense_live_effects", &scope_lense_live_effects, 0, 1);
+		CMD4(CCC_Integer, "scope_lense_temporal_mode", &scope_lense_temporal_mode, 0, 2);
+		CMD4(CCC_Integer, "scope_lense_quality_percent", &scope_lense_quality_percent, 25, 100);
+		CMD4(CCC_Integer, "scope_lense_update_interval", &scope_lense_update_interval, 1, 8);
+		CMD4(CCC_Float, "scope_lense_aim_sensitivity", &scope_lense_aim_sensitivity, 0.25f, 2.0f);
+		CMD4(CCC_Integer, "scope_lense_allow_nvg", &scope_lense_allow_nvg, 0, 1);
+		CMD4(CCC_Integer, "scope_lense_allow_thermal", &scope_lense_allow_thermal, 0, 1);
+
+		CMD4(CCC_Float, "scope_lense_brightness", &scope_lense_brightness, 0.5f, 1.5f);
+		CMD4(CCC_Float, "scope_lense_contrast", &scope_lense_contrast, 0.5f, 1.5f);
+		CMD4(CCC_Float, "scope_lense_saturation", &scope_lense_saturation, 0.0f, 2.0f);
+		CMD4(CCC_Float, "scope_lense_gamma", &scope_lense_gamma, 0.5f, 1.5f);
+		CMD4(CCC_Float, "scope_lense_sharpness", &scope_lense_sharpness, 0.0f, 2.0f);
+		CMD4(CCC_Float, "scope_lense_grain", &scope_lense_grain, 0.0f, 1.0f);
+		CMD4(CCC_Float, "scope_lense_dirt", &scope_lense_dirt, 0.0f, 2.0f);
+		CMD4(CCC_Integer, "scope_lense_tint", &scope_lense_tint, 0, 4);
+		CMD4(CCC_Float, "scope_lense_tint_intensity", &scope_lense_tint_intensity, 0.0f, 1.0f);
+
+		// engine-owned: mirrors SecondVP state (set in Tick())
+		CMD4(CCC_Integer, "scope_lense_ads_is_pip", &scope_lense_ads_is_pip, 0, 1);
+	}
+
+	// ------------------------------------------------------------------
+	// MOD name -> native upscaler sync.
+	// The modpack MCM (anthology_upscaler page) drives the r4_* names; the
+	// renderer works from the native names. Each frame the two sets are
+	// compared and pushed in whichever direction changed, so they stay equal.
+	//   r4_upscaler          off/fsr3/dlss -> r_upscaler       off/dlss/fsr3
+	//   r4_upscaler_quality  native/quality/balanced/performance/ultra_performance
+	//                        -> r_dlss_quality off/dlaa/quality/balanced/performance/ultra_performance
+	//                        -> r_fsr3_quality native_aa/quality/balanced/performance/ultra_performance
+	//     "custom" has no native scale mode and falls back to performance;
+	//     DLSS "off" (no MOD entry) maps back to native.
+	//   r4_upscaler_sharpness -> r_dlss_sharpness
+	// ------------------------------------------------------------------
+	static u32	s_last_alias_method = u32(-1), s_last_alias_quality = u32(-1);
+	static float	s_last_alias_sharp = -1.0f;
+	static u32	s_last_native_method = u32(-1), s_last_native_dlss_q = u32(-1), s_last_native_fsr3_q = u32(-1);
+	static float	s_last_native_sharp = -1.0f;
+
+	inline u32 aliasMethodToNative(u32 v) { return (v == 0) ? 0u : ((v == 1) ? 2u : 1u); }
+	inline u32 nativeMethodToAlias(u32 v) { return (v == 0) ? 0u : ((v == 1) ? 2u : 1u); }
+	inline u32 aliasQualityToDlss(u32 q)
+	{
+		switch (q) { case 0: return 1; case 1: return 2; case 2: return 3; case 3: return 4; case 4: return 5; default: return 4; }
+	}
+	inline u32 dlssQualityToAlias(u32 q)
+	{
+		switch (q) { case 1: return 0; case 2: return 1; case 3: return 2; case 4: return 3; case 5: return 4; default: return 3; }
+	}
+	inline u32 aliasQualityToFsr3(u32 q)
+	{
+		switch (q) { case 0: return 0; case 1: return 1; case 2: return 2; case 3: return 3; case 4: return 4; default: return 3; }
+	}
+	inline u32 fsr3QualityToAlias(u32 q)
+	{
+		switch (q) { case 0: return 0; case 1: return 1; case 2: return 2; case 3: return 3; case 4: return 4; default: return 3; }
+	}
+
+	void SyncUpscalerAliases()
+	{
+		const bool aliasChanged = r4_upscaler != s_last_alias_method || r4_upscaler_quality != s_last_alias_quality
+			|| r4_upscaler_sharpness != s_last_alias_sharp;
+		const bool nativeChanged = ps_r_upscaler != s_last_native_method || ps_r_dlss_quality != s_last_native_dlss_q
+			|| ps_r_fsr3_quality != s_last_native_fsr3_q || ps_r_dlss_sharpness != s_last_native_sharp;
+
+		// The first call is the startup one (before the targets are created). At
+		// that point both sides look "changed" only because the trackers are
+		// empty, so a pre-existing mismatch between the MCM selection and the
+		// latched native value must be resolved alias -> native. Otherwise the
+		// upscaler would start native and only pick the selection up when the
+		// user touches a control.
+		static bool s_firstSync = true;
+		const bool firstSync = s_firstSync;
+		s_firstSync = false;
+
+		if (aliasChanged && (firstSync || !nativeChanged))
+		{
+			ps_r_upscaler = aliasMethodToNative(r4_upscaler);
+			if (ps_r_upscaler == 2)	// fsr3
+				ps_r_fsr3_quality = aliasQualityToFsr3(r4_upscaler_quality);
+			else
+				ps_r_dlss_quality = aliasQualityToDlss(r4_upscaler_quality);
+			ps_r_dlss_sharpness = r4_upscaler_sharpness;
+		}
+		else if (!firstSync && nativeChanged && !aliasChanged)
+		{
+			r4_upscaler = nativeMethodToAlias(ps_r_upscaler);
+			r4_upscaler_quality = (ps_r_upscaler == 2) ? fsr3QualityToAlias(ps_r_fsr3_quality) : dlssQualityToAlias(ps_r_dlss_quality);
+			r4_upscaler_sharpness = ps_r_dlss_sharpness;
+		}
+
+		s_last_alias_method = r4_upscaler;
+		s_last_alias_quality = r4_upscaler_quality;
+		s_last_alias_sharp = r4_upscaler_sharpness;
+		s_last_native_method = ps_r_upscaler;
+		s_last_native_dlss_q = ps_r_dlss_quality;
+		s_last_native_fsr3_q = ps_r_fsr3_quality;
+		s_last_native_sharp = ps_r_dlss_sharpness;
+	}
+
+	void Tick()
+	{
+		scope_lense_ads_is_pip = Device.m_SecondViewport.IsSVPActive() ? 1 : 0;
+		SyncUpscalerAliases();
+	}
+}
+
+//-----------------------------------------------------------------------
 void xrRender_initconsole()
 {
 	CMD3(CCC_Preset, "_preset", &ps_Preset, qpreset_token);
@@ -1834,5 +2017,18 @@ void xrRender_initconsole()
 
 	//	CMD3(CCC_Mask,		"r2_sun_ignore_portals",		&ps_r2_ls_flags,			R2FLAG_SUN_IGNORE_PORTALS);
     CMD4(CCC_Integer, "r_particles_real_dt", &ps_r2_particle_dt, 0, 1);
+
+    compat::RegisterConsoleVars();	// MOD-name compat cvars (UpscalerCompat.h)
+
+#if defined(USE_DX11)
+	// Temporal upscalers (native names; MOD aliases map onto these).
+	CMD3(CCC_Token, "r_dlss_quality", &ps_r_dlss_quality, dlss_quality_token);
+	CMD3(CCC_Token, "r_upscaler", &ps_r_upscaler, upscaler_token);
+	CMD3(CCC_Token, "r_fsr3_quality", &ps_r_fsr3_quality, fsr3_quality_token);
+	CMD3(CCC_Token, "r_dlss_preset", &ps_r_dlss_preset, dlss_preset_token);
+	CMD4(CCC_Float, "r_dlss_sharpness", &ps_r_dlss_sharpness, 0.0f, 1.0f);
+	CMD4(CCC_Integer, "r__upscaler_jitter", &ps_r_upscaler_jitter, 0, 1);
+	CMD4(CCC_Integer, "r__upscaler_camera_mv", &ps_r__upscaler_camera_mv, 0, 2);
+#endif
 }
 #endif

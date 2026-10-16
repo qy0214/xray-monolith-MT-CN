@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "../../xrEngine/igame_persistent.h"
 #include "../xrRender/FBasicVisual.h"
+#include "../xrRender/UpscalerCompat.h"
 #include "../../xrEngine/customhud.h"
 #include "../../xrEngine/xr_object.h"
 #include "../xrRender/SkeletonCustom.h"
@@ -20,28 +21,31 @@ void CRender::render_menu()
 
 	// Main Render
 	{
-		Target->u_setrt(Target->rt_Generic_0, 0, 0, HW.pBaseZB); // LDR RT
+		Target->u_setrt(dlss::Configured() ? Target->rt_dlss_post_source : Target->rt_Generic_0, 0, 0, HW.pBaseZB); // LDR RT
 		g_pGamePersistent->OnRenderPPUI_main(); // PP-UI
 	}
 
 	// Distort
 	{
 		FLOAT ColorRGBA[4] = {127.0f / 255.0f, 127.0f / 255.0f, 0.0f, 127.0f / 255.0f};
-		Target->u_setrt(Target->rt_Generic_1, 0, 0, HW.pBaseZB); // Now RT is a distortion mask
-		HW.pContext->ClearRenderTargetView(Target->rt_Generic_1->pRT, ColorRGBA);
+		const ref_rt& distort = dlss::Configured() ? Target->rt_dlss_post_color : Target->rt_Generic_1;
+		Target->u_setrt(distort, 0, 0, HW.pBaseZB); // Now RT is a distortion mask
+		HW.pContext->ClearRenderTargetView(distort->pRT, ColorRGBA);
 		g_pGamePersistent->OnRenderPPUI_PP(); // PP-UI
 	}
 
 	// Actual Display
-	Target->u_setrt(Device.dwWidth, Device.dwHeight, HW.pBaseRT,NULL,NULL, HW.pBaseZB);
+	Target->u_setrt(RenderScreenWidth(), RenderScreenHeight(), HW.pBaseRT,NULL,NULL, Target->u_SceneDepth());
+	// Display sized target: never inherit the scene's render-sized viewport.
+	Target->set_viewport_size(HW.pContext, float(RenderScreenWidth()), float(RenderScreenHeight()));
 	RCache.set_Shader(Target->s_menu);
 	RCache.set_Geometry(Target->g_menu);
 
 	Fvector2 p0, p1;
 	u32 Offset;
 	auto C = color_rgba(255, 255, 255, 255);
-	float _w = float(Device.dwWidth);
-	float _h = float(Device.dwHeight);
+	float _w = float(RenderScreenWidth());
+	float _h = float(RenderScreenHeight());
 	float d_Z = EPS_S;
 	float d_W = 1.f;
 	p0.set(.5f / _w, .5f / _h);
@@ -66,12 +70,21 @@ void CRender::Render()
 {
 	PIX_EVENT_C(CRender_Render, dx10_marker_frame);
 	dx10_annotate_frame();
+	dlss::EndScene();
 
 	rmNormal();
+
+	compat::Tick();	// refresh engine-owned MOD-compat values (scope_lense_ads_is_pip)
+
+	// pipdlss reads these two flags in the upscaler's SvpPassBound(); this engine
+	// refreshes them once per frame from its own SecondVP state (see device.h).
+	Device.true_pip_on = Device.m_SecondViewport.IsSVPActive();
+	Device.m_SecondViewport.m_render_pass_is_svp = Device.m_SecondViewport.IsSVPFrame();
 
 	bool _menu_pp = g_pGamePersistent ? g_pGamePersistent->OnRenderPPUI_query() : false;
 	if (_menu_pp)
 	{
+		dlss::EndScene(true);
 		render_menu();
 		return;
 	};
@@ -82,7 +95,8 @@ void CRender::Render()
 	if (!(g_pGameLevel && g_hud)
 		|| bMenu)
 	{
-		Target->u_setrt(Device.dwWidth, Device.dwHeight, HW.pBaseRT,NULL,NULL, HW.pBaseZB);
+		dlss::EndScene(true);
+		Target->u_setrt(RenderScreenWidth(), RenderScreenHeight(), HW.pBaseRT,NULL,NULL, Target->u_SceneDepth());
 		return;
 	}
 
@@ -100,6 +114,7 @@ void CRender::Render()
 
 	//.	VERIFY					(g_pGameLevel && g_pGameLevel->pHUD);
 
+	dlss::BeginScene();
 	// Configure
 	RImplementation.o.distortion = FALSE; // disable distorion
 	Fcolor sun_color = ((light*)Lights.sun_adapted._get())->color;
@@ -136,7 +151,7 @@ void CRender::Render()
 
     if (RImplementation.o.ssfx_motionvectors)
     {
-        Target->u_setrt(Device.dwWidth, Device.dwHeight, 0, 0, Target->rt_ssfx_motion_vectors->pRT, 0);
+        Target->u_setrt(RenderScreenWidth(), RenderScreenHeight(), 0, 0, Target->rt_ssfx_motion_vectors->pRT, 0);
 
         FLOAT ColorRGBA[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
         HW.pContext->ClearRenderTargetView(Target->rt_ssfx_motion_vectors->pRT, ColorRGBA);
@@ -152,7 +167,7 @@ void CRender::Render()
 
 	if (ps_r2_ls_flags.test(R2FLAG_TERRAIN_PREPASS))
 	{
-		Target->u_setrt(Device.dwWidth, Device.dwHeight, NULL, NULL, NULL, !RImplementation.o.dx10_msaa ? HW.pBaseZB : Target->rt_MSAADepth->pZRT);
+		Target->u_setrt(RenderScreenWidth(), RenderScreenHeight(), NULL, NULL, NULL, !RImplementation.o.dx10_msaa ? Target->u_SceneDepth() : Target->rt_MSAADepth->pZRT);
 	}
 
 	//******* Main render :: PART-0	-- first
@@ -169,8 +184,9 @@ void CRender::Render()
 	if (scope_3D_fake_enabled)
 	{
 		ID3D11Resource* zbuffer_res;
-		HW.pBaseZB->GetResource(&zbuffer_res);
+		Target->u_SceneDepth()->GetResource(&zbuffer_res);
 		HW.pContext->CopyResource(RImplementation.Target->rt_tempzb->pSurface, zbuffer_res);
+		zbuffer_res->Release();
 	}
 
 	if (RImplementation.o.dx10_msaa)
@@ -307,7 +323,7 @@ void CRender::Render()
 		// Render Emissive on `rt_ssfx_bloom_emissive`
 		FLOAT ColorRGBA[4] = { 0,0,0,0 };
 		HW.pContext->ClearRenderTargetView(Target->rt_ssfx_bloom_emissive->pRT, ColorRGBA);
-		Target->u_setrt(Target->rt_ssfx_bloom_emissive, NULL, NULL, !RImplementation.o.dx10_msaa ? HW.pBaseZB : Target->rt_MSAADepth->pZRT);
+		Target->u_setrt(Target->rt_ssfx_bloom_emissive, NULL, NULL, !RImplementation.o.dx10_msaa ? Target->u_SceneDepth() : Target->rt_MSAADepth->pZRT);
 		// Keep regular HUD geometry out of the emissive target. It is already
 		// present in the scene texture sampled by the bloom build pass; drawing it
 		// here again treats every strict-sorted HUD surface as an emissive source.

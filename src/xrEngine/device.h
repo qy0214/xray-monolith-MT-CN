@@ -150,6 +150,12 @@ public:
 	public:
 		bool isCamReady; // Oeaa aioiaiinoe eaia?u (FOV, iiceoey, e o.i) e ?aiaa?o aoi?iai au?ii?oa
 
+		// Faithful to pipdlss: read by the upscaler as "the current pass draws
+		// the second viewport". This engine has no per-target pass binding (an
+		// SVP frame draws the scope view instead of the main view), so it is
+		// refreshed once per frame from the frame-level predicate.
+		bool m_render_pass_is_svp = false;
+
 		IC bool IsSVPActive() { return isActive; }
 		void SetSVPActive(bool bState);
 		bool    IsSVPFrame();
@@ -275,6 +281,10 @@ public:
 	Fmatrix mInvProject;
 	Fmatrix mInvProjectHud;
 	Fmatrix mInvFullTransform;
+
+	// Faithful to pipdlss: "a PiP (second viewport) ADS is active". Upstream has
+	// no r__svpscope switch, so this is refreshed once per frame from SecondVP.
+	bool true_pip_on = false;
 
 	CSecondVPParams m_SecondViewport;	//--#SM+#-- +SecondVP+
 

@@ -362,6 +362,20 @@ private:
 	ref_shader s_combine_volumetric;
 public:
 	ref_shader s_postprocess;
+	// DLSS/FSR3 (see Dlss/DlssIntegration.h): the display-resolution post chain the
+	// upscaler output is resolved into, plus the camera-MV fallback source.
+	ref_shader s_dlss_postprocess;
+	ref_shader s_dlss_copy;
+	ref_shader s_dlss_ui_depth;
+	ref_texture t_dlss_scene_depth;
+	bool reported_native_ui = false; // One diagnostic per target lifetime.
+	ref_rt rt_dlss_post_source;
+	ref_rt rt_dlss_post_color;
+	ref_texture t_dlss_output;
+	// Render-size hybrid filled by phase_upscaler_camera_mv (main view only).
+	ref_rt rt_upscaler_camera_mv;
+	ref_shader s_upscaler_camera_mv;
+	bool reported_camera_mv = false;
 	ref_shader s_postprocess_msaa;
 	ref_geom g_postprocess;
 	ref_shader s_menu;
@@ -501,6 +515,12 @@ public:
 	void phase_combine();
 	void phase_combine_volumetric();
 	void phase_pp();
+	// DLSS/FSR3 hooks (implemented in r4_rendertarget.cpp / phase_PP.cpp).
+	ID3DDepthStencilView* u_SceneDepth();
+	void phase_dlss_postprocess();
+	ref_rt& phase_upscaler_camera_mv();
+	ref_rt& PostprocessColor();
+	ref_rt& PostprocessSource();
 
 	virtual void set_blur(float f) { param_blur = f; }
 	virtual void set_gray(float f) { param_gray = f; }
