@@ -332,6 +332,7 @@ void CRender::Render()
 	dlss::BeginScene();
 
 	const int viewCount = (pipOn && TargetSVP) ? 2 : 1;
+	Device.m_SecondViewport.true_pip_rendering = (viewCount == 2);
 	for (int view = 0; view < viewCount; ++view)
 	{
 		if (viewCount == 2)

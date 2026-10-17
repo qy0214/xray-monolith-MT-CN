@@ -172,6 +172,12 @@ public:
 		// engine keeps the plain 3DSS behaviour untouched.
 		bool pip_lens_shaders = false;
 
+		// PiP: true on frames where the renderer really drew the lens into the second
+		// target set. The game side (wide main view, mouse sensitivity) must key off
+		// this and not off IsSVPActive(), otherwise a frame where the lens is not
+		// rendered would drop the main view's zoom with nothing to replace it.
+		bool true_pip_rendering = false;
+
 		IC bool IsSVPActive() { return isActive; }
 		void SetSVPActive(bool bState);
 		bool    IsSVPFrame();

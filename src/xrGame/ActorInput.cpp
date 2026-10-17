@@ -472,7 +472,7 @@ void CActor::IR_OnMouseMove(int dx, int dy)
     // engine does exactly this. Without it, aiming through a PiP optic feels far too
     // fast because the mouse keeps using the wide main view's FOV.
     float sensRatio = C->f_fov / g_fov;
-    if (cam_active == eacFirstEye && Device.true_pip_on && Device.m_SecondViewport.IsSVPActive()
+    if (cam_active == eacFirstEye && Device.m_SecondViewport.true_pip_rendering
         && Device.m_SecondViewport.svp_lens_fov > 1.0f)
         sensRatio = Device.m_SecondViewport.svp_lens_fov / g_fov;
 

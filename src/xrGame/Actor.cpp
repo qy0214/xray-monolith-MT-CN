@@ -1116,7 +1116,7 @@ float CActor::currentFOV()
 		// stays wide - the magnification lives in the scope image, exactly like the
 		// reference engine (Actor.cpp: "the main view stays wide"). Without this the
 		// whole screen was magnified instead of only the lens.
-		else if (Device.true_pip_on && Device.m_SecondViewport.IsSVPActive())
+		else if (Device.m_SecondViewport.true_pip_rendering)
 			return g_fov;
 		else
 			return pWeapon->GetZoomFactor() * (0.75f);
