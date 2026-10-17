@@ -299,13 +299,13 @@ void CRender::Render()
 	// zoomed one), so keep a copy of both cameras and draw the lens view and the
 	// normal view in the same frame, one pass each. The lens is then current, unlike
 	// the legacy scheme which copied the swapchain and skipped Present.
-	// PiP (T3 #6): the same-frame lens is enabled again now that the contract pieces are
-	// in place: lens camera from the optic's scope_lens_fov, lens-to-main mapping,
-	// display-aspect SVP extent, device overlays (thermal/NVG) kept in the lens pass,
-	// the lens texture actually filled and the upscaler isolated to one combine per
-	// frame. The shaders' reprojection path stays off (scope_lense_motion.x = 0) because
-	// this engine renders the lens every frame.
-	static const bool SVP_SAME_FRAME_READY = true;
+	// PiP (T3 #6): parked. The same-frame lens is compiled in but off, so the engine
+	// behaves exactly as it did before this work: the pack's optics use their own 3DSS
+	// path (which the player knows and which works), no second target set is created, the
+	// main camera keeps its ADS zoom and the mouse keeps its stock ratio. The pieces stay
+	// in the tree because the port is the eventual goal; they will be switched on again
+	// only once the lens content is finished and verified offline.
+	static const bool SVP_SAME_FRAME_READY = false;
 
 	svp_lens_rendered = false;
 
