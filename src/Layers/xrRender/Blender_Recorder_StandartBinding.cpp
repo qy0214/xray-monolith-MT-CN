@@ -1385,12 +1385,24 @@ static class scope_lense_motion : public R_constant_setup
     }
 } binder_scope_lense_motion;
 
+// PiP (T3 #6): the lens shader's projection matrix. In a same frame implementation the
+// renderer saved the current frame's lens camera VP (see CRender::Render), so the matrix is
+// vp_lens * inv(vp_main): it maps the main view's lens-area UVs onto the second view texture
+// that was rendered in this very frame. The reference implementation has no same frame path
+// and only captures the SVP every other frame, so it builds this from the previous frame's
+// VP (m_vp_prev) - reusing that here would displace the projection by a full frame and show
+// a lens image that is neither current nor correctly placed.
+extern Fmatrix svp_vp_lens;
+extern bool svp_vp_lens_valid;
 static class scope_lense_reproject : public R_constant_setup
 {
     void setup(R_constant* C) override
     {
         Fmatrix reproject;
-        reproject.mul(RCache.xforms.m_vp_prev, Device.mInvFullTransform);
+        if (svp_vp_lens_valid)
+            reproject.mul(svp_vp_lens, Device.mInvFullTransform);
+        else
+            reproject.mul(RCache.xforms.m_vp_prev, Device.mInvFullTransform);
         RCache.set_c(C, reproject);
     }
 } binder_scope_lense_reproject;
@@ -1399,16 +1411,14 @@ static class scope_svp_state : public R_constant_setup
 {
     void setup(R_constant* C) override
     {
-        // PiP (T3 #6): both components must answer the question the lens material asks when
-        // it is drawn, namely "is the image I sample the engine's own second view?" - and
-        // that material is drawn during the MAIN pass, where the per pass flag is false. It
-        // used to be (frame active, pass is svp), so the lens shader took its 3DSS branch and
-        // magnified the screen instead of sampling the lens texture: that is the magnified
-        // screen, the magnified reticle and the wrong thermal reading. The per pass value is
-        // still exposed in z for reference; the renderer's own branches use the C++ flag.
-        const float frameLens = Device.m_SecondViewport.IsSVPActive() ? 1.0f : 0.0f;
-        RCache.set_c(C, frameLens, frameLens,
-                     Device.m_SecondViewport.m_render_pass_is_svp ? 1.0f : 0.0f, 0.0f);
+        // The pack's lens material declares this as `uniform int scope_svp` (see
+        // models_scope_reticle.ps), so only x is read; it must answer "is the image I sample
+        // the engine's own second view this frame", which is the frame level state. y keeps
+        // the per pass value for reference and for any shader that wants it; both were once
+        // per pass only, and the material - drawn during the main pass - then never saw the
+        // lens path and magnified the screen instead.
+        RCache.set_c(C, Device.m_SecondViewport.IsSVPActive() ? 1.0f : 0.0f,
+                     Device.m_SecondViewport.m_render_pass_is_svp ? 1.0f : 0.0f, 0.0f, 0.0f);
     }
 } binder_scope_svp_state;
 

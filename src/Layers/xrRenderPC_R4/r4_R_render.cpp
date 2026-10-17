@@ -155,9 +155,16 @@ namespace svpcam
 	// 100 = exactly what the optic authors.
 	int s_lensPowerPct = 100;
 
+	// Diagnostic switch for the lens content probes (staging readbacks, mid pass probes and
+	// the per pass binding lines). The probes earned their place while the black lens was
+	// being chased, but they cost a readback every few seconds and belong behind a switch
+	// now that the content pipeline is understood.
+	int s_svpDebug = 0;
+
 	void RegisterLensCvars()
 	{
 		xr_console_register_int_cvar("r__svp_lens_power", &s_lensPowerPct, 25, 400);
+		xr_console_register_int_cvar("r__svp_debug", &s_svpDebug, 0, 2);
 	}
 
 	void Capture(View& v)
@@ -401,6 +408,17 @@ static const bool SVP_SAME_FRAME_READY = true;
 // game bin can never masquerade as a fresh one again.
 bool SvpSameFramePathEnabled() { return SVP_SAME_FRAME_READY; }
 
+// PiP (T3 #6): the current frame's lens camera VP, published by the renderer for the lens
+// shader's scope_lense_reproject binder (see Blender_Recorder_StandartBinding.cpp). The
+// lens shader projects the main view's lens-area UVs into the second view texture through
+// that matrix; in a same-frame implementation the second view is rendered in this very
+// frame, so the matrix must be vp_lens * inv(vp_main) built from the current frame's lens
+// camera - not the previous frame's VP, which is what the reference uses because it only
+// captures the SVP every other frame. Referencing the previous frame displaced the
+// projection and showed a lens image that was neither current nor correctly placed.
+Fmatrix svp_vp_lens = Fidentity;
+bool svp_vp_lens_valid = false;
+
 void CRender::Render()
 {
 	PIX_EVENT_C(CRender_Render, dx10_marker_frame);
@@ -496,6 +514,10 @@ void CRender::Render()
 	// the legacy scheme which copied the swapchain and skipped Present.
 	svp_lens_rendered = false;
 
+	// PiP: no lens pass this frame means no current-frame lens VP; the binder falls back to
+	// the previous-frame matrix (the legacy behaviour) so nothing reads a stale one.
+	svp_vp_lens_valid = false;
+
 	// C1/C2: the renderer reads the game published inputs exactly once per frame and
 	// evaluates the one state everything else derives from. Reading them again later in
 	// the frame would race with the game thread, which publishes them once per frame.
@@ -543,13 +565,11 @@ void CRender::Render()
 
 	dlss::BeginScene();
 
-	// Diagnostic configuration: with the dry run enabled the lens pass runs twice and the
-	// first result is discarded, which was used to separate "first pass of the frame" from
-	// other causes. The cause is now known (the second viewport was handed the main set's
-	// depth buffer by u_setrt, so Direct3D discarded every draw), so the extra render is
-	// off and the probes alone verify the content.
-	static const bool SVP_DRY_LENS_PASS = false;
-	const int lensRuns = pipOn ? (SVP_DRY_LENS_PASS ? 2 : 1) : 0;
+	// One lens pass and one main pass. The discarded double render that separated "first pass
+	// of the frame" effects from other causes is no longer needed: that question was answered
+	// (the second viewport was handed the main set's depth buffer, so Direct3D threw away
+	// every draw).
+	const int lensRuns = pipOn ? 1 : 0;
 	const int viewCount = lensRuns + 1;
 
 	for (int view = 0; view < viewCount; ++view)
@@ -567,6 +587,13 @@ void CRender::Render()
 			// the (optional) discarded diagnostic run use the main camera.
 			svpcam::Apply(publish ? svpcam::s_zoom : svpcam::s_main);
 			render_stats::SetSuppress(lensPass);
+		}
+
+		// PiP: publish the current frame's lens camera VP for the shader's projection matrix.
+		if (publish && svpcam::Ready())
+		{
+			svp_vp_lens.mul(svpcam::s_zoom.mProject, svpcam::s_zoom.mView);
+			svp_vp_lens_valid = true;
 		}
 	// Configure
 	RImplementation.o.distortion = FALSE; // disable distorion
@@ -640,7 +667,7 @@ void CRender::Render()
 		// content here that is gone by the end of the pass means a later phase wiped it.
 		{
 			static u32 s_midProbe_at = 0;
-			if (pipOn && Device.dwFrame >= s_midProbe_at)
+			if (svpcam::s_svpDebug > 0 && pipOn && Device.dwFrame >= s_midProbe_at)
 			{
 				if (view == 0)
 					s_midProbe_at = Device.dwFrame + 240;
@@ -849,7 +876,7 @@ void CRender::Render()
 		// Binding evidence per pass: which set the renderer thinks is active, what the
 		// device extent is and what the upscaler thinks the render extent is. A mismatch
 		// here explains a pass that draws into something other than this set's targets.
-		if (lensPass || viewCount > 1)
+		if (svpcam::s_svpDebug > 0 && (lensPass || viewCount > 1))
 		{
 			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u set=%ux%u mag=%.2f heat=%.0f nvg=%.0f",
 				view, lensPass ? (publish ? "(lens,publish)" : "(lens,dry)") : "(main)",
@@ -867,7 +894,7 @@ void CRender::Render()
 			// Probe after every lens run so the discarded main-camera run and the
 			// published lens-camera run can be compared directly.
 			static u32 s_lensProbe_at = 0;
-			if (Device.dwFrame >= s_lensProbe_at)
+			if (svpcam::s_svpDebug > 0 && Device.dwFrame >= s_lensProbe_at)
 			{
 				if (view == 0)
 					s_lensProbe_at = Device.dwFrame + 240;
