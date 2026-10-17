@@ -368,14 +368,12 @@ public:
 	ref_shader s_dlss_copy;
 	ref_shader s_dlss_ui_depth;
 	ref_texture t_dlss_scene_depth;
-	bool reported_native_ui = false; // One diagnostic per target lifetime.
 	ref_rt rt_dlss_post_source;
 	ref_rt rt_dlss_post_color;
 	ref_texture t_dlss_output;
 	// Render-size hybrid filled by phase_upscaler_camera_mv (main view only).
 	ref_rt rt_upscaler_camera_mv;
 	ref_shader s_upscaler_camera_mv;
-	bool reported_camera_mv = false;
 	ref_shader s_postprocess_msaa;
 	ref_geom g_postprocess;
 	ref_shader s_menu;

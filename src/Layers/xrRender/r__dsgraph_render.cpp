@@ -248,7 +248,6 @@ void CDSGraphManager::r_dsgraph_extract_native_ui()
 	// Hold PDA screens and wearable-device screen glass for the display-resolution
 	// pass that runs after the temporal upscaler reconstructed the scene. The
 	// queues keep the original draw packets, so skinning/transforms still apply.
-	RGraph.hasNativeHudAttachments = false;
 	dlss::ExtractNativeUi(RGraph.mapHUDSorted.Sorted, RGraph.mapHUDNativeUi, [this](const auto& item)
 	{
 		for (const auto& pass : item.pSE->passes)
@@ -258,11 +257,7 @@ void CDSGraphManager::r_dsgraph_extract_native_ui()
 			{
 				if (!texture.second) continue;
 				if (texture.second->cName == "$user$ui") return true;
-				if (dlss::IsWearableScreenGlass(texture.second->cName.c_str()))
-				{
-					RGraph.hasNativeHudAttachments = true;
-					return true;
-				}
+				if (dlss::IsWearableScreenGlass(texture.second->cName.c_str())) return true;
 			}
 		}
 		return false;
