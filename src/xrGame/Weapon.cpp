@@ -3365,8 +3365,23 @@ void CWeapon::UpdateSecondVP()
 		return;
 
 	CActor* pActor = smart_cast<CActor*>(H_Parent());
-	// PiP: hand the optic's lens FOV to the renderer, which derives the lens camera
-	// from it (magnification = g_fov / lens_fov, the modpack's own formula)
+
+	// PiP: the optic's lens FOV lives on the section that matches the mounted scope.
+	// The weapon packs use CHILD sections for that (wpn_ak50_1p69, wpn_ak50_acog, ...),
+	// which is what cNameSect() reports once a scope is attached; the scope item's own
+	// section is the fallback. Reading it only at load, from the base section (as the
+	// initial value does), always yields 0 for a scoped weapon - which is why the
+	// engine never reported a second viewport and both the PiP path and the legacy copy
+	// stayed idle, leaving the lens black.
+	if (IsScopeAttached() || m_zoomtype == 0)
+	{
+		float lensFov = READ_IF_EXISTS(pSettings, r_float, cNameSect(), "scope_lense_fov", 0.0f);
+		if (lensFov <= 0.005f && IsScopeAttached())
+			lensFov = READ_IF_EXISTS(pSettings, r_float, GetScopeName(), "scope_lense_fov", 0.0f);
+		if (lensFov > 0.005f)
+			m_zoom_params.m_fSecondVPFovFactor = lensFov;
+	}
+
 	Device.m_SecondViewport.SetSVPLensFov(m_zoom_params.m_fSecondVPFovFactor);
 	Device.m_SecondViewport.SetSVPActive(m_zoomtype == 0 && pActor->cam_Active() == pActor->cam_FirstEye() && IsSecondVPZoomPresent() && m_zoom_params.m_fZoomRotationFactor > 0.05f);
 }
