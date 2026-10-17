@@ -467,16 +467,13 @@ void CActor::IR_OnMouseMove(int dx, int dy)
 	const float LookFactor = GetLookFactor();
 
 	CCameraBase* C = cameras[cam_active];
-    // PiP (T3 #6): while the SVP owns the zoom the main view stays wide, so the first
-    // eye sensitivity has to follow the lens FOV instead of C->f_fov - the reference
-    // engine does exactly this. Without it, aiming through a PiP optic feels far too
-    // fast because the mouse keeps using the wide main view's FOV.
-    float sensRatio = C->f_fov / g_fov;
-    if (cam_active == eacFirstEye && Device.m_SecondViewport.true_pip_rendering
-        && Device.m_SecondViewport.svp_lens_fov > 1.0f)
-        sensRatio = Device.m_SecondViewport.svp_lens_fov / g_fov;
-
-    float scale = sensRatio * (psMouseSens * sens_multiple) * psMouseSensScale / 50.f / LookFactor;
+    // NOTE (PiP): an earlier attempt scaled this ratio by the lens FOV when the lens
+    // owned the zoom. In this modpack the optics keep the main camera wide and put the
+    // magnification in the lens (scope_lense_zoom_only), so the stock ratio is the one
+    // the player is used to; overriding it made aiming either fly (any ADS counted as
+    // PiP) or crawl. The pack's own scope_lense_aim_sensitivity cvar is the knob for
+    // this, if it is ever wanted.
+    float scale = (C->f_fov / g_fov) * (psMouseSens * sens_multiple) * psMouseSensScale / 50.f / LookFactor;
 	if (dx)
 	{
 		float d = float(dx) * scale;
