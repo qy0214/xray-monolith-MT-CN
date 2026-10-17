@@ -544,6 +544,27 @@ void CRender::create()
 		float(double(CPU::QPC() - rtCreateStart) * 1000.0 / double(CPU::qpc_freq)),
 		dlss::RenderWidth(), dlss::RenderHeight(), Device.dwWidth, Device.dwHeight);
 
+	// PiP (T3 #6): detect the pack's PiP lens shader once. It samples $user$viewport2,
+	// the plain 3DSS one does not; everything PiP-side (wide main view, second view for
+	// every magnifying optic) stays off when the module is not in use.
+	{
+		bool detected = false;
+		IReader* R = FS.r_open("$game_shaders$", "r3\\models_scope_reticle.s");
+		if (!R)
+			R = FS.r_open("$game_shaders$", "r4\\models_scope_reticle.s");
+		if (R)
+		{
+			char buf[4096];
+			const size_t n = R->length() < sizeof(buf) - 1 ? R->length() : sizeof(buf) - 1;
+			CopyMemory(buf, R->pointer(), n);
+			buf[n] = 0;
+			detected = strstr(buf, "viewport2") != nullptr;
+			FS.r_close(R);
+		}
+		Device.m_SecondViewport.pip_lens_shaders = detected;
+		Msg("* [PIP] pack PiP lens shaders %s", detected ? "detected" : "not in use");
+	}
+
 	Models = xr_new<CModelPool>();
 	PSLibrary.OnCreate();
 	HWOCC.occq_create(occq_size);

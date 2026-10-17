@@ -167,6 +167,11 @@ public:
 		float svp_lens_fov = 0.f;
 		IC void SetSVPLensFov(float fov) { svp_lens_fov = fov; }
 
+		// PiP: true when the pack's PiP module provides the lens shaders (they sample
+		// $user$viewport2). Detected once at startup, so with the module disabled the
+		// engine keeps the plain 3DSS behaviour untouched.
+		bool pip_lens_shaders = false;
+
 		IC bool IsSVPActive() { return isActive; }
 		void SetSVPActive(bool bState);
 		bool    IsSVPFrame();

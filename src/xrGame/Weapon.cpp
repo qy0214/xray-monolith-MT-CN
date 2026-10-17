@@ -3373,7 +3373,7 @@ void CWeapon::UpdateSecondVP()
 	// initial value does), always yields 0 for a scoped weapon - which is why the
 	// engine never reported a second viewport and both the PiP path and the legacy copy
 	// stayed idle, leaving the lens black.
-	if (IsScopeAttached() || m_zoomtype == 0)
+	if (Device.m_SecondViewport.pip_lens_shaders && (IsScopeAttached() || m_zoomtype == 0))
 	{
 		// Null-safe lookups: CInifile::section_exist/line_exist crash on an empty name,
 		// and integrated-scope weapons have no separate scope item at all.
