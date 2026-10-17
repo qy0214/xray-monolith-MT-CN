@@ -637,16 +637,24 @@ void CRender::Render()
 		Details->details_clear();
 
 	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
-		if (viewCount == 2 && view == 0 && TargetSVP && TargetSVP->rt_Generic_0 && TargetSVP->rt_secondVP)
+		if (viewCount == 2 && view == 0 && TargetSVP && TargetSVP->rt_secondVP)
 		{
-			// the lens material samples $user$viewport2 (= this set's rt_secondVP,
-			// which nothing else writes): publish this pass's scene result there
-			ID3D11Resource* lensSrc = TargetSVP->rt_Generic_0->pTexture->surface_get();
-			if (lensSrc)
+			// Publish this pass's scene result where the lens material samples it
+			// ($user$viewport2 = this set's rt_secondVP, which nothing else writes).
+			// The LDR scene target is the same pair phase_fakescope uses: rt_Color for
+			// non-MSAA, rt_Generic for MSAA. rt_Generic_0 is only filled by the post
+			// process chain, which the lens pass deliberately skips - copying from it was
+			// what made the lens black.
+			ref_rt& lensSrcRt = RImplementation.o.dx10_msaa ? TargetSVP->rt_Generic : TargetSVP->rt_Color;
+			if (lensSrcRt && lensSrcRt->pTexture)
 			{
-				HW.pContext->CopyResource(TargetSVP->rt_secondVP->pSurface, lensSrc);
-				_RELEASE(lensSrc);
-				svp_lens_rendered = true;
+				ID3D11Resource* lensSrc = lensSrcRt->pTexture->surface_get();
+				if (lensSrc)
+				{
+					HW.pContext->CopyResource(TargetSVP->rt_secondVP->pSurface, lensSrc);
+					_RELEASE(lensSrc);
+					svp_lens_rendered = true;
+				}
 			}
 		}
 	}	// end of the per-view loop
