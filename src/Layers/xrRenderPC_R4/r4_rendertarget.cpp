@@ -140,6 +140,13 @@ public:
 // Main viewport only (pipdlss distinguishes its SVP target via TargetMain/baseZB;
 // this engine has a single target). When the upscaler is not configured the stock
 // base ZB is kept, so binding is unchanged for a plain setup.
+//
+// PiP (T3 #6): the "main viewport only" scope of this substitution is now enforced. The
+// second viewport renders at its own extent and its base depth already matches its render
+// targets; handing it the upsalescaler's main set depth instead left the bound render
+// targets and depth buffer disagreeing in size, and Direct3D discards every draw in that
+// state - the lens pass submitted thousands of draw calls and nine million vertices while
+// nothing ever appeared in the second set's G-buffer, which is what kept the lens black.
 ID3DDepthStencilView* CRenderTarget::u_SceneDepth()
 {
 	return dlss::Configured() ? dlss::SceneDepth() : HW.pBaseZB;
@@ -154,7 +161,7 @@ void CRenderTarget::set_viewport_size(ID3DDeviceContext * dev, float w, float h)
 
 void CRenderTarget::u_setrt(const ref_rt& _1, const ref_rt& _2, const ref_rt& _3, const ref_rt& _4, ID3DDepthStencilView* zb)
 {
-	if (zb == HW.pBaseZB) zb = u_SceneDepth();
+	if (zb == HW.pBaseZB && m_is_main_target) zb = u_SceneDepth();
 	VERIFY(_1 || zb);
 	if (_1)
 	{
@@ -192,13 +199,13 @@ void CRenderTarget::u_setrt(const ref_rt& _1, const ref_rt& _2, const ref_rt& _3
 	else RCache.set_RT(NULL, 2);
 	if (_4) RCache.set_RT(_4->pRT, 3);
 	else RCache.set_RT(NULL, 3);
-	RCache.set_ZB(zb == HW.pBaseZB ? u_SceneDepth() : zb);
+	RCache.set_ZB((zb == HW.pBaseZB && m_is_main_target) ? u_SceneDepth() : zb);
 	//	RImplementation.rmNormal				();
 }
 
 void CRenderTarget::u_setrt(const ref_rt& _1, const ref_rt& _2, const ref_rt& _3, ID3DDepthStencilView* zb)
 {
-	if (zb == HW.pBaseZB) zb = u_SceneDepth();
+	if (zb == HW.pBaseZB && m_is_main_target) zb = u_SceneDepth();
 	VERIFY(_1||zb);
 	if (_1)
 	{
@@ -234,13 +241,13 @@ void CRenderTarget::u_setrt(const ref_rt& _1, const ref_rt& _2, const ref_rt& _3
 	else RCache.set_RT(NULL, 1);
 	if (_3) RCache.set_RT(_3->pRT, 2);
 	else RCache.set_RT(NULL, 2);
-	RCache.set_ZB(zb == HW.pBaseZB ? u_SceneDepth() : zb);
+	RCache.set_ZB((zb == HW.pBaseZB && m_is_main_target) ? u_SceneDepth() : zb);
 	//	RImplementation.rmNormal				();
 }
 
 void CRenderTarget::u_setrt(const ref_rt& _1, const ref_rt& _2, ID3DDepthStencilView* zb)
 {
-	if (zb == HW.pBaseZB) zb = u_SceneDepth();
+	if (zb == HW.pBaseZB && m_is_main_target) zb = u_SceneDepth();
 	VERIFY(_1||zb);
 	if (_1)
 	{
@@ -273,7 +280,7 @@ void CRenderTarget::u_setrt(const ref_rt& _1, const ref_rt& _2, ID3DDepthStencil
 	else RCache.set_RT(NULL, 0);
 	if (_2) RCache.set_RT(_2->pRT, 1);
 	else RCache.set_RT(NULL, 1);
-	RCache.set_ZB(zb == HW.pBaseZB ? u_SceneDepth() : zb);
+	RCache.set_ZB((zb == HW.pBaseZB && m_is_main_target) ? u_SceneDepth() : zb);
 	//	RImplementation.rmNormal				();
 }
 
@@ -287,7 +294,7 @@ void CRenderTarget::u_setrt(u32 W, u32 H, ID3DRenderTargetView* _1, ID3DRenderTa
 	RCache.set_RT(_1, 0);
 	RCache.set_RT(_2, 1);
 	RCache.set_RT(_3, 2);
-	RCache.set_ZB(zb == HW.pBaseZB ? u_SceneDepth() : zb);
+	RCache.set_ZB((zb == HW.pBaseZB && m_is_main_target) ? u_SceneDepth() : zb);
 	//	RImplementation.rmNormal				();
 }
 

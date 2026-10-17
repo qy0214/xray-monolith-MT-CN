@@ -484,13 +484,12 @@ void CRender::Render()
 
 	dlss::BeginScene();
 
-	// Diagnostic configuration: the lens pass runs twice, the first one discarded. If the
-	// second run produces content where the first produced none, the fault is a
-	// once-per-frame "first pass of the frame" mechanism in the engine (visibility,
-	// lighting or target setup) rather than anything in the lens camera or the blit.
-	// The main pass keeps its usual place last, so a wrong answer cannot leave the player
-	// looking at a broken main view.
-	static const bool SVP_DRY_LENS_PASS = true;
+	// Diagnostic configuration: with the dry run enabled the lens pass runs twice and the
+	// first result is discarded, which was used to separate "first pass of the frame" from
+	// other causes. The cause is now known (the second viewport was handed the main set's
+	// depth buffer by u_setrt, so Direct3D discarded every draw), so the extra render is
+	// off and the probes alone verify the content.
+	static const bool SVP_DRY_LENS_PASS = false;
 	const int lensRuns = pipOn ? (SVP_DRY_LENS_PASS ? 2 : 1) : 0;
 	const int viewCount = lensRuns + 1;
 
@@ -505,11 +504,9 @@ void CRender::Render()
 			CRenderTarget* passTarget = lensPass ? TargetSVP : TargetMain;
 			if (passTarget)
 				passTarget->SetActive();
-			// Experiment: the first (discarded) lens run uses the MAIN camera and the
-			// published one uses the derived lens camera. If the main-camera run fills the
-			// second set's targets and the lens-camera run does not, the fault is in the
-			// derived camera; if neither fills them, the fault is in the target set itself.
-			svpcam::Apply((view == 0) ? svpcam::s_main : (lensPass ? svpcam::s_zoom : svpcam::s_main));
+			// Only the published lens run uses the derived lens camera; the client pass and
+			// the (optional) discarded diagnostic run use the main camera.
+			svpcam::Apply(publish ? svpcam::s_zoom : svpcam::s_main);
 			render_stats::SetSuppress(lensPass);
 		}
 	// Configure
