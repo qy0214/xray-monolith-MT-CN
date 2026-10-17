@@ -68,7 +68,6 @@ bool StableOverlaysActive()
     const auto* constants = g_pGamePersistent->m_pGShaderConstants;
     return constants->hud_params.x > 0.05f && constants->hud_fov_params.x > 1.25f;
 }
-bool reportedStableOverlays = false;
 }
 
 // The upscaler render size belongs to the MAIN viewport only; during an SVP pass
@@ -209,9 +208,6 @@ void InitializeTargets()
     }
     renderSize = size;
     configured = true;
-    if (scopeSize)
-        Msg("[Upscaler] scope resolution override active: rendering at %u%% of the display (%ux%u)",
-            u32(scopeScale + 0.5f), size.width, size.height);
     if (useFsr)
         Msg("[FSR3] Initialized; awaiting first scene evaluation: quality=%u scene=%ux%u display=%ux%u",
             ps_r_fsr3_quality, size.width, size.height, display.width, display.height);
@@ -258,26 +254,6 @@ void BeginScene()
     // Scope frames must neither consume a jitter sample nor overwrite the history.
     mainView = !Device.m_SecondViewport.IsSVPFrame();
     const bool stableOverlay = StableOverlaysActive();
-    if (stableOverlay != reportedStableOverlays)
-    {
-        reportedStableOverlays = stableOverlay;
-        if (!stableOverlay)
-        {
-            Msg("[Upscaler] optic/device view off: temporal history, jitter and mip bias restored");
-        }
-        else if (Device.m_SecondViewport.IsSVPActive())
-        {
-            Msg("[Upscaler] second viewport active: temporal history and jitter disabled (the lens shows a frame-delayed copy)");
-        }
-        else if (ps_r2_heatvision > 0 || ps_r2_nightvision > 0)
-        {
-            Msg("[Upscaler] device view on (heat/night vision): temporal history and jitter disabled while it is active");
-        }
-        else
-        {
-            Msg("[Upscaler] aiming through an optic: temporal history and jitter disabled (the lens is screen locked)");
-        }
-    }
     if (Active())
     {
         // A device view changes the whole image every frame without matching the

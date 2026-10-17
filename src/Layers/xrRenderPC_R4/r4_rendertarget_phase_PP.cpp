@@ -155,12 +155,6 @@ ref_rt& CRenderTarget::phase_upscaler_camera_mv()
 	RCache.Render(D3DPT_TRIANGLELIST, offset, 0, 4, 0, 2);
 
 	HW.pContext->RSSetViewports(savedCount, saved);
-	if (!reported_camera_mv)
-	{
-		reported_camera_mv = true;
-		Msg("[Upscaler] camera MV fallback active: mode=%d%s", ps_r__upscaler_camera_mv,
-			ps_r__upscaler_camera_mv == 1 ? " (filling zero vectors)" : " (camera-only)");
-	}
 	return rt_upscaler_camera_mv;
 }
 
@@ -204,14 +198,6 @@ void CRenderTarget::phase_dlss_postprocess()
 	const bool renderCamUi = g_hud && g_hud->RenderCamAttachedUIQuery();
 	if (renderHudUi || renderCamUi || !RImplementation.GMBase.RGraph.mapHUDNativeUi.empty())
 	{
-		if (!reported_native_ui)
-		{
-			Msg("[Upscaler] HUD UI drawn after reconstruction: native=%ux%u, scene=%ux%u, meshes=%u, item_ui=%u, cam_ui=%u",
-				Device.dwWidth, Device.dwHeight, dlss::RenderWidth(), dlss::RenderHeight(),
-				unsigned(RImplementation.GMBase.RGraph.mapHUDNativeUi.size()), unsigned(renderHudUi),
-				unsigned(renderCamUi));
-			reported_native_ui = true;
-		}
 		// Reproject the render-sized scene depth into the native depth buffer so
 		// hands and casing still hide the handheld screen. u_setrt() substitutes
 		// the upscaler scene depth for HW.pBaseZB, so bind the native depth
