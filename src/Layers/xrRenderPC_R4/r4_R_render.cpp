@@ -327,7 +327,7 @@ void CRender::Render()
 		{
 			static Fmatrix mm_saved_viewproj;
 
-			if (!Device.m_SecondViewport.IsSVPFrame())
+			if (!Device.m_SecondViewport.m_render_pass_is_svp)
 			{
 				Target->Matrix_previous.mul(mm_saved_viewproj, Device.mInvView);
 				Target->Matrix_current.set(Device.mProject);
@@ -335,7 +335,7 @@ void CRender::Render()
 			}
 		}
 
-		if (RImplementation.o.ssfx_sss && !Device.m_SecondViewport.IsSVPFrame())
+		if (RImplementation.o.ssfx_sss && !Device.m_SecondViewport.m_render_pass_is_svp)
 		{
 			static bool sss_rendered, sss_extended_rendered;
 

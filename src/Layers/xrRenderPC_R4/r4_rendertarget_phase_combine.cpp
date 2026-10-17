@@ -91,7 +91,7 @@ void CRenderTarget::phase_combine()
 	{
 		static Fmatrix m_saved_viewproj;
 
-		if (!Device.m_SecondViewport.IsSVPFrame())
+		if (!Device.m_SecondViewport.m_render_pass_is_svp)
 		{
 			static Fvector3 saved_position;
 			Position_previous.set(saved_position);
@@ -107,7 +107,7 @@ void CRenderTarget::phase_combine()
 
 	{
 		// Disable when rendering SecondViewport
-		if (!Device.m_SecondViewport.IsSVPFrame())
+		if (!Device.m_SecondViewport.m_render_pass_is_svp)
 		{
 			// Clear RT
 			FLOAT ColorRGBA[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -335,7 +335,7 @@ void CRenderTarget::phase_combine()
 	else
 		HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0_r->pTexture->surface_get());
 
-	if (RImplementation.o.ssfx_ssr && !Device.m_SecondViewport.IsSVPFrame())
+	if (RImplementation.o.ssfx_ssr && !Device.m_SecondViewport.m_render_pass_is_svp)
 	{
 		PIX_EVENT(phase_ssfx_ssr);
 		ssfx_PrevPos_Requiered = true;
@@ -343,7 +343,7 @@ void CRenderTarget::phase_combine()
 	}
 
 	// [SSFX] - Water SSR rendering
-	if (RImplementation.o.ssfx_water && !Device.m_SecondViewport.IsSVPFrame())
+	if (RImplementation.o.ssfx_water && !Device.m_SecondViewport.m_render_pass_is_svp)
 	{
 		FLOAT ColorRGBA[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 		HW.pContext->ClearRenderTargetView(rt_ssfx_temp->pRT, ColorRGBA);
@@ -537,7 +537,7 @@ void CRenderTarget::phase_combine()
 	}
 
 	//Compute blur textures
-	if (!Device.m_SecondViewport.IsSVPFrame()) // Temp fix for blur buffer and SVP
+	if (!Device.m_SecondViewport.m_render_pass_is_svp) // Temp fix for blur buffer and SVP
 	{
 		PIX_EVENT(phase_blur);
 		phase_blur();
@@ -546,7 +546,7 @@ void CRenderTarget::phase_combine()
 	//Compute bloom (new)
 	if (RImplementation.o.ssfx_bloom)
 	{
-		if (!Device.m_SecondViewport.IsSVPFrame())
+		if (!Device.m_SecondViewport.m_render_pass_is_svp)
 			phase_ssfx_bloom();
 		else
 			HW.pContext->ClearRenderTargetView(rt_ssfx_bloom1->pRT, ColorRGBA);

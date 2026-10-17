@@ -1167,7 +1167,7 @@ static class ssfx_issvp : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
 	{
-		RCache.set_c(C, Device.m_SecondViewport.IsSVPFrame(), 0, 0, 0);
+		RCache.set_c(C, Device.m_SecondViewport.m_render_pass_is_svp, 0, 0, 0);
 	}
 }    ssfx_issvp;
 
@@ -1384,7 +1384,7 @@ static class scope_svp_state : public R_constant_setup
     void setup(R_constant* C) override
     {
         RCache.set_c(C, Device.m_SecondViewport.IsSVPActive() ? 1.0f : 0.0f,
-                     Device.m_SecondViewport.IsSVPFrame() ? 1.0f : 0.0f, 0.0f, 0.0f);
+                     Device.m_SecondViewport.m_render_pass_is_svp ? 1.0f : 0.0f, 0.0f, 0.0f);
     }
 } binder_scope_svp_state;
 

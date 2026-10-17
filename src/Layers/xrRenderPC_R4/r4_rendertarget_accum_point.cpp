@@ -100,7 +100,7 @@ void CRenderTarget::accum_point(light* L)
 		RCache.set_c("Ldynamic_color", L_clr.x, L_clr.y, L_clr.z, L_spec);
 		RCache.set_c("m_texgen", m_Texgen);
 
-		if (!Device.m_SecondViewport.IsSVPFrame())
+		if (!Device.m_SecondViewport.m_render_pass_is_svp)
 			RCache.set_c("sss_id", L->sss_id);
 		else
 			RCache.set_c("sss_id", -1);

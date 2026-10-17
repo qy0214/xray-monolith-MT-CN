@@ -252,7 +252,7 @@ void BeginScene()
         HW.pContext->RSSetViewports(1, &viewport);
     }
     // Scope frames must neither consume a jitter sample nor overwrite the history.
-    mainView = !Device.m_SecondViewport.IsSVPFrame();
+    mainView = !Device.m_SecondViewport.m_render_pass_is_svp;
     const bool stableOverlay = StableOverlaysActive();
     if (Active())
     {
