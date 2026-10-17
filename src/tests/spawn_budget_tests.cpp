@@ -15,7 +15,7 @@ void run_spawn_budget_tests()
 		SpawnBudget b;
 		b.begin(10);
 		CHECK(b.take(1000) == 1000);
-		CHECK(b.remaining() == u32(-1));
+		CHECK(b.remaining() == 0xFFFFFFFFu);
 		CHECK(!b.exhausted());
 	}
 
@@ -63,13 +63,13 @@ void run_spawn_budget_tests()
 		CHECK(b.remaining() == 6);
 	}
 
-	// u32(-1) frame ids must not be treated as "same frame"
+	// 0xFFFFFFFF frame ids must not be treated as "same frame"
 	{
 		SpawnBudget b;
 		b.max_per_frame = 1;
-		b.begin(u32(-1));
+		b.begin(0xFFFFFFFFu);
 		CHECK(b.take(5) == 1);
-		b.begin(u32(-1));
+		b.begin(0xFFFFFFFFu);
 		CHECK(b.remaining() == 0);
 	}
 
