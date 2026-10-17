@@ -69,6 +69,9 @@ extern ECORE_API float ps_r_dlss_sharpness;
 extern ECORE_API int ps_r_upscaler_jitter;
 // Camera-only motion-vector fallback: 1 = fill zero vectors, 2 = force camera-only, 0 = raw.
 extern ECORE_API int ps_r__upscaler_camera_mv;
+extern ECORE_API int ps_r__upscaler_scope_lock;		// scope-aware internal resolution
+extern ECORE_API int ps_r__upscaler_scope_scale;	// % of display while an optic is in use
+extern ECORE_API int ps_r__upscaler_scope_delay;	// seconds to keep it after the optic is lowered
 extern ECORE_API xr_token smaa_quality_token[];
 
 extern ECORE_API u32 ps_r3_msaa; //	=	0;

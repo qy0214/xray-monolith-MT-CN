@@ -22,6 +22,7 @@ float lastFov = 0;
 bool haveCamera = false;
 bool reportedEvaluation = false;
 string512 backendError = {};
+float scopeScale = 0.f;		// scope-aware render scale override, 0 = off
 
 const char* Method() { return useFsr ? "FSR3" : "DLSS"; }
 void LogBackendError(const char* method, const char* stage, unsigned result)
@@ -54,6 +55,11 @@ unsigned RenderScreenHeight() { return inScene && !SvpPassBound() ? dlss::Render
 
 namespace dlss
 {
+void SetScopeRenderScale(float percent)
+{
+    scopeScale = clampr(percent, 0.f, 100.f);
+}
+
 void InitializeTargets()
 {
     // Tripwire: a re-init while a scene is in progress means some mid-frame path (e.g. an
@@ -95,11 +101,20 @@ void InitializeTargets()
     }
     Size size;
     const Size display{Device.dwWidth, Device.dwHeight};
+    // Scope override: render closer to the display size while a magnifying optic
+    // magnifies the frame, so the magnified image keeps its detail.
+    const bool scopeSize = scopeScale > 0.f;
+    if (scopeSize)
+    {
+        const float k = scopeScale * 0.01f;
+        size.width = clampr(u32(float(display.width) * k + 0.5f), u32(16), display.width);
+        size.height = clampr(u32(float(display.height) * k + 0.5f), u32(16), display.height);
+    }
     if (useFsr)
     {
         // Release NGX as well when switching methods; FSR does not require NVIDIA.
         backend.Shutdown();
-        if (!fsr3::D3D11Backend::OptimalSize(ps_r_fsr3_quality, display, size))
+        if (!scopeSize && !fsr3::D3D11Backend::OptimalSize(ps_r_fsr3_quality, display, size))
         {
             ActivationFailed("Could not determine the FSR 3 render resolution.",
                 "Select a valid display resolution and FSR 3 quality, then Apply again.");
@@ -130,7 +145,7 @@ void InitializeTargets()
             return;
         }
         const auto quality = static_cast<Quality>(ps_r_dlss_quality);
-        if (!backend.OptimalSize(quality, display, size))
+        if (!scopeSize && !backend.OptimalSize(quality, display, size))
         {
             ActivationFailed(BackendReason("Could not determine the DLSS render resolution."),
                 "Select a valid display resolution and DLSS quality, then Apply again.");
@@ -164,6 +179,9 @@ void InitializeTargets()
     }
     renderSize = size;
     configured = true;
+    if (scopeSize)
+        Msg("[Upscaler] scope resolution override active: rendering at %u%% of the display (%ux%u)",
+            u32(scopeScale + 0.5f), size.width, size.height);
     if (useFsr)
         Msg("[FSR3] Initialized; awaiting first scene evaluation: quality=%u scene=%ux%u display=%ux%u",
             ps_r_fsr3_quality, size.width, size.height, display.width, display.height);

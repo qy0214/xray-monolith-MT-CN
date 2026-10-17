@@ -25,6 +25,12 @@ int ps_r_upscaler_jitter = 1;
 // 1 (default) = fill zero motion vectors with camera-only vectors from depth,
 // 2 = force camera-only, 0 = raw shader-pack buffer.
 int ps_r__upscaler_camera_mv = 1;
+// Scope resolution: while a magnifying optic (or a second-viewport device) is in
+// use the frame is magnified, which amplifies the upscaler's pixel grid. These
+// raise the internal render resolution for as long as an optic is in use.
+int ps_r__upscaler_scope_lock = 1;		// 0/1
+int ps_r__upscaler_scope_scale = 100;	// 50..100 (% of the display resolution)
+int ps_r__upscaler_scope_delay = 8;		// seconds to keep it after the optic is lowered
 xr_token dlss_preset_token[] = {
     {"default", 0}, {"j", 10}, {"k", 11}, {"l", 12}, {"m", 13}, {nullptr, 0}
 };
@@ -2061,6 +2067,9 @@ void xrRender_initconsole()
 	CMD4(CCC_Float, "r_dlss_sharpness", &ps_r_dlss_sharpness, 0.0f, 1.0f);
 	CMD4(CCC_Integer, "r__upscaler_jitter", &ps_r_upscaler_jitter, 0, 1);
 	CMD4(CCC_Integer, "r__upscaler_camera_mv", &ps_r__upscaler_camera_mv, 0, 2);
+	CMD4(CCC_Integer, "r__upscaler_scope_lock", &ps_r__upscaler_scope_lock, 0, 1);
+	CMD4(CCC_Integer, "r__upscaler_scope_scale", &ps_r__upscaler_scope_scale, 50, 100);
+	CMD4(CCC_Integer, "r__upscaler_scope_delay", &ps_r__upscaler_scope_delay, 0, 30);
 #endif
 }
 #endif

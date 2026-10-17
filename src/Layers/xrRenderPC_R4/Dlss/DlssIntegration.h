@@ -10,6 +10,9 @@ void InitializeTargets();
 void ReleaseTargets();
 void ShutdownDevice();
 void BeginScene();
+// Scope-aware internal resolution: percent of the display size to render at while
+// a magnifying optic is in use (0 = use the configured quality again).
+void SetScopeRenderScale(float percent);
 void EndScene(bool invalidateHistory = false);
 bool Active();
 bool Configured();

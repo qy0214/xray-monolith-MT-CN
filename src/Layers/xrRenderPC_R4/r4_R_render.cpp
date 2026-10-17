@@ -64,6 +64,55 @@ void CRender::render_menu()
 	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 }
 
+// Scope resolution: while a magnifying optic (or a second viewport device) is in
+// use, the pack magnifies the frame and the upscaler's pixel grid is magnified
+// with it. Rebuild the upscaler and the scene targets at a higher internal
+// resolution for as long as an optic is in use, then fall back after an idle time.
+static bool  s_scopeResOn = false;
+static float s_scopeResIdle = 0.f;
+
+static bool ScopeResolutionRequested()
+{
+	if (!ps_r__upscaler_scope_lock || !dlss::Configured() || !g_pGamePersistent)
+		return false;
+	const float zoom = g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x;
+	return zoom > 1.25f || Device.m_SecondViewport.IsSVPActive();
+}
+
+// Returns true when the targets were rebuilt; the caller then skips this frame,
+// which is what reset_end() expects (m_bFirstFrameAfterReset).
+static bool UpdateScopeResolution()
+{
+	if (!dlss::Configured())
+	{
+		s_scopeResOn = false;
+		s_scopeResIdle = 0.f;
+		return false;
+	}
+
+	const bool requested = ScopeResolutionRequested();
+	if (requested)	s_scopeResIdle = 0.f;
+	else			s_scopeResIdle += Device.fTimeDelta;
+
+	const bool want = requested || (s_scopeResOn && s_scopeResIdle < float(ps_r__upscaler_scope_delay));
+	if (want == s_scopeResOn) return false;
+	if (!want && dlss::RenderWidth() >= Device.dwWidth) return false;
+
+	s_scopeResOn = want;
+
+	// Rebuild the upscaler for the new size first, then the scene targets, exactly
+	// like reset_begin()/reset_end() do for a display resolution change.
+	dlss::SetScopeRenderScale(want ? float(ps_r__upscaler_scope_scale) : 0.f);
+	RImplementation.reset_begin();
+	dlss::InitializeTargets();
+	RImplementation.reset_end();
+
+	Msg("[Upscaler] scope resolution %s: scale=%d%% delay=%ds scene=%ux%u display=%ux%u",
+		want ? "on" : "off", ps_r__upscaler_scope_scale, ps_r__upscaler_scope_delay,
+		dlss::RenderWidth(), dlss::RenderHeight(), Device.dwWidth, Device.dwHeight);
+	return true;
+}
+
 extern u32 g_r;
 
 void CRender::Render()
@@ -108,6 +157,11 @@ void CRender::Render()
 		m_bFirstFrameAfterReset = false;
 		return;
 	}
+
+	// Scope-aware internal resolution: a rebuild here skips this frame, so the new
+	// targets start clean (the same contract as m_bFirstFrameAfterReset above).
+	if (UpdateScopeResolution())
+		return;
 
 	if ((Device.dwFrame % (u32)ps_r__tex_evict_interval) == 0)
 		dxRenderDeviceRender::Instance().Resources->EvictStalledTextures();
