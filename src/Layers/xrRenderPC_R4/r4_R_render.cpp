@@ -208,8 +208,10 @@ void CRender::Render()
 		Target->phase_scene_begin();
 		GMBase.r_dsgraph_capture_hud();
 		// DLSS: move the PDA/glass items out of the scene so they are not upscaled.
-		// Only when the display-resolution pass that redraws them will actually run.
-		if (dlss::Configured() && (Target->u_need_PP() || RImplementation.m_bMakeAsyncSS))
+		// phase_dlss_postprocess always runs on the complex post-process path
+		// (PP_Complex is forced on in phase_combine), so the display-resolution
+		// pass that redraws these items is always there when DLSS is configured.
+		if (dlss::Configured())
 			GMBase.r_dsgraph_extract_native_ui();
 		GMBase.r_dsgraph_render_hud();
 		GMBase.r_dsgraph_render_lods(true,true);
