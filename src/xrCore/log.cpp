@@ -286,6 +286,8 @@ void xrLogger::RemoveLogCallback(LogCallback logCb)
 	theLogger->logCallbackList.remove(logCb);
 }
 
+namespace { void ArchiveLogFile(LPCSTR path); }	// defined below
+
 void xrLogger::InternalCloseLog()
 {
 	SimpleMessage("[xrLogger] InternalCloseLog called, terminating thread");
@@ -299,6 +301,11 @@ void xrLogger::InternalCloseLog()
 
 	if (tempCopy != nullptr)
 		FS.w_close(tempCopy);
+
+	// Archive this session too, so the timestamped log is there right after a clean
+	// exit. A crash never reaches here, but the crash handlers flush the log and the
+	// next launch archives it, so that session is kept as well.
+	ArchiveLogFile(logFileName);
 
 	UnpauseLogging();
 }
@@ -317,6 +324,49 @@ xrLogger::~xrLogger()
 	InternalCloseLog();
 }
 
+namespace
+{
+	// "YYYY-MM-DD_HH-MM-SS" from a file timestamp, or from the local clock.
+	void SessionStamp(string_path& out, const FILETIME* source)
+	{
+		SYSTEMTIME st = {};
+		FILETIME local = {};
+		if (source && FileTimeToLocalFileTime(source, &local) && FileTimeToSystemTime(&local, &st))
+		{
+			xr_sprintf(out, "%04u-%02u-%02u_%02u-%02u-%02u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+			return;
+		}
+		GetLocalTime(&st);
+		xr_sprintf(out, "%04u-%02u-%02u_%02u-%02u-%02u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+	}
+
+	// Moves a log file to "<name>_<timestamp>.log" so sessions never overwrite each
+	// other. The timestamp is the file's own last write time, i.e. the end of the
+	// session that produced it (crashed sessions included, archived on the next run).
+	void ArchiveLogFile(LPCSTR path)
+	{
+		if (path == nullptr || path[0] == 0)
+			return;
+
+		WIN32_FILE_ATTRIBUTE_DATA info = {};
+		if (!::GetFileAttributesExA(path, GetFileExInfoStandard, &info))
+			return;	// nothing to archive
+		if (info.nFileSizeHigh == 0 && info.nFileSizeLow == 0)
+			return;	// empty session, nothing worth keeping
+
+		string_path stamp = {};
+		SessionStamp(stamp, &info.ftLastWriteTime);
+
+		xr_string base(path);
+		const size_t dot = base.rfind('.');
+		if (dot != xr_string::npos)
+			base.erase(dot);
+
+		xr_string archive = base + "_" + stamp + ".log";
+		::MoveFileExA(path, archive.c_str(), MOVEFILE_REPLACE_EXISTING);
+	}
+}
+
 void xrLogger::InternalOpenLogFile()
 {
 	// IXRay format
@@ -330,15 +380,16 @@ void xrLogger::InternalOpenLogFile()
 	// Vanilla
 	xr_strconcat(logFileName, Core.ApplicationName, "_", Core.UserName, ".log");
 
-	//Alun: Backup existing log
-	xr_string backup_logFName = EFS.ChangeFileExt(logFileName, ".bkp");
-	FS.file_rename(logFileName, backup_logFName.c_str(), true);
-	//-Alun
-
 	if (FS.path_exist("$logs$"))
 	{
 		FS.update_path(logFileName, "$logs$", logFileName);
 	}
+
+	// Keep every session: archive the previous log under its own timestamp instead
+	// of the old single ".bkp" name, which was overwritten on every launch and,
+	// being relative to the working directory, usually did not match the log path.
+	ArchiveLogFile(logFileName);
+
 	logFile = FS.w_open(logFileName);
 	CHECK_OR_EXIT(logFile, "Can't create log file");
 }
