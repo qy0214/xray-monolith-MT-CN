@@ -3391,6 +3391,15 @@ void CWeapon::UpdateSecondVP()
 
 		if (lensFov > 0.005f)
 			m_zoom_params.m_fSecondVPFovFactor = lensFov;
+		else if (GetZoomFactor() > 0.0f)
+		{
+			// No PiP config for this optic: derive the lens FOV from the weapon's own
+			// ADS zoom so the engine still renders a real second view. Without it the
+			// pack's PiP lens shaders - which sample $user$viewport2 - would have
+			// nothing to show, which is the black lens seen on optics the PiP pack does
+			// not cover (e.g. wpn_raptr_1p87).
+			m_zoom_params.m_fSecondVPFovFactor = g_fov * GetZoomFactor() * 0.75f;
+		}
 	}
 
 	// PiP diagnostic (throttled): prints what the lens FOV lookup actually saw, so a

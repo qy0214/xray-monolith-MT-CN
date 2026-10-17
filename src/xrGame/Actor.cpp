@@ -1112,6 +1112,12 @@ float CActor::currentFOV()
 	{
 		if (pWeapon->GetZoomFactor() == 0)
 			return atan(tan(g_fov * (0.5 * PI / 180)) / g_ironsights_factor) / (0.5 * PI / 180);
+		// PiP (T3 #6): while the renderer draws the zoom into the lens, the main view
+		// stays wide - the magnification lives in the scope image, exactly like the
+		// reference engine (Actor.cpp: "the main view stays wide"). Without this the
+		// whole screen was magnified instead of only the lens.
+		else if (Device.true_pip_on && Device.m_SecondViewport.IsSVPActive())
+			return g_fov;
 		else
 			return pWeapon->GetZoomFactor() * (0.75f);
 	}
