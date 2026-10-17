@@ -63,6 +63,39 @@ namespace compat
 	extern float	r4_snow_fall_distance;
 	extern float	r4_snow_wind;
 
+	// --- engine-side settings that other builds of this engine expose. Registered
+	// for MOD compatibility only and deliberately inert here: the modpack MCM and
+	// its scripts address them by name, and a missing command makes
+	// clamp(nil, min, max) abort the script engine. Ranges are wide so a value
+	// already stored in user.ltx is never clamped away.
+	// MT profiling page.
+	extern int		mt_frame_profile;
+	extern int		mt_frame_profile_detail;
+	// load/generation accelerators.
+	extern int		mt_load_spawn_decode;
+	extern int		load_defer_full_lua_gc;
+	extern int		load_world_warmup_ms;
+	extern int		spawn_antifreeze_max_per_frame;
+	// Lua GC tuning page.
+	extern int		lua_parallel_gc_adaptive;
+	extern int		lua_parallel_gc_budget_us;
+	extern int		lua_parallel_gc_frame_budget_us;
+	extern int		lua_parallel_gc_pause;
+	extern int		lua_parallel_gc_postload_delay_ms;
+	extern float	lua_parallel_gc_stepmul;
+	// PiP/optics page extras (the main scope_lense_* block is above).
+	extern int		scope_lense_render_quality;
+	extern int		scope_lense_quality_preset;
+	extern int		scope_lense_frame_delay_add;
+	extern int		scope_lense_head_nvg_active;
+	extern int		scope_lense_head_thermal_active;
+	// render/gameplay extras.
+	extern int		r__menu_framelimit;
+	extern float	r__npc_torch_dynamic_distance;
+	// modpack bookkeeping keys.
+	extern int		session_start;
+	extern int		tasks_version;
+
 	// Registers every cvar above. Idempotent; called from xrRender_initconsole().
 	void RegisterConsoleVars();
 

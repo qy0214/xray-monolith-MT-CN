@@ -1380,6 +1380,34 @@ namespace compat
 	float	r4_snow_fall_distance = 30.0f;
 	float	r4_snow_wind = 1.0f;
 
+	// --- engine-side settings other builds expose; see UpscalerCompat.h. Inert
+	// here: registered so the modpack MCM can read/write them without aborting.
+	int		mt_frame_profile = 0;
+	int		mt_frame_profile_detail = 0;
+	int		mt_load_spawn_decode = 1;
+	int		load_defer_full_lua_gc = 1;
+	int		load_world_warmup_ms = 0;
+	int		spawn_antifreeze_max_per_frame = 8;
+
+	int		lua_parallel_gc_adaptive = 1;
+	int		lua_parallel_gc_budget_us = 2000;
+	int		lua_parallel_gc_frame_budget_us = 500;
+	int		lua_parallel_gc_pause = 2;
+	int		lua_parallel_gc_postload_delay_ms = 1000;
+	float	lua_parallel_gc_stepmul = 1.0f;
+
+	int		scope_lense_render_quality = 100;
+	int		scope_lense_quality_preset = 1;
+	int		scope_lense_frame_delay_add = 0;
+	int		scope_lense_head_nvg_active = 0;
+	int		scope_lense_head_thermal_active = 0;
+
+	int		r__menu_framelimit = 0;
+	float	r__npc_torch_dynamic_distance = 30.0f;
+
+	int		session_start = 0;
+	int		tasks_version = 0;
+
 	xr_token upscaler_compat_token[] = {
 		{"off", 0}, {"fsr3", 1}, {"dlss", 2}, {nullptr, 0}
 	};
@@ -1435,6 +1463,35 @@ namespace compat
 		CMD4(CCC_Float, "r4_snow_fall_density", &r4_snow_fall_density, 0.0f, 2.0f);
 		CMD4(CCC_Float, "r4_snow_fall_distance", &r4_snow_fall_distance, 5.0f, 60.0f);
 		CMD4(CCC_Float, "r4_snow_wind", &r4_snow_wind, 0.0f, 2.0f);
+
+		// --- engine-side settings other builds expose. Registered for MOD
+		// compatibility only (inert here). Ranges are intentionally wide so a value
+		// already stored in user.ltx by another build is never clamped away.
+		CMD4(CCC_Integer, "mt_frame_profile", &mt_frame_profile, 0, 2);
+		CMD4(CCC_Integer, "mt_frame_profile_detail", &mt_frame_profile_detail, 0, 2);
+		CMD4(CCC_Integer, "mt_load_spawn_decode", &mt_load_spawn_decode, 0, 2);
+		CMD4(CCC_Integer, "load_defer_full_lua_gc", &load_defer_full_lua_gc, 0, 2);
+		CMD4(CCC_Integer, "load_world_warmup_ms", &load_world_warmup_ms, 0, 2000000000);
+		CMD4(CCC_Integer, "spawn_antifreeze_max_per_frame", &spawn_antifreeze_max_per_frame, 0, 1000000);
+
+		CMD4(CCC_Integer, "lua_parallel_gc_adaptive", &lua_parallel_gc_adaptive, 0, 2);
+		CMD4(CCC_Integer, "lua_parallel_gc_budget_us", &lua_parallel_gc_budget_us, 0, 2000000000);
+		CMD4(CCC_Integer, "lua_parallel_gc_frame_budget_us", &lua_parallel_gc_frame_budget_us, 0, 2000000000);
+		CMD4(CCC_Integer, "lua_parallel_gc_pause", &lua_parallel_gc_pause, 0, 1000000);
+		CMD4(CCC_Integer, "lua_parallel_gc_postload_delay_ms", &lua_parallel_gc_postload_delay_ms, 0, 2000000000);
+		CMD4(CCC_Float, "lua_parallel_gc_stepmul", &lua_parallel_gc_stepmul, 0.0f, 1000.0f);
+
+		CMD4(CCC_Integer, "scope_lense_render_quality", &scope_lense_render_quality, 0, 200);
+		CMD4(CCC_Integer, "scope_lense_quality_preset", &scope_lense_quality_preset, 0, 100);
+		CMD4(CCC_Integer, "scope_lense_frame_delay_add", &scope_lense_frame_delay_add, 0, 16);
+		CMD4(CCC_Integer, "scope_lense_head_nvg_active", &scope_lense_head_nvg_active, 0, 1);
+		CMD4(CCC_Integer, "scope_lense_head_thermal_active", &scope_lense_head_thermal_active, 0, 1);
+
+		CMD4(CCC_Integer, "r__menu_framelimit", &r__menu_framelimit, 0, 2000000000);
+		CMD4(CCC_Float, "r__npc_torch_dynamic_distance", &r__npc_torch_dynamic_distance, 0.0f, 10000.0f);
+
+		CMD4(CCC_Integer, "session_start", &session_start, 0, 2000000000);
+		CMD4(CCC_Integer, "tasks_version", &tasks_version, 0, 2000000000);
 	}
 
 	// ------------------------------------------------------------------
