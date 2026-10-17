@@ -795,10 +795,13 @@ CRenderTarget::CRenderTarget(LPCSTR set_name, u32 width, u32 height)
 		// the upscaler render extent made that copy size-mismatched and left the
 		// handheld PDA black. Keep it at display resolution.
 		if (RImplementation.o.dx11_hdr10) {
-			rt_secondVP = createUnique(r2_RT_secondVP, Device.dwWidth, Device.dwHeight, D3DFMT_A2R10G10B10, 1); //--#SM+#-- +SecondVP+ // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
+			// PiP: the legacy path copies the swapchain into $user$viewport2 (display
+			// sized). A second set fills it from its own scene result instead, so it
+			// must match that set's extent (a mismatched copy is an E_INVALIDARG)
+			rt_secondVP = createUnique(r2_RT_secondVP, isMain ? Device.dwWidth : w, isMain ? Device.dwHeight : h, D3DFMT_A2R10G10B10, 1); //--#SM+#-- +SecondVP+ // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
 			rt_ui_pda = createUnique(r2_RT_ui, Device.dwWidth, Device.dwHeight, D3DFMT_A2R10G10B10); // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
 		} else {
-			rt_secondVP = createUnique(r2_RT_secondVP, Device.dwWidth, Device.dwHeight, D3DFMT_A8R8G8B8, 1); //--#SM+#-- +SecondVP+
+			rt_secondVP = createUnique(r2_RT_secondVP, isMain ? Device.dwWidth : w, isMain ? Device.dwHeight : h, D3DFMT_A8R8G8B8, 1); //--#SM+#-- +SecondVP+
 			rt_ui_pda = createUnique(r2_RT_ui, Device.dwWidth, Device.dwHeight, D3DFMT_A8R8G8B8);
 		}
 

@@ -258,6 +258,16 @@ void CRender::Render()
 	// normal view in the same frame, one pass each. The lens is then current, unlike
 	// the legacy scheme which copied the swapchain and skipped Present.
 	const bool pipOn = compat::r__svp_same_frame && Device.m_SecondViewport.IsSVPActive();
+	svp_lens_rendered = false;
+
+	// PiP diagnostic (throttled): a magnifying optic with no second viewport means the
+	// mod is driving the lens itself, i.e. the engine-side same-frame path is idle and
+	// $user$viewport2 will only be filled by the legacy swapchain copy
+	if (!Device.m_SecondViewport.IsSVPActive() && g_pGamePersistent
+		&& g_pGamePersistent->m_pGShaderConstants
+		&& g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x > 1.25f
+		&& (Device.dwFrame % 180) == 0)
+		Msg("* [PIP] magnified optic in use but the game reported no second viewport (IsSVPActive=0): the mod drives the lens itself, same-frame PiP is idle");
 	if (pipOn)
 	{
 		svpcam::Capture(Device.m_SecondViewport.IsSVPFrame() ? svpcam::s_zoom : svpcam::s_main);
@@ -537,6 +547,18 @@ void CRender::Render()
 		Details->details_clear();
 
 	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
+		if (viewCount == 2 && view == 0 && TargetSVP && TargetSVP->rt_Generic_0 && TargetSVP->rt_secondVP)
+		{
+			// the lens material samples $user$viewport2 (= this set's rt_secondVP,
+			// which nothing else writes): publish this pass's scene result there
+			ID3D11Resource* lensSrc = TargetSVP->rt_Generic_0->pTexture->surface_get();
+			if (lensSrc)
+			{
+				HW.pContext->CopyResource(TargetSVP->rt_secondVP->pSurface, lensSrc);
+				_RELEASE(lensSrc);
+				svp_lens_rendered = true;
+			}
+		}
 	}	// end of the per-view loop
 
 	render_stats::SetSuppress(false);
@@ -608,10 +630,11 @@ void CRender::RenderToTarget(RRT target)
 		RT = &(TargetMain ? TargetMain : Target)->rt_ui_pda;
 		break;
 	case rtSVP:
-		// PiP (T3 #6): with the same-frame lens the scene renders into the second
-		// target set and $user$viewport2 points at that set's rt_secondVP, so there
-		// is nothing to copy; the legacy path still needs the swapchain copy
-		if (compat::r__svp_same_frame)
+		// PiP (T3 #6): only skip the legacy swapchain copy when this frame really
+		// rendered the lens into the second target set and published it into
+		// $user$viewport2; otherwise (e.g. the mod drives PiP itself) the copy is the
+		// only thing that fills the lens texture, and skipping it shows a black disc
+		if (compat::r__svp_same_frame && svp_lens_rendered)
 			return;
 		RT = &(TargetMain ? TargetMain : Target)->rt_secondVP;
 		break;

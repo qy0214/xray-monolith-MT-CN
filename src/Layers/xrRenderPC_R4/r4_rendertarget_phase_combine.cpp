@@ -531,6 +531,13 @@ void CRenderTarget::phase_combine()
 		phase_ssfx_motion_blur();
 	}
 
+	// PiP (T3 #6): this pass feeds $user$viewport2 (the lens texture) only. The screen
+	// space overlays, bloom/DOF, the post-process chain and the temporal upscaler all
+	// belong to the main pass: running them twice per frame is what left the upscaler
+	// state invalid ("unable to swap until render target reset" / NGX E_INVALIDARG).
+	if (Device.true_pip_on && Device.m_SecondViewport.m_render_pass_is_svp)
+		return;
+
 	if (scope_3D_fake_enabled)
 	{
 		phase_3DSSReticle(); // Redotix99: for 3D Shader Based Scopes

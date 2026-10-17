@@ -179,6 +179,10 @@ public:
 	CRenderTarget* TargetMain = nullptr;
 	CRenderTarget* TargetSVP = nullptr;
 
+	// PiP: true when this frame rendered the lens into TargetSVP (so $user$viewport2
+	// is already the lens image and the legacy swapchain copy must stay out)
+	bool svp_lens_rendered = false;
+
 	CLight_DB Lights;
 	SMAP_Allocator LP_smap_pool;
 	light_Package LP_normal;
