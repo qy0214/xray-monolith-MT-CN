@@ -1,6 +1,7 @@
 #include "pch_script.h"
 #include "../xrEngine/xr_ioconsole.h"
 #include "../xrEngine/xr_ioc_cmd.h"
+#include "../xrEngine/console_registry.h"
 #include "../xrEngine/customhud.h"
 #include "../xrEngine/fdemorecord.h"
 #include "../xrEngine/fdemoplay.h"
@@ -199,6 +200,8 @@ extern BOOL duplicate_story_id_crash;
 
 extern BOOL spawn_antifreeze;
 extern BOOL spawn_antifreeze_debug;
+// spawn_antifreeze_max_per_frame is registered next to its implementation and default
+// (xrGame/Level_network_spawn.cpp, via xrEngine/console_registry.h).
 
 extern float IK_CALC_DIST;
 extern float IK_CALC_SSA;
@@ -2752,8 +2755,13 @@ void CCC_RegisterCommands()
 
     // Moved lua_gcstep outside of DEBUG to allow for easier experimentation.
 	CMD4(CCC_Integer, "lua_gcstep", &psLUA_GCSTEP, 1, 1000);
-	// Spawn antifreeze: spread a spawn burst over frames (0 = no cap, the default).
-	CMD4(CCC_Integer, "spawn_antifreeze_max_per_frame", &psSpawnAntifreezeMaxPerFrame, 0, 1000000);
+	// spawn_antifreeze_max_per_frame keeps its command next to its implementation and its
+	// real default (0 = unlimited, 8 = default) in xrGame/Level_network_spawn.cpp; the
+	// deferred registry applies it below.
+
+	// Commands registered next to their implementation (xrEngine/console_registry.h)
+	// are applied here, once the console exists. Safe to call more than once.
+	xr_console_apply_deferred();
 
 	// demonized: GC step that is used for repeated calls on second thread while frame is rendering, limit to small values
 	CMD4(CCC_Integer, "lua_parallel_gcstep", &psLua_ParallelGCStep, 1, 100);

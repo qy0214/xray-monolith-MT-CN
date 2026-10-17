@@ -5,6 +5,7 @@
 #include "x_ray.h"
 #include "xr_ioconsole.h"
 #include "xr_ioc_cmd.h"
+#include "console_registry.h"
 //#include "fbasicvisual.h"
 #include "cameramanager.h"
 #include "environment.h"
@@ -1123,6 +1124,28 @@ Fvector3 ssfx_wetness_multiplier = Fvector3().set(1.0f, 0.3f, 0.0f);
 
 BOOL dump_cvar_enable = TRUE;
 
+// Applies the deferred command registry (xrEngine/console_registry.h). Commands that
+// keep their definition next to the code they configure queue themselves at static init
+// time; this runs once the console exists. Safe to call more than once.
+void xr_console_apply_deferred()
+{
+	if (!Console)
+		return;
+
+	auto& list = xr_console_deferred();
+	for (IConsole_Command* command : list)
+		Console->AddCommand(command);
+	list.clear();
+}
+
+// Commands live for the lifetime of the application, so they are intentionally not
+// tracked for deletion (same as the static instances the CMD macros create).
+void xr_console_register_int_cvar(const char* name, int* value, int min, int max)
+{
+	CCC_Integer* command = xr_new<CCC_Integer>(name, value, min, max);
+	xr_console_register_deferred(command);
+}
+
 void CCC_Register()
 {
 	// General
@@ -1141,6 +1164,8 @@ void CCC_Register()
 	CMD1(CCC_OptickStart, "optick_start");
 	CMD1(CCC_OptickStop, "optick_stop");
 	CMD4(CCC_Integer, "optick_autostart", &optick_autostart, 0, 1);
+
+	xr_console_apply_deferred();
 
 	CMD3(CCC_Mask, "mt_particles", &psDeviceFlags, mtParticles);
 

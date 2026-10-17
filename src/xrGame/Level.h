@@ -9,6 +9,7 @@
 #include "xrMessages.h"
 #include "alife_space.h"
 #include "xrCore/xrDebug.h"
+#include "xrCore/spawn_budget.h"
 #include "xrServer.h"
 #include "GlobalFeelTouch.hpp"
 #include "Level_network_map_sync.h"
@@ -171,10 +172,9 @@ public:
 	xr_deque<CSE_Abstract*> game_spawn_queue;
 
 	// Spawn antifreeze: entities spawned this frame and the frame the counter belongs
-	// to. ProcessGameSpawns() stops draining game_spawn_queue once the per-frame cap
-	// is reached, so the rest spawn on later frames (see spawn_antifreeze_max_per_frame).
-	u32 m_spawn_antifreeze_frame = u32(-1);
-	u32 m_spawn_antifreeze_count = 0;
+	// Spawn antifreeze: ProcessGameSpawns() drains at most the per-frame budget and
+	// leaves the rest in game_spawn_queue for later frames (see xrCore/spawn_budget.h).
+	SpawnBudget m_spawn_budget;
 	xrServer* Server = nullptr;
 	GlobalFeelTouch m_feel_deny;
 	CZoneList* hud_zones_list = nullptr;

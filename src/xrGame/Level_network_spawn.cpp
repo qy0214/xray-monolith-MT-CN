@@ -9,6 +9,7 @@
 #include "client_spawn_manager.h"
 #include "../xrEngine/xr_object.h"
 #include "../xrEngine/IGame_Persistent.h"
+#include "../xrEngine/console_registry.h"
 
 void CLevel::cl_Process_Spawn(NET_Packet& P)
 {
@@ -87,7 +88,24 @@ void CLevel::g_cl_Spawn(LPCSTR name, u8 rp, u16 flags, Fvector pos)
 
 // Spawn antifreeze: per-frame cap on how many queued entities are fully spawned,
 // so a burst (level load, population spawn) is spread over frames. 0 = no cap.
+// Spawn antifreeze per-frame budget: 0 = unlimited (the legacy behaviour),
+// 8 = default. Registered right here (deferred, see xrEngine/console_registry.h)
+// instead of thousands of lines away in console_commands.cpp, so the default value
+// and the command that overrides it cannot drift apart.
 int psSpawnAntifreezeMaxPerFrame = 8;
+namespace
+{
+	// Registered next to the implementation and its default, through the deferred
+	// registry (xrEngine/console_registry.h) - not thousands of lines away in
+	// console_commands.cpp, where the comment even claimed a different default.
+	struct spawn_antifreeze_max_per_frame_cvar
+	{
+		spawn_antifreeze_max_per_frame_cvar()
+		{
+			xr_console_register_int_cvar("spawn_antifreeze_max_per_frame", &psSpawnAntifreezeMaxPerFrame, 0, 1000000);
+		}
+	} s_spawn_antifreeze_max_per_frame_cvar;
+}
 
 void CLevel::g_sv_Spawn(CSE_Abstract* E)
 {
@@ -273,26 +291,17 @@ CSE_Abstract* CLevel::spawn_item(LPCSTR section, const Fvector& position, u32 le
 
 void CLevel::ProcessGameSpawns()
 {
-	// Spawn antifreeze: consume at most spawn_antifreeze_max_per_frame entities this
-	// frame and leave the rest in game_spawn_queue for later frames. The queue is the
-	// engine's own deferral path, so nothing is lost and no item is re-queued inside
-	// the drain loop. Critical spawns that call g_sv_Spawn directly are unaffected.
-	u32 budget = u32(-1);
-	if (psSpawnAntifreezeMaxPerFrame > 0)
-	{
-		if (Device.dwFrame != m_spawn_antifreeze_frame)
-		{
-			m_spawn_antifreeze_frame = Device.dwFrame;
-			m_spawn_antifreeze_count = 0;
-		}
-		const u32 cap = u32(psSpawnAntifreezeMaxPerFrame);
-		budget = (m_spawn_antifreeze_count < cap) ? (cap - m_spawn_antifreeze_count) : 0;
-		m_spawn_antifreeze_count += budget;
-	}
+	// Spawn antifreeze: drain at most the per-frame budget and leave the rest in the
+	// engine's own game_spawn_queue, so nothing is lost and only the frame an entity
+	// spawns on changes. Critical spawns that call g_sv_Spawn directly are unaffected.
+	// The budget rules live in xrCore/spawn_budget.h and are covered by host tests.
+	m_spawn_budget.max_per_frame = (psSpawnAntifreezeMaxPerFrame > 0) ? unsigned(psSpawnAntifreezeMaxPerFrame) : 0u;
+	m_spawn_budget.begin(Device.dwFrame);
 
-	while (!game_spawn_queue.empty() && budget > 0)
+	unsigned quota = m_spawn_budget.take(unsigned(game_spawn_queue.size()));
+	while (quota > 0 && !game_spawn_queue.empty())
 	{
-		--budget;
+		--quota;
 		CSE_Abstract* E = game_spawn_queue.front();
 
 		g_sv_Spawn(E);

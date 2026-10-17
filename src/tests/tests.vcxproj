@@ -43,10 +43,12 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="svp_scope_state_tests.cpp" />
+    <ClCompile Include="spawn_budget_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="test_harness.h" />
     <ClInclude Include="..\xrCore\svp_scope_state.h" />
+    <ClInclude Include="..\xrCore\spawn_budget.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
