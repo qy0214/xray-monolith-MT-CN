@@ -76,6 +76,14 @@ static bool ScopeResolutionRequested()
 {
 	if (!ps_r__upscaler_scope_lock || !dlss::Configured() || !g_pGamePersistent)
 		return false;
+
+	// PiP (T3 #6): with the second target set in charge of the lens, the override
+	// has nothing left to buy - the scope frame renders at that set's own extent.
+	// It stays as the fallback for when the set could not be created (out of VRAM)
+	// and for the pure screen-space magnification cases below.
+	if (RImplementation.TargetSVP && Device.m_SecondViewport.IsSVPActive())
+		return false;
+
 	const float zoom = g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x;
 	return zoom > 1.25f || Device.m_SecondViewport.IsSVPActive();
 }
@@ -130,7 +138,11 @@ void CRender::Render()
 	// pipdlss reads these two flags in the upscaler's SvpPassBound(); this engine
 	// refreshes them once per frame from its own SecondVP state (see device.h).
 	Device.true_pip_on = Device.m_SecondViewport.IsSVPActive();
-	Device.m_SecondViewport.m_render_pass_is_svp = Device.m_SecondViewport.IsSVPFrame();
+	// PiP: while the lens is up, m_render_pass_is_svp is owned by
+	// CRenderTarget::SetActive (per pass); without a second set the frame-level
+	// predicate stays authoritative
+	if (!Device.true_pip_on)
+		Device.m_SecondViewport.m_render_pass_is_svp = false;
 
 	bool _menu_pp = g_pGamePersistent ? g_pGamePersistent->OnRenderPPUI_query() : false;
 	if (_menu_pp)
@@ -172,6 +184,11 @@ void CRender::Render()
 		return;
 	}
 
+	// PiP (T3 #6): the second target set must exist before the scope-resolution
+	// decision below, which retires the override while that set handles the lens
+	if (Device.m_SecondViewport.IsSVPActive())
+		EnsureTargetSVP();
+
 	// Scope-aware internal resolution: a rebuild here skips this frame, so the new
 	// targets start clean (the same contract as m_bFirstFrameAfterReset above).
 	if (UpdateScopeResolution())
@@ -187,6 +204,18 @@ void CRender::Render()
 	const u64 statsFrameStart = CPU::QPC();
 	u64 statsMark = statsFrameStart;
 	render_stats::BeginFrame();
+
+	// PiP (T3 #6): on a scope frame the game has set the zoomed camera. Render that
+	// frame into the small second target set instead of copying the swapchain: the
+	// set's own $user$viewport2 then holds the lens image at that set's resolution,
+	// and Device.dw*/RenderScreenWidth follow the smaller extent for this pass.
+	const bool lensFrame = Device.m_SecondViewport.IsSVPActive() && Device.m_SecondViewport.IsSVPFrame();
+	if (lensFrame)
+	{
+		EnsureTargetSVP();
+		if (TargetSVP)
+			TargetSVP->SetActive();
+	}
 
 	dlss::BeginScene();
 	// Configure
@@ -448,6 +477,10 @@ void CRender::Render()
 	if (Details)
 		Details->details_clear();
 
+	// PiP: back to the main set for the rest of the frame (HUD, post-process, UI)
+	if (lensFrame && TargetMain)
+		TargetMain->SetActive(true);
+
 	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
 	render_stats::Publish(render_stats::MsSince(statsFrameStart));
 }
@@ -508,11 +541,14 @@ void CRender::RenderToTarget(RRT target)
 	switch (target)
 	{
 	case rtPDA:
-		RT = &Target->rt_ui_pda;
+		// PiP: the PDA/glass belong to the main view, never to the second set
+		RT = &(TargetMain ? TargetMain : Target)->rt_ui_pda;
 		break;
 	case rtSVP:
-		RT = &Target->rt_secondVP;
-		break;
+		// PiP (T3 #6): the second viewport is no longer copied out of the swapchain -
+		// the scene renders into the second target set (see CRender::Render) and
+		// $user$viewport2 points at that set's rt_secondVP
+		return;
 	default:
 		Debug.fatal(DEBUG_INFO, "None or wrong Target specified: %i", target);
 		break;

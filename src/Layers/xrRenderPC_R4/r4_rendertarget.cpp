@@ -480,8 +480,14 @@ void CRenderTarget::SetActive(bool force)
 
 	if (!force && RImplementation.Target == this)
 	{
+		// the lens always samples the second viewport (see CRender::Render), so the
+		// main set must not pull $user$viewport2 back to its own surface
 		for (auto& r : RenderTargetRemaps)
+		{
+			if (!xr_strcmp(*r.first->cName, r2_RT_secondVP))
+				continue;
 			r.first->surface_set(r.second->pSurface);
+		}
 		return;
 	}
 
@@ -499,8 +505,13 @@ void CRenderTarget::SetActive(bool force)
 
 	RCache.Invalidate();
 
+	// the second viewport is skipped: the lens must keep sampling the second set
 	for (auto& r : RenderTargetRemaps)
+	{
+		if (!xr_strcmp(*r.first->cName, r2_RT_secondVP))
+			continue;
 		r.first->surface_set(r.second->pSurface);
+	}
 
 	set_viewport_size(HW.pContext, (float)Width, (float)Height);
 	RCache.set_RT(baseRT, 0);

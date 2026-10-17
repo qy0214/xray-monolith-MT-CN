@@ -183,6 +183,45 @@ being a whole-frame property.
   optics zoom, and keeps `IsSVPFrame()` only as the "the zoomed camera was set this
   frame" trigger (no more `Present` skip, no more `CopyResource`).
 
+## Stages 3, 4a, 5 — DONE (2026-10-17)
+
+**Stage 3 — per-pass branches.** `IsSVPFrame()` is the frame-level alternation
+(`IsSVPActive() && dwFrame % frameDelay == 0`, `device.cpp:1001`) and used to decide
+whether the *whole frame* draws the scope view. The render/shader-side users now read
+`m_render_pass_is_svp` instead (13 sites): `Blender_Recorder_StandartBinding` (the
+`$user$` shader constant), `r4_R_render` (ssfx/sss skips), `phase_combine` (6),
+`accum_spot`, `accum_point`, and the upscaler's `mainView` test. Behaviour-identical
+because the per-frame refresh (now guarded to “lens off”) kept the flag in sync.
+
+**Stage 4a — the scope frame renders into the second set** (`r4_R_render.cpp`):
+on a scope frame `EnsureTargetSVP()` + `TargetSVP->SetActive()` are taken *before* the
+scene, so the frame lands in the small set instead of the swapchain, and
+`RenderScreenWidth()` (`DlssIntegration.cpp:76`, `SvpPassBound()`) follows the set's
+extent. Right after `Details->details_clear()` the main set is restored
+(`TargetMain->SetActive(true)`) so the HUD, post-process and UI keep the main targets.
+`$user$viewport2` is now excluded from the remap restore in `SetActive` (both call
+sites), i.e. the lens permanently samples the second set, and
+`CRender::RenderToTarget(rtSVP)` is a no-op (no more `CopyResource`) while `rtPDA`
+always resolves against `TargetMain`. The per-frame flag refresh no longer clobbers
+the per-pass value.
+
+**Stage 5 — Plan A retired while the set is in charge**: `ScopeResolutionRequested()`
+returns false when `TargetSVP` exists and the lens is active (the set already renders
+the lens at its own extent), so the 15-20 fps override no longer fires; it remains as
+the fallback when the set could not be created (VRAM) and for pure screen-space
+magnification. `EnsureTargetSVP()` is called early in `Render()` so the decision sees
+the set.
+
+**Still open — stage 4b (same frame)**: both views in one frame so the lens is not
+one frame old. Needs the scene body extracted so it can run twice per frame (it must
+re-`traverse`/`capture` per view because the frustums differ), the two cameras
+snapshotted (`mView`/`mProject`/`mProjectHud`/`hud_fov_params`; this engine has no
+`Device.matrices[2]`), and then the removal of the `Present` skip in
+`dxRenderDeviceRender::End()` plus the game-side frame alternation
+(`Actor.cpp:1237` hides the HUD on SVP frames). The narrow zoom frustum culls the
+lens pass on its own (`ViewBase` is built from `Device.mFullTransform`), so the second
+pass is cheap.
+
 ## Remaining stages (revised, in order)
 
 2. `EnsureTargetSVP()` + `TargetSVP`/`TargetMain` in `CRender` (lazy, on the first
