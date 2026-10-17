@@ -628,12 +628,23 @@ void mt_DiscordThread(void*)
 	}
 }
 
+// Optick profiler capture control; definitions live next to the frame loop below.
+extern int optick_autostart;
+extern bool optick_capture_active;
+void optick_capture_start();
+void optick_capture_stop(LPCSTR file);
+
 void CRenderDevice::Run()
 {
 	// DUMP_PHASE;
 	g_bLoaded = FALSE;
 	Log("Starting engine...");
 	thread_name("X-RAY Primary thread");
+
+	// startup profiling: optick_autostart is read from the saved config, the
+	// capture is written out on exit (or earlier with optick_stop)
+	if (optick_autostart)
+		optick_capture_start();
 	// Startup timers and calculate timer delta
 	dwTimeGlobal = 0;
 	Timer_MM_Delta = 0;
@@ -660,13 +671,70 @@ void CRenderDevice::Run()
 
 	secondary_tasks.wait();
 	ParticleWorkerCallback.clear();
+
+	// never lose a running capture on shutdown (silent when nothing was started)
+	if (optick_capture_active)
+		optick_capture_stop(nullptr);
 }
 
 u32 app_inactive_time = 0;
 u32 app_inactive_time_start = 0;
 
+// --- Optick profiler capture control -------------------------------------
+// Console commands (optick_start / optick_stop / optick_autostart) live in
+// xr_ioc_cmd.cpp; the state and helpers live here so the frame loop can use them.
+int optick_autostart = 0;
+bool optick_capture_active = false;
+
+void optick_capture_start()
+{
+#if XRCORE_PROFILER == PROFILER_OPTICK
+	if (optick_capture_active)
+	{
+		Msg("* [OPTICK] capture is already running");
+		return;
+	}
+
+	optick_capture_active = true;
+	PROF_START_CAPTURE();
+	Msg("* [OPTICK] capture started");
+#else
+	Msg("! [OPTICK] this build has no profiling backend");
+#endif
+}
+
+void optick_capture_stop(LPCSTR file)
+{
+	if (!optick_capture_active)
+	{
+		Msg("! [OPTICK] no capture is running");
+		return;
+	}
+
+	optick_capture_active = false;
+#if XRCORE_PROFILER == PROFILER_OPTICK
+	PROF_STOP_CAPTURE();
+
+	string_path path;
+	if (file && file[0])
+		xr_strcpy(path, file);
+	else
+		xr_strcpy(path, "optick_capture.opt");
+
+	// direct API call: the PROF_SAVE_CAPTURE macro carries its own ';'
+	if (::Optick::SaveCapture(path))
+		Msg("* [OPTICK] capture saved to '%s'", path);
+	else
+		Msg("! [OPTICK] failed to save '%s'", path);
+#endif
+}
+
 void CRenderDevice::FrameMove()
 {
+	// frame boundary for the profiler: must be the first thing in the frame so
+	// that every event below it lands inside the captured frame
+	PROF_FRAME("Main");
+
 	PROF_EVENT("Render: Frame Move");
 
 	if (InterlockedExchange(&g_monitor_list_dirty, 0))

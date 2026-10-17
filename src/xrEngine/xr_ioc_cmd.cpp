@@ -181,6 +181,40 @@ public:
 };
 
 //-----------------------------------------------------------------------
+// Optick profiler capture. State and helpers live in device.cpp.
+extern int optick_autostart;
+extern void optick_capture_start();
+extern void optick_capture_stop(LPCSTR file);
+
+class CCC_OptickStart : public IConsole_Command
+{
+public:
+	CCC_OptickStart(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; };
+
+	virtual void Execute(LPCSTR args) { optick_capture_start(); }
+
+	virtual void Info(TInfo& I) { xr_strcpy(I, "start a profiler capture (Optick)"); }
+};
+
+class CCC_OptickStop : public IConsole_Command
+{
+public:
+	CCC_OptickStop(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; };
+
+	virtual void Execute(LPCSTR args)
+	{
+		string_path file;
+		file[0] = 0;
+		if (args && args[0])
+			xr_strcpy(file, args);
+
+		optick_capture_stop(file);
+	}
+
+	virtual void Info(TInfo& I) { xr_strcpy(I, "stop the capture and save to [file], default optick_capture.opt"); }
+};
+
+//-----------------------------------------------------------------------
 class CCC_MotionsStat : public IConsole_Command
 {
 public:
@@ -1103,6 +1137,10 @@ void CCC_Register()
 	CMD1(CCC_RenderDocCapture, "rdoc_capture");
 	CMD1(CCC_RenderDocOpen, "rdoc_open");
 	CMD1(CCC_RenderDocOverlay, "rdoc_overlay");
+
+	CMD1(CCC_OptickStart, "optick_start");
+	CMD1(CCC_OptickStop, "optick_stop");
+	CMD4(CCC_Integer, "optick_autostart", &optick_autostart, 0, 1);
 
 	CMD3(CCC_Mask, "mt_particles", &psDeviceFlags, mtParticles);
 
