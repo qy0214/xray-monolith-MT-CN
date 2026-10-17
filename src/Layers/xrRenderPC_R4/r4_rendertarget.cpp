@@ -483,6 +483,10 @@ void CRenderTarget::SetActive(bool force)
 	if (baseRT) HW.pBaseRT = baseRT;
 	if (baseZB) HW.pBaseZB = baseZB;
 
+	// C2 pilot: the render-size accessors read this instead of the device dimensions
+	// while a lens pass is bound (see CSecondVPParams).
+	Device.m_SecondViewport.SetSVPPassExtent(Width, Height);
+
 	if (!force && RImplementation.Target == this)
 	{
 		// the lens always samples the second viewport (see CRender::Render), so the

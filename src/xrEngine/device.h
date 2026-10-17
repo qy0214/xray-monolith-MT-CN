@@ -192,6 +192,16 @@ public:
 		// renderer writes it; the game side reads the previous frame's value.
 		SvpScopeState svp_scope;
 
+		// C2 pilot: extent of the pass currently being rendered. SetActive publishes it
+		// and the render-size accessors prefer it over the device dimensions while the
+		// lens pass is bound. Behaviour is identical today (SetActive keeps the device
+		// dimensions in sync), but this is the seam a later step uses to stop mutating
+		// those globals for the duration of the pass, which is what makes the current
+		// frame window racy for the game thread.
+		u32 svp_pass_width = 0;
+		u32 svp_pass_height = 0;
+		IC void SetSVPPassExtent(u32 w, u32 h) { svp_pass_width = w; svp_pass_height = h; }
+
 		IC bool IsSVPActive() { return isActive; }
 		void SetSVPActive(bool bState);
 		bool    IsSVPFrame();

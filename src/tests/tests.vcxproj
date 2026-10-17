@@ -29,7 +29,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>..\xrCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\xrCore;..\xrEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <Optimization>MaxSpeed</Optimization>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -44,11 +44,13 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="svp_scope_state_tests.cpp" />
     <ClCompile Include="spawn_budget_tests.cpp" />
+    <ClCompile Include="console_registry_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="test_harness.h" />
     <ClInclude Include="..\xrCore\svp_scope_state.h" />
     <ClInclude Include="..\xrCore\spawn_budget.h" />
+    <ClInclude Include="..\xrEngine\console_registry.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

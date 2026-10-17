@@ -93,18 +93,25 @@ void CLevel::g_cl_Spawn(LPCSTR name, u8 rp, u16 flags, Fvector pos)
 // instead of thousands of lines away in console_commands.cpp, so the default value
 // and the command that overrides it cannot drift apart.
 int psSpawnAntifreezeMaxPerFrame = 8;
+// Defined in Level.cpp (the prefetch/antifreeze feature lives there); only their
+// commands move here so the whole family is registered next to its defaults.
+extern BOOL spawn_antifreeze;
+extern BOOL spawn_antifreeze_debug;
 namespace
 {
-	// Registered next to the implementation and its default, through the deferred
-	// registry (xrEngine/console_registry.h) - not thousands of lines away in
-	// console_commands.cpp, where the comment even claimed a different default.
-	struct spawn_antifreeze_max_per_frame_cvar
+	// All three antifreeze commands are registered next to their implementation and
+	// defaults, through the deferred registry (xrEngine/console_registry.h) - not
+	// thousands of lines away in console_commands.cpp, where the comment even claimed a
+	// different default for the budget.
+	struct spawn_antifreeze_cvars
 	{
-		spawn_antifreeze_max_per_frame_cvar()
+		spawn_antifreeze_cvars()
 		{
 			xr_console_register_int_cvar("spawn_antifreeze_max_per_frame", &psSpawnAntifreezeMaxPerFrame, 0, 1000000);
+			xr_console_register_int_cvar("spawn_antifreeze", (int*)&spawn_antifreeze, 0, 1);
+			xr_console_register_int_cvar("spawn_antifreeze_debug", (int*)&spawn_antifreeze_debug, 0, 1);
 		}
-	} s_spawn_antifreeze_max_per_frame_cvar;
+	} s_spawn_antifreeze_cvars;
 }
 
 void CLevel::g_sv_Spawn(CSE_Abstract* E)

@@ -73,8 +73,20 @@ bool StableOverlaysActive()
 // The upscaler render size belongs to the MAIN viewport only; during an SVP pass
 // every consumer must read the live Device dims instead.
 static bool SvpPassBound() { return Device.true_pip_on && Device.m_SecondViewport.m_render_pass_is_svp; }
-unsigned RenderScreenWidth() { return inScene && !SvpPassBound() ? dlss::RenderWidth() : Device.dwWidth; }
-unsigned RenderScreenHeight() { return inScene && !SvpPassBound() ? dlss::RenderHeight() : Device.dwHeight; }
+unsigned RenderScreenWidth()
+{
+	if (inScene && !SvpPassBound())
+		return dlss::RenderWidth();
+	// C2 pilot: prefer the explicit pass extent the active target published, falling
+	// back to the device dimensions (their values are identical today).
+	return Device.m_SecondViewport.svp_pass_width ? Device.m_SecondViewport.svp_pass_width : Device.dwWidth;
+}
+unsigned RenderScreenHeight()
+{
+	if (inScene && !SvpPassBound())
+		return dlss::RenderHeight();
+	return Device.m_SecondViewport.svp_pass_height ? Device.m_SecondViewport.svp_pass_height : Device.dwHeight;
+}
 void RenderUpscalerStats(unsigned& sceneWidth, unsigned& sceneHeight, unsigned& scopePercent)
 {
     sceneWidth = renderSize.Valid() ? renderSize.width : Device.dwWidth;

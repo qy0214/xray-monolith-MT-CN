@@ -3,11 +3,13 @@
 
 void run_svp_scope_state_tests();
 void run_spawn_budget_tests();
+void run_console_registry_tests();
 
 int main()
 {
 	run_svp_scope_state_tests();
 	run_spawn_budget_tests();
+	run_console_registry_tests();
 
 	std::printf("[tests] %d checks, %d failures\n", ::xrtest::checks(), ::xrtest::failures());
 	return ::xrtest::failures() == 0 ? 0 : 1;
