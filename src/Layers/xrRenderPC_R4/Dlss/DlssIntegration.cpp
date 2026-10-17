@@ -59,6 +59,12 @@ bool reportedStableOverlays = false;
 static bool SvpPassBound() { return Device.true_pip_on && Device.m_SecondViewport.m_render_pass_is_svp; }
 unsigned RenderScreenWidth() { return inScene && !SvpPassBound() ? dlss::RenderWidth() : Device.dwWidth; }
 unsigned RenderScreenHeight() { return inScene && !SvpPassBound() ? dlss::RenderHeight() : Device.dwHeight; }
+void RenderUpscalerStats(unsigned& sceneWidth, unsigned& sceneHeight, unsigned& scopePercent)
+{
+    sceneWidth = renderSize.Valid() ? renderSize.width : Device.dwWidth;
+    sceneHeight = renderSize.Valid() ? renderSize.height : Device.dwHeight;
+    scopePercent = scopeScale > 0.f ? unsigned(scopeScale + 0.5f) : 0u;
+}
 
 namespace dlss
 {

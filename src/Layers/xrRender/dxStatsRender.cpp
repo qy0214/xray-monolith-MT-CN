@@ -2,6 +2,7 @@
 #include "dxStatsRender.h"
 #include "../../xrEngine/GameFont.h"
 #include "dxRenderDeviceRender.h"
+#include "RenderDimensions.h"
 
 void dxStatsRender::Copy(IStatsRender& _in)
 {
@@ -13,6 +14,15 @@ void dxStatsRender::OutData1(CGameFont& F)
 	F.OutNext("VERT:        %d/%d", RCache.stat.verts, RCache.stat.calls ? RCache.stat.verts / RCache.stat.calls : 0);
 	F.OutNext("POLY:        %d/%d", RCache.stat.polys, RCache.stat.calls ? RCache.stat.polys / RCache.stat.calls : 0);
 	F.OutNext("DIP/DP:      %d", RCache.stat.calls);
+
+	// What the upscaler is actually fed with: the scene extent and, when a
+	// magnifying optic raised it, the scope override. Equal sizes = no upscale.
+	unsigned sceneW = 0, sceneH = 0, scopePct = 0;
+	RenderUpscalerStats(sceneW, sceneH, scopePct);
+	if (scopePct)
+		F.OutNext("UPSCALER:    scene %ux%u -> %ux%u [SCOPE %u%%]", sceneW, sceneH, Device.dwWidth, Device.dwHeight, scopePct);
+	else
+		F.OutNext("UPSCALER:    scene %ux%u -> %ux%u", sceneW, sceneH, Device.dwWidth, Device.dwHeight);
 }
 
 void dxStatsRender::OutData2(CGameFont& F)

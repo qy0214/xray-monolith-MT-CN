@@ -29,7 +29,7 @@ int ps_r__upscaler_camera_mv = 1;
 // use the frame is magnified, which amplifies the upscaler's pixel grid. These
 // raise the internal render resolution for as long as an optic is in use.
 int ps_r__upscaler_scope_lock = 1;		// 0/1
-int ps_r__upscaler_scope_scale = 100;	// 50..100 (% of the display resolution)
+int ps_r__upscaler_scope_scale = 75;	// 50..100 (% of the display resolution)
 int ps_r__upscaler_scope_delay = 8;		// seconds to keep it after the optic is lowered
 xr_token dlss_preset_token[] = {
     {"default", 0}, {"j", 10}, {"k", 11}, {"l", 12}, {"m", 13}, {nullptr, 0}
