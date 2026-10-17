@@ -1376,9 +1376,12 @@ static class scope_lense_motion : public R_constant_setup
 {
     void setup(R_constant* C) override
     {
-        // x: scene motion vectors usable, y/z/w: the shaders' rejection tolerances.
-        const float mv = Device.m_SecondViewport.IsSVPActive() ? 1.0f : 0.0f;
-        RCache.set_c(C, mv, 0.001f, 0.5f, 4.0f);
+        // x: scene motion vectors usable. This engine renders the lens every frame, in
+        // the same frame as the main view, so the shaders' reprojection path - which the
+        // reference needs because it only captures the SVP every other frame - is not
+        // required. x stays 0 and the lens takes the direct projection path, whose
+        // content is always the current frame. y/z/w stay at the shaders' tolerances.
+        RCache.set_c(C, 0.0f, 0.001f, 0.5f, 4.0f);
     }
 } binder_scope_lense_motion;
 

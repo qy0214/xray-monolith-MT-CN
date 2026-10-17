@@ -299,13 +299,13 @@ void CRender::Render()
 	// zoomed one), so keep a copy of both cameras and draw the lens view and the
 	// normal view in the same frame, one pass each. The lens is then current, unlike
 	// the legacy scheme which copied the swapchain and skipped Present.
-	// PiP (T3 #6): the simplified same-frame lens is NOT ready to be used by the
-	// modpack. Each fix exposed another contract the PiP mod expects from the engine
-	// (optics camera, optic FOV from the scope config, device post-processing and the
-	// motion reprojection the mod's own shaders do). Until the faithful port of the
-	// reference SVP subsystem lands, keep it compiled in but off, so the engine behaves
-	// exactly as it did before this work.
-	static const bool SVP_SAME_FRAME_READY = false;
+	// PiP (T3 #6): the same-frame lens is enabled again now that the contract pieces are
+	// in place: lens camera from the optic's scope_lens_fov, lens-to-main mapping,
+	// display-aspect SVP extent, device overlays (thermal/NVG) kept in the lens pass,
+	// the lens texture actually filled and the upscaler isolated to one combine per
+	// frame. The shaders' reprojection path stays off (scope_lense_motion.x = 0) because
+	// this engine renders the lens every frame.
+	static const bool SVP_SAME_FRAME_READY = true;
 
 	const bool pipOn = SVP_SAME_FRAME_READY && compat::r__svp_same_frame && Device.m_SecondViewport.IsSVPActive();
 	svp_lens_rendered = false;
