@@ -1241,7 +1241,13 @@ void CActor::UpdateCL()
 			g_pGamePersistent->m_pGShaderConstants->hud_params.x = pWeapon->GetZRotatingFactor();
 			g_pGamePersistent->m_pGShaderConstants->hud_params.y = pWeapon->GetSecondVPZoomFactor();
 			g_pGamePersistent->m_pGShaderConstants->hud_params.z = pWeapon->GetHudFov();
-			g_pGamePersistent->m_pGShaderConstants->hud_params.w = Device.m_SecondViewport.IsSVPFrame();
+			// PiP (T3 #6): this is the lens shader's flag for "the image sampled from
+			// $user$viewport2 is the engine's own second view this frame". It has to be the
+			// evaluated frame state, not the legacy IsSVPFrame() alternation (which is true
+			// on every other frame only) and not a per pass value either, because the optic
+			// material which reads it is drawn in the main pass.
+			g_pGamePersistent->m_pGShaderConstants->hud_params.w =
+				Device.m_SecondViewport.svp_scope.lens_rendered ? 1.0f : 0.0f;
 
 			g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x = pWeapon->CurrentZoomFactor();
 			g_pGamePersistent->m_pGShaderConstants->hud_fov_params.y = pWeapon->GetMinScopeZoomFactor();

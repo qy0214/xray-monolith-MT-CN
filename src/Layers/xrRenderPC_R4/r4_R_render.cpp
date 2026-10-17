@@ -303,10 +303,28 @@ static void svp_probe_resource(LPCSTR tag, ID3D11Resource* res)
 				if (any) ++nz;
 				++n;
 			}
-		Msg("* [PIP] probe %s: fmt=%u %ux%u avg b=%u g=%u r=%u a=%u max b=%u g=%u r=%u a=%u nz=%u/%u",
+
+		// Coverage and variety over a coarse grid. The centre alone cannot tell a real image
+		// from a uniform fog wall: a magnified view can be legitimately empty in the middle,
+		// and a fog wall reads as fully non-zero everywhere. cover counts grid cells with any
+		// non-zero byte and uniq the distinct colours seen, so "cover=64/64 uniq=1" is the flat
+		// fog wall while a large uniq means a real frame.
+		u32 cover = 0, uniq = 0;
+		xr_set<u32> seen;
+		for (u32 by = 0; by < 8; ++by)
+			for (u32 bx = 0; bx < 8; ++bx)
+			{
+				const u32 x = bx * d.Width / 8, y = by * d.Height / 8;
+				const u8* p = (const u8*)m.pData + size_t(y) * m.RowPitch + size_t(x) * bpp;
+				if (p[0] || p[1] || p[2] || p[3]) ++cover;
+				const u32 key = u32(p[0]) | (u32(p[1]) << 8) | (u32(p[2]) << 16) | (u32(p[3]) << 24);
+				if (seen.insert(key).second) ++uniq;
+			}
+
+		Msg("* [PIP] probe %s: fmt=%u %ux%u avg b=%u g=%u r=%u a=%u cover=%u/64 uniq=%u",
 			tag, d.Format, d.Width, d.Height,
 			u32(sum[0] / n), u32(sum[1] / n), u32(sum[2] / n), u32(sum[3] / n),
-			mx[0], mx[1], mx[2], mx[3], nz, n);
+			cover, uniq);
 		HW.pContext->Unmap(stg, 0);
 	}
 	else

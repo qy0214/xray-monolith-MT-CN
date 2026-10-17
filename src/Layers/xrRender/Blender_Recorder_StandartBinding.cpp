@@ -1399,8 +1399,16 @@ static class scope_svp_state : public R_constant_setup
 {
     void setup(R_constant* C) override
     {
-        RCache.set_c(C, Device.m_SecondViewport.IsSVPActive() ? 1.0f : 0.0f,
-                     Device.m_SecondViewport.m_render_pass_is_svp ? 1.0f : 0.0f, 0.0f, 0.0f);
+        // PiP (T3 #6): both components must answer the question the lens material asks when
+        // it is drawn, namely "is the image I sample the engine's own second view?" - and
+        // that material is drawn during the MAIN pass, where the per pass flag is false. It
+        // used to be (frame active, pass is svp), so the lens shader took its 3DSS branch and
+        // magnified the screen instead of sampling the lens texture: that is the magnified
+        // screen, the magnified reticle and the wrong thermal reading. The per pass value is
+        // still exposed in z for reference; the renderer's own branches use the C++ flag.
+        const float frameLens = Device.m_SecondViewport.IsSVPActive() ? 1.0f : 0.0f;
+        RCache.set_c(C, frameLens, frameLens,
+                     Device.m_SecondViewport.m_render_pass_is_svp ? 1.0f : 0.0f, 0.0f);
     }
 } binder_scope_svp_state;
 

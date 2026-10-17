@@ -141,14 +141,17 @@ public:
 // this engine has a single target). When the upscaler is not configured the stock
 // base ZB is kept, so binding is unchanged for a plain setup.
 //
-// PiP (T3 #6): the "main viewport only" scope of this substitution is now enforced. The
-// second viewport renders at its own extent and its base depth already matches its render
-// targets; handing it the upsalescaler's main set depth instead left the bound render
-// targets and depth buffer disagreeing in size, and Direct3D discards every draw in that
-// state - the lens pass submitted thousands of draw calls and nine million vertices while
-// nothing ever appeared in the second set's G-buffer, which is what kept the lens black.
+// PiP (T3 #6): the scope of this substitution is enforced at the source, because
+// phase_scene_prepare/phase_scene_begin call u_SceneDepth() directly and would otherwise
+// bypass it. Only the main set renders through the upscaler's depth chain; a second set
+// must get its own base depth, which matches its own render targets. Handing the second
+// viewport the main set's depth (1920x1200 targets against a 1440x900 depth) made
+// Direct3D discard every draw of the lens pass - the G-buffer stayed empty and only the
+// full screen fog pass remained, which is the flat grey lens image.
 ID3DDepthStencilView* CRenderTarget::u_SceneDepth()
 {
+	if (!m_is_main_target)
+		return HW.pBaseZB;
 	return dlss::Configured() ? dlss::SceneDepth() : HW.pBaseZB;
 }
 
@@ -510,7 +513,12 @@ void CRenderTarget::SetActive(bool force)
 	RImplementation.Target = this;
 
 	if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
-		g_pGamePersistent->m_pGShaderConstants->hud_params.w = m_is_main_target ? 0.f : 1.f;
+	{
+		// PiP (T3 #6): hud_params.w is the lens shader's "the engine is providing the second
+		// view" flag, so it belongs to the frame, not to the pass - and it is emitted while
+		// the MAIN pass draws the optic, which is exactly where a per pass value would be
+		// zero. The game publishes it once per frame (Actor.cpp) from the evaluated state.
+	}
 	Device.m_SecondViewport.m_render_pass_is_svp = !m_is_main_target;
 
 	Device.dwWidth = Width;
