@@ -3366,56 +3366,11 @@ void CWeapon::UpdateSecondVP()
 
 	CActor* pActor = smart_cast<CActor*>(H_Parent());
 
-	// PiP: the optic's lens FOV lives on the section that matches the mounted scope.
-	// The weapon packs use CHILD sections for that (wpn_ak50_1p69, wpn_ak50_acog, ...),
-	// which is what cNameSect() reports once a scope is attached; the scope item's own
-	// section is the fallback. Reading it only at load, from the base section (as the
-	// initial value does), always yields 0 for a scoped weapon - which is why the
-	// engine never reported a second viewport and both the PiP path and the legacy copy
-	// stayed idle, leaving the lens black.
-	if (Device.m_SecondViewport.pip_lens_shaders && (IsScopeAttached() || m_zoomtype == 0))
-	{
-		// Null-safe lookups: CInifile::section_exist/line_exist crash on an empty name,
-		// and integrated-scope weapons have no separate scope item at all.
-		float lensFov = 0.0f;
-		shared_str sect = cNameSect();
-		if (sect.size() && pSettings->section_exist(*sect) && pSettings->line_exist(*sect, "scope_lense_fov"))
-			lensFov = pSettings->r_float(*sect, "scope_lense_fov");
-
-		if (lensFov <= 0.005f && IsScopeAttached())
-		{
-			shared_str scope = GetScopeName();
-			if (scope.size() && pSettings->section_exist(*scope) && pSettings->line_exist(*scope, "scope_lense_fov"))
-				lensFov = pSettings->r_float(*scope, "scope_lense_fov");
-		}
-
-		if (lensFov > 0.005f)
-			m_zoom_params.m_fSecondVPFovFactor = lensFov;
-	}
-
-	// PiP diagnostic: edge triggered (weapon section or resolved factor changed), so the
-	// lookup stays diagnosable without a per-frame Msg on the hot path.
-	{
-		static shared_str diagLastSect;
-		static float diagLastFactor = -1.0f;
-		if (m_zoomtype == 0 && (diagLastSect != cNameSect() || !fsimilar(diagLastFactor, m_zoom_params.m_fSecondVPFovFactor)))
-		{
-			shared_str diagSect = cNameSect();
-			shared_str diagScope = IsScopeAttached() ? GetScopeName() : shared_str();
-			const bool sectHas = diagSect.size() && pSettings->section_exist(*diagSect)
-				&& pSettings->line_exist(*diagSect, "scope_lense_fov");
-			const bool scopeHas = diagScope.size() && pSettings->section_exist(*diagScope)
-				&& pSettings->line_exist(*diagScope, "scope_lense_fov");
-			Msg("* [PIP/scope] weapon='%s' has_line=%d  scope='%s' has_line=%d  attached=%d zoomtype=%d factor=%.4f",
-				diagSect.size() ? *diagSect : "(none)", sectHas ? 1 : 0,
-				diagScope.size() ? *diagScope : "(none)", scopeHas ? 1 : 0,
-				IsScopeAttached() ? 1 : 0, m_zoomtype, m_zoom_params.m_fSecondVPFovFactor);
-			diagLastSect = diagSect;
-			diagLastFactor = m_zoom_params.m_fSecondVPFovFactor;
-		}
-	}
-
-	Device.m_SecondViewport.SetSVPLensFov(m_zoom_params.m_fSecondVPFovFactor);
+	// PiP (T3 #6): reverted to the baseline. Resolving the optic lens FOV here flipped
+	// IsSVPActive() to true for scoped weapons, and the pack's PiP lens shaders then took
+	// their second-viewport path even though this engine renders no lens for them: the
+	// scope went black and lost its own 3DSS magnification. The port will bring this back
+	// together with the lens rendering it needs.
 	Device.m_SecondViewport.SetSVPActive(m_zoomtype == 0 && pActor->cam_Active() == pActor->cam_FirstEye() && IsSecondVPZoomPresent() && m_zoom_params.m_fZoomRotationFactor > 0.05f);
 }
 

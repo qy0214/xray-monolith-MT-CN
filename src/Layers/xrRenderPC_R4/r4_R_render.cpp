@@ -211,6 +211,14 @@ namespace svpcam
 	}
 }
 
+// PiP (T3 #6): parked at file scope so the early second-viewport allocation gate can see
+// it. The same-frame lens is compiled in but off: the pack's optics keep their own 3DSS
+// path (which works and which the player knows), no second target set is created, the main
+// camera keeps its ADS zoom and the mouse keeps its stock ratio. The pieces stay in the
+// tree for the eventual port, and are switched on again only once the lens content is
+// finished and verified without the player acting as the test rig.
+static const bool SVP_SAME_FRAME_READY = false;
+
 void CRender::Render()
 {
 	PIX_EVENT_C(CRender_Render, dx10_marker_frame);
@@ -276,7 +284,10 @@ void CRender::Render()
 
 	// PiP (T3 #6): the second target set must exist before the scope-resolution
 	// decision below, which retires the override while that set handles the lens
-	if (compat::r__svp_same_frame && Device.m_SecondViewport.IsSVPActive())
+	// Only when the same-frame lens is actually enabled: creating the second set also
+	// retires the scope-resolution override below, so it must not exist while the path is
+	// parked (that oversight was why the lens still went black after parking).
+	if (SVP_SAME_FRAME_READY && compat::r__svp_same_frame && Device.m_SecondViewport.IsSVPActive())
 		EnsureTargetSVP();
 
 	// Scope-aware internal resolution: a rebuild here skips this frame, so the new
@@ -299,14 +310,6 @@ void CRender::Render()
 	// zoomed one), so keep a copy of both cameras and draw the lens view and the
 	// normal view in the same frame, one pass each. The lens is then current, unlike
 	// the legacy scheme which copied the swapchain and skipped Present.
-	// PiP (T3 #6): parked. The same-frame lens is compiled in but off, so the engine
-	// behaves exactly as it did before this work: the pack's optics use their own 3DSS
-	// path (which the player knows and which works), no second target set is created, the
-	// main camera keeps its ADS zoom and the mouse keeps its stock ratio. The pieces stay
-	// in the tree because the port is the eventual goal; they will be switched on again
-	// only once the lens content is finished and verified offline.
-	static const bool SVP_SAME_FRAME_READY = false;
-
 	svp_lens_rendered = false;
 
 	// C1/C2: the renderer reads the game published inputs exactly once per frame and
