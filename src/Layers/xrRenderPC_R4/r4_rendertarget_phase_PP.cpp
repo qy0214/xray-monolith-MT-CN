@@ -211,8 +211,11 @@ void CRenderTarget::phase_dlss_postprocess()
 			reported_native_ui = true;
 		}
 		// Reproject the render-sized scene depth into the native depth buffer so
-		// hands and casing still hide the handheld screen.
-		u_setrt(rt_dlss_post_source, nullptr, nullptr, HW.pBaseZB);
+		// hands and casing still hide the handheld screen. u_setrt() substitutes
+		// the upscaler scene depth for HW.pBaseZB, so bind the native depth
+		// buffer explicitly - the reprojection must target the display-sized one.
+		u_setrt(rt_dlss_post_source, nullptr, nullptr, nullptr);
+		RCache.set_ZB(HW.pBaseZB);
 		RCache.set_Element(s_dlss_ui_depth->E[0]);
 		RCache.set_c("dlss_ui_depth_params", float(dlss::RenderWidth()) / w,
 			float(dlss::RenderHeight()) / h, sceneJitter.x, sceneJitter.y);
