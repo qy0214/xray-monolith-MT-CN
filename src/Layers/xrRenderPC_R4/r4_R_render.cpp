@@ -637,21 +637,26 @@ void CRender::Render()
 		Details->details_clear();
 
 	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
-		if (viewCount == 2 && view == 0 && TargetSVP && TargetSVP->rt_secondVP)
+		if (viewCount == 2 && view == 0 && TargetSVP && TargetSVP->rt_Generic_0)
 		{
-			// Publish this pass's scene result where the lens material samples it
-			// ($user$viewport2 = this set's rt_secondVP, which nothing else writes).
-			// The LDR scene target is the same pair phase_fakescope uses: rt_Color for
-			// non-MSAA, rt_Generic for MSAA. rt_Generic_0 is only filled by the post
-			// process chain, which the lens pass deliberately skips - copying from it was
-			// what made the lens black.
-			ref_rt& lensSrcRt = RImplementation.o.dx10_msaa ? TargetSVP->rt_Generic : TargetSVP->rt_Color;
-			if (lensSrcRt && lensSrcRt->pTexture)
+			// Publish the lens pass's scene result where the lens material really samples
+			// it. Two facts fix the naming here (r4_rendertarget.cpp):
+			//  - createUnique() suffixes every second set RT with the set name, so
+			//    TargetSVP->rt_secondVP is "$user$viewport2$<set>" - a texture no shader
+			//    reads, writing into it is what kept the lens black;
+			//  - the lens material resolves the un-suffixed "$user$viewport2", which is
+			//    the MAIN set's rt_secondVP - exactly the surface the legacy
+			//    RenderToTarget(rtSVP) fills (see the switch below).
+			// The source is this set's rt_Generic_0: phase_combine clears and fills it,
+			// and the MSAA path resolves into it as well. Both are A8R8G8B8 (non HDR10)
+			// and both are display sized, so the copy is a valid 1:1 blit.
+			CRenderTarget* lensDst = TargetMain ? TargetMain : Target;
+			if (lensDst && lensDst->rt_secondVP && TargetSVP->rt_Generic_0->pTexture)
 			{
-				ID3D11Resource* lensSrc = lensSrcRt->pTexture->surface_get();
+				ID3D11Resource* lensSrc = TargetSVP->rt_Generic_0->pTexture->surface_get();
 				if (lensSrc)
 				{
-					HW.pContext->CopyResource(TargetSVP->rt_secondVP->pSurface, lensSrc);
+					HW.pContext->CopyResource(lensDst->rt_secondVP->pSurface, lensSrc);
 					_RELEASE(lensSrc);
 					svp_lens_rendered = true;
 				}
