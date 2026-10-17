@@ -18,8 +18,11 @@ Read this first in a fresh session; it replaces the previous conversation.
 
 - Engine: `C:\game\xray-monolith-mt` (clean worktree, 30 local commits).
 - Payload: `C:\game\ANTHOLOGY\Anomaly-1.5.3-Anthology 2.1\MODS\MT-CN`
-  (exe `FD69CB2FE928`, nvngx_dlss.dll 310.9.1, 16 shader overrides,
-  `MT-CN.sha256.txt` manifest, `清空着色器缓存.bat`, `MT-CN_说明.txt`).
+  (exe `3B8EF3F245E9` — that is the first 12 hex chars of the **deployed exe's
+  SHA256**, so it changes on every rebuild and is the quickest way to confirm
+  what is actually deployed; nvngx_dlss.dll 310.9.1, 16 shader overrides,
+  `清空着色器缓存.bat`, `MT-CN_说明.txt`, `MT-CN_说明\README_部署与撤回.txt`.
+  There is **no** `MT-CN.sha256.txt` in the payload — that line was wrong).
 - Chinese localisation mod (needs enabling in JSGME/MO2):
   `MODS\[汉化] MT-CN 选项汉化` — 24 DLSS/upscaler strings, UTF-8 **no BOM**;
   mirror copy in `Modpack-1.5.3-Anthology 2.1\mods\[汉化] 汉化整合包…`.
@@ -79,7 +82,16 @@ Compatibility:
 - `spawn_antifreeze_max_per_frame` implemented: `ProcessGameSpawns()` consumes at
   most N per frame, leftovers stay in the engine's own `game_spawn_queue`
   (default 8; 0 = previous behaviour; direct `g_sv_Spawn` paths unaffected).
-- Optick compiled in (`xrCore/profiler.h`); capture trigger still missing.
+- Optick is now usable, not just compiled in:
+  - `PROF_FRAME("Main")` is the first statement of `CRenderDevice::FrameMove()`
+    — frame markers did not exist before, so a capture had no frames at all.
+  - console: `optick_start`, `optick_stop [file]` (default `optick_capture.opt`
+    in the working directory), `optick_autostart 0|1` (starts the capture at the
+    top of `CRenderDevice::Run()`, so it covers startup + level load; the file is
+    written on exit). State/helpers live in `xrEngine/device.cpp`, the console
+    entries in `xrEngine/xr_ioc_cmd.cpp`.
+  - Viewer: `src\3rd party\optick-git\gui\OptickApp_vs2022.sln` (or the Optick
+    release build); there is no GUI in the payload.
 
 Diagnostics / infra:
 - Per-section CPU timings in `rs_stats` (no log noise, no GPU work).
@@ -120,12 +132,19 @@ Diagnostics / infra:
 ## Backlog (in order)
 
 1. **T3 #6 same-frame PiP (second target set)** — the only remaining development
-   task. Read `docs/superpowers/plans/2026-10-17-tier23-performance-work.md`, its
-   T3 #6 section now starts at stage 0 (naming) because of the registry hazard.
-   Reference implementation: `C:\game\xray-monolith-pipdlss\...\svp_*`, `SvpDlss.h`,
-   `TargetSVP`. Goal: lens rendered in the same frame (no ghosting from the
-   2-frame-delayed SecondVP) and no 15-20 fps cost while an optic is equipped.
-2. Optick capture trigger (console command) so the profiler is usable.
+   task. **Stage 0 (naming) is now resolved — see the T3 #6 section of
+   `docs/superpowers/plans/2026-10-17-tier23-performance-work.md`**: the RT/texture
+   factories are name-keyed dedup maps (`ResourceManager_Resources.cpp:363-380`
+   and `:458-494`), so a second set *cannot* be built under the same names at all;
+   the second set registers as `$user$svp*` and switching re-points the shared
+   `$user$*` textures with `surface_set`, exactly like the existing
+   `bus_texture_slot` aliasing in `Layers/xrRender/dxRenderDeviceRender.cpp:8-73`.
+   Next: stage 1 (create the lens set lazily on the first magnifying ADS, nothing
+   switches yet). Reference implementation: `C:\game\xray-monolith-pipdlss\...\svp_*`,
+   `SvpDlss.h`, `TargetSVP`. Goal: lens rendered in the same frame (no ghosting from
+   the 2-frame-delayed SecondVP) and no 15-20 fps cost while an optic is equipped.
+2. ~~Optick capture trigger (console command) so the profiler is usable.~~ **Done**
+   (see the diagnostics section; needs one in-game run to be exercised).
 3. Tier-1 A/B data from the player (FPS + `uSheduler_L` + `queue:`) → then fix
    whatever the data points at instead of guessing.
 5. Verify the FDDA exo screen: health tint + clock/hands; adjust the encoding in
@@ -138,4 +157,9 @@ Diagnostics / infra:
 - Enable `[汉化] MT-CN 选项汉化` in JSGME/MO2 (DLSS options become Chinese).
 - Confirm the aim pose is fixed (`mt_calc_bones 1`), the plain log survives, and
   `spawn_antifreeze_max_per_frame 8` vs `0` only changes smoothness, not content.
-- Decide when to push the 30 local commits.
+- Verify the deployed exe is the new one: the payload `bin\AnomalyDX11AVX.exe`
+  must hash to `3B8EF3F245E9…` (SHA256), then play a minute — the `optick_*`
+  commands must appear in the console (Tab-completion) and
+  `optick_start` → `optick_stop` must log
+  `* [OPTICK] capture started` / `capture saved to 'optick_capture.opt'`.
+- Decide when to push the local commits (34 as of this checkpoint).

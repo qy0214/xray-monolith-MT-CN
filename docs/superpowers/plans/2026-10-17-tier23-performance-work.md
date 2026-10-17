@@ -82,23 +82,36 @@ Reference implementation on this machine:
 Also `xrEngine/device.{h,cpp}` for `CSecondVPParams`.
 
 Stages (each one committable, none required to land the next):
-0. **Order matters — do not create the second target set before the naming is
-   resolved.** Our targets live in a global name registry (`ref_rt::create(name)`
-   resolves to the shared `CTexture` for that name), so a second `CRenderTarget`
-   built with the same literal names would *replace the main set's surfaces* with
-   display-sized ones even without switching, i.e. it would break the main path
-   immediately. Two viable routes:
-   - prefix route: a creation-time prefix honoured by the RT creation path, so set
-     B registers `$user$svp_generic0` etc. The hook has to be in the `CTexture`
-     create path (`Layers/xrRenderDX10/dx10SH_Texture.cpp`) or in a thin wrapper,
-     because the ctor's ~80 calls pass literal names;
-   - explicit route: build only the ~20 RTs the scene pipeline actually needs, with
-     prefixed names, from an explicit table (verbose but contained and reviewable).
-   Pick the explicit route if a shared-path hook looks risky; correctness first.
+0. **RESOLVED (2026-10-17): the second set must register under distinct names,
+   and switching re-points the shared `$user$*` textures.** Evidence is from our
+   own code, not from the reference:
+   - `CResourceManager::_CreateRT()` (`Layers/xrRender/ResourceManager_Resources.cpp:363`)
+     and `_CreateTexture()` (`:458`) are **name-keyed dedup factories**: they look
+     the name up in `m_rtargets` / `m_textures` and *return the existing object*.
+     So a second `CRenderTarget` built with the same literal names does not even
+     create new surfaces — its `ref_rt` members silently alias the main set's CRTs.
+     (`CRT::create()` also early-outs on `if (pSurface) return;`, `SH_RT.cpp:27`.)
+     Prefixing is therefore **mandatory, not a style choice**.
+   - Apply the prefix in the **lens-set creation code**, never in a global hook:
+     `_CreateRT`/`_CreateTexture` are shared with every runtime texture load, so a
+     "current prefix" global would be a trap. Convention: the main name stays the
+     key and the lens name is derived from it, `$user$X` ↔ `$user$svp_X`, with one
+     helper doing both directions — no hand-written pair table.
+   - Switching is then exactly what stage 2 describes, and there is a working
+     precedent in this codebase: `bus_texture_slot` / `bus_textures_update()`
+     (`Layers/xrRender/dxRenderDeviceRender.cpp:8-73`) already aliases one texture
+     name onto another texture's surface via `surface_set` whenever the target
+     moves. The blender-bound name (`$user$position`, …) never changes, only the
+     surface behind it, so every name-binding shader follows the active set.
+   - Remember `HW.pBaseZB` / `u_SceneDepth()` are *not* part of the `$user$*`
+     family (see the `u_setrt()` hazard in the session checkpoint).
+   - Lens-set size = display extent (or optic extent); `rt_secondVP`/`rt_ui_pda`
+     are already display-sized, so they are the natural first members.
 1. `CRenderTarget(bool mainSet)` — second instance sized to the display (or the
    optic extent), created lazily on the first magnifying ADS, kept for the
-   session. Nothing switches yet; verify the main path is untouched (compare
-   `rs_stats`, the PDA/scope behaviour and the shader cache hit rate).
+   session, **using the stage-0 `$user$svp*` naming helper**. Nothing switches yet;
+   verify the main path is untouched (compare `rs_stats`, the PDA/scope behaviour
+   and the shader cache hit rate).
 2. Re-point the registered `$user$*` names to the other set's surfaces on switch
    (`Resources->_CreateTexture(name)->surface_set(other->pSurface)`), so all
    blenders that bind by name follow the active set.
@@ -122,6 +135,7 @@ and check for ghosting), and carrying the optic no longer costs the 15-20 fps.
       `queue:` line for `scheduler_batch_size`, `mt_schedulerRT`,
       `lua_use_functor_cache`, `mt_script_gc`, `mt_alife`); then fix whatever the
       data points at instead of guessing.
-- [ ] Optick capture trigger (console command) so the profiler is usable.
+- [x] Optick capture trigger: `optick_start` / `optick_stop [file]` /
+      `optick_autostart 1` + `PROF_FRAME("Main")` in `FrameMove()`.
 - [ ] T3 #9a, then #8①, #8②, then #6 in the order above.
 - [ ] Push the 26 local commits only when the player explicitly approves.
