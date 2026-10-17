@@ -2,6 +2,8 @@
 .*
 !.gitignore
 !.gitattributes
+!.github/
+!.gitmodules
 
 # exclude binaries and temporary files
 _build/

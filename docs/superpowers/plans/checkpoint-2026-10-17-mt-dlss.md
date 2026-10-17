@@ -79,6 +79,9 @@ Compatibility:
   `m_timearrow2` (in-game clock/hand phases; **encoding inferred, verify on the
   exo screen and adjust in `xrGame/Actor.cpp` if wrong**).
 - `r__menu_framelimit` implemented (main-menu branch only; 0 = off, default).
+  Location note (review P2-8): the cvar lives in the render layer, not xrEngine —
+  value in `Layers/xrRender/xrRender_console.cpp` and the pacing in
+  `Layers/xrRenderPC_R4/r4_R_render.cpp`.
 - `spawn_antifreeze_max_per_frame` implemented: `ProcessGameSpawns()` consumes at
   most N per frame, leftovers stay in the engine's own `game_spawn_queue`
   (default 8; 0 = previous behaviour; direct `g_sv_Spawn` paths unaffected).

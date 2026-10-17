@@ -522,7 +522,13 @@ void CRenderTarget::SetActive(bool force)
 		r.first->surface_set(r.second->pSurface);
 	}
 
-	set_viewport_size(HW.pContext, (float)Width, (float)Height);
+	// P0-6 (review): the MAIN set's targets are the upscaler's render extent, not the
+	// display extent, so a display-sized viewport would rasterise the scene into a
+	// smaller render target and clip its edges whenever the internal resolution is
+	// below the display resolution. The lens set owns its own extent.
+	const float vpW = (m_is_main_target && dlss::Configured()) ? float(dlss::RenderWidth()) : float(Width);
+	const float vpH = (m_is_main_target && dlss::Configured()) ? float(dlss::RenderHeight()) : float(Height);
+	set_viewport_size(HW.pContext, vpW, vpH);
 	RCache.set_RT(baseRT, 0);
 	RCache.set_RT(nullptr, 1);
 	RCache.set_RT(nullptr, 2);
