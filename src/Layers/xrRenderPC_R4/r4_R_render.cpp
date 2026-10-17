@@ -335,6 +335,14 @@ void CRender::Render()
 	// take the SVP path" and "engine renders a lens" can never disagree again.
 	Device.m_SecondViewport.SetSVPActive(Device.m_SecondViewport.svp_scope.lens_rendered);
 
+	// PiP state (throttled): the one line that makes any remaining mismatch diagnosable in
+	// a single round - whether the lens rendered, whether the set exists, the kill switch
+	// and the resolved lens FOV.
+	if (Device.m_SecondViewport.svp_optic_magnifies && (Device.dwFrame % 300) == 0)
+		Msg("* [PIP] state lens=%d target=%d switch=%d lensFov=%.3f",
+			Device.m_SecondViewport.svp_scope.lens_rendered ? 1 : 0, TargetSVP ? 1 : 0,
+			compat::r__svp_same_frame, Device.m_SecondViewport.svp_lens_fov);
+
 	Device.true_pip_on = Device.m_SecondViewport.svp_scope.lens_rendered;
 	Device.m_SecondViewport.true_pip_rendering = Device.m_SecondViewport.svp_scope.lens_rendered;
 	Device.m_SecondViewport.true_pip_same_frame = Device.m_SecondViewport.svp_scope.lens_rendered;
