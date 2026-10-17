@@ -1331,22 +1331,35 @@ static class scope_lense_quality : public R_constant_setup
 {
     void setup(R_constant* C) override
     {
-        // y/z hold the lens source size the shaders use for texel math, scaled by
-        // the mod's quality percentage.
+        // y/z hold the lens source size the shaders use for texel math. The target
+        // itself is already sized by the pack's quality percentage
+        // (CRender::EnsureTargetSVP), so report its real size here.
         float w = float(RenderScreenWidth()), h = float(RenderScreenHeight());
         if (RImplementation.Target && RImplementation.Target->rt_secondVP)
         {
             w = float(RImplementation.Target->rt_secondVP->dwWidth);
             h = float(RImplementation.Target->rt_secondVP->dwHeight);
         }
-        const float k = float(clampr(compat::scope_lense_quality_percent, 25, 100)) * 0.01f;
-        RCache.set_c(C, 0.0f, w * k, h * k, 0.0f);
+        RCache.set_c(C, 0.0f, w, h, 0.0f);
     }
 } binder_scope_lense_quality;
 
 static class scope_lense_main_view : public R_constant_setup
 {
-    void setup(R_constant* C) override { RCache.set_c(C, 1.0f, 1.0f, 0.5f, 0.5f); }
+    void setup(R_constant* C) override
+    {
+        // Maps lens UV onto main-view UV. The lens is the same eye with the optic's
+        // narrower FOV, so a world point at lens U sits at 0.5 + (U - 0.5) / mag in the
+        // main view: xy = 1/mag centred on the screen. Reporting 1:1 (the old default)
+        // made the reprojection sample the wrong place and made the lens look unmagnified.
+        float mag = 1.0f;
+        const float lensFov = Device.m_SecondViewport.svp_lens_fov;
+        if (lensFov > 1.0f && lensFov < 89.0f && Device.fFOV > 1.0f && Device.fFOV > lensFov)
+            mag = Device.fFOV / lensFov;
+
+        const float inv = 1.0f / mag;
+        RCache.set_c(C, inv, inv, 0.5f, 0.5f);
+    }
 } binder_scope_lense_main_view;
 
 static class scope_lense_live_effects : public R_constant_setup

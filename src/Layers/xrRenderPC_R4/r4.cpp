@@ -13,6 +13,7 @@
 
 #include "../xrRenderDX10/3DFluid/dx103DFluidManager.h"
 #include "../xrRender/ShaderResourceTraits.h"
+#include "../xrRender/UpscalerCompat.h"
 
 #include "../../xrCore/profiler.h"
 #include "../../xrCore/ShaderSourceCRC.h"
@@ -561,15 +562,19 @@ void CRender::create()
 // is inactive this is never called, so the extra RT chain costs nothing then.
 void CRender::EnsureTargetSVP()
 {
-	// square lens view at half the display height, rounded up to a 32px step so a
-	// few pixels of wobble reuses the whole set instead of rebuilding it
-	u32 side = (Device.dwHeight / 2) & ~1u;
-	if (side < 64) side = 64;
-	side = (side + 31u) & ~31u;
+	// The lens is a second view of the world, so its extent keeps the display aspect
+	// and only scales with the pack's quality knob. The reference build's qRT bank
+	// does the same (display size times 1.0 / 0.9 / 0.8 / 0.7); a square extent would
+	// break the lens shaders' texel math and the reprojection matrix.
+	const float scale = float(clampr(compat::scope_lense_quality_percent, 25, 100)) * 0.01f;
+	u32 w = u32(float(Device.dwWidth) * scale) & ~1u;
+	u32 h = u32(float(Device.dwHeight) * scale) & ~1u;
+	if (w < 64) w = 64;
+	if (h < 64) h = 64;
 
 	if (TargetSVP)
 	{
-		if (TargetSVP->Width == side && TargetSVP->Height == side)
+		if (TargetSVP->Width == w && TargetSVP->Height == h)
 			return;
 
 		// extent changed: fall back to the main set before dropping the old one
@@ -578,8 +583,8 @@ void CRender::EnsureTargetSVP()
 		xr_delete(TargetSVP);
 	}
 
-	TargetSVP = xr_new<CRenderTarget>("svp", side, side);
-	Msg("* [PIP] second viewport target set %ux%u created", side, side);
+	TargetSVP = xr_new<CRenderTarget>("svp", w, h);
+	Msg("* [PIP] second viewport target set %ux%u created (scale %.0f%%)", w, h, scale * 100.0f);
 }
 
 void CRender::destroy()
