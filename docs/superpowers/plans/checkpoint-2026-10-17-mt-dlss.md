@@ -126,9 +126,7 @@ Diagnostics / infra:
    `TargetSVP`. Goal: lens rendered in the same frame (no ghosting from the
    2-frame-delayed SecondVP) and no 15-20 fps cost while an optic is equipped.
 2. Optick capture trigger (console command) so the profiler is usable.
-3. If the user ever wants the pack's stale options page UI in the current engine's
-   modelThe modpack build has no source here). (empty line placeholder)
-4. Tier-1 A/B data from the player (FPS + `uSheduler_L` + `queue:`) → then fix
+3. Tier-1 A/B data from the player (FPS + `uSheduler_L` + `queue:`) → then fix
    whatever the data points at instead of guessing.
 5. Verify the FDDA exo screen: health tint + clock/hands; adjust the encoding in
    `xrGame/Actor.cpp` if the digits are wrong.
