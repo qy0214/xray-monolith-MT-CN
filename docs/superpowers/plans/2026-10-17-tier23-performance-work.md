@@ -212,15 +212,41 @@ the fallback when the set could not be created (VRAM) and for pure screen-space
 magnification. `EnsureTargetSVP()` is called early in `Render()` so the decision sees
 the set.
 
-**Still open — stage 4b (same frame)**: both views in one frame so the lens is not
-one frame old. Needs the scene body extracted so it can run twice per frame (it must
-re-`traverse`/`capture` per view because the frustums differ), the two cameras
-snapshotted (`mView`/`mProject`/`mProjectHud`/`hud_fov_params`; this engine has no
-`Device.matrices[2]`), and then the removal of the `Present` skip in
-`dxRenderDeviceRender::End()` plus the game-side frame alternation
-(`Actor.cpp:1237` hides the HUD on SVP frames). The narrow zoom frustum culls the
-lens pass on its own (`ViewBase` is built from `Device.mFullTransform`), so the second
-pass is cheap.
+## Stage 4b — DONE (2026-10-17): both views in one frame
+
+- `svpcam` (static in `r4_R_render.cpp`) keeps a copy of both cameras
+  (`mView`/`mProject`/`mProjectHud`/`mFullTransform`/`mInvView`/`hud_fov_params`).
+  The game's per-frame camera alternation now only decides which copy to refresh, so
+  no optics math is needed (this engine has no `Device.matrices[2]`).
+- `CRender::Render()` runs the scene body once per view: the second set with the zoom
+  camera, then the main set with the normal camera. Only the main view is presented,
+  so the lens shows the **current** frame (the ghosting root cause is gone) and every
+  frame is presentable. One frame is skipped when the lens first comes up, until both
+  cameras are known.
+- The body is reused verbatim; its static temporal state is already
+  `!m_render_pass_is_svp`-guarded, so the lens pass cannot corrupt the main history.
+  The lens pass runs with `render_stats::SetSuppress(true)` so `rs_stats` does not
+  double while aiming.
+- `dxRenderDeviceRender::End()` stops skipping Present on scope frames while the
+  switch is on.
+
+## Verification checklist for the in-game test
+
+Payload `bin\AnomalyDX11AVX.exe` must hash to `8E9FA2238E19…` (SHA256). Then:
+
+1. Aim through a magnifying optic: the lens must show the **current** frame - pan hard
+   and confirm the lens does not trail the main view (that was the old behaviour).
+2. `rs_stats on`: with the optic up, `RENDER:` must **not** roughly double (that is
+   the suppressed lens pass); FPS must be back to the no-optic numbers (the 15-20 fps
+   the scope-resolution override used to cost).
+3. Check the lens resolution is acceptable; it is the second set's square
+   (`dwHeight/2` = 540 at 1080p). Raise/lower by changing that one expression in
+   `EnsureTargetSVP()` if needed.
+4. `r__svp_same_frame 0` + restart of the aim: everything must return to the previous
+   behaviour (one-frame lens, override active). This is the fallback switch.
+5. Also re-check: PDA/glass (they must stay at display resolution), the DLSS quality
+   tiers, aiming with a non-magnifying sight (must be untouched), and a vid_restart
+   while holding the optic (the second set is recreated lazily).
 
 ## Remaining stages (revised, in order)
 

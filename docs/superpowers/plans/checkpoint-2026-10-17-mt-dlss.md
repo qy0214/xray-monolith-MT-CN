@@ -18,7 +18,7 @@ Read this first in a fresh session; it replaces the previous conversation.
 
 - Engine: `C:\game\xray-monolith-mt` (clean worktree, 30 local commits).
 - Payload: `C:\game\ANTHOLOGY\Anomaly-1.5.3-Anthology 2.1\MODS\MT-CN`
-  (exe `3B8EF3F245E9` — that is the first 12 hex chars of the **deployed exe's
+  (exe `8E9FA2238E19` — that is the first 12 hex chars of the **deployed exe's
   SHA256**, so it changes on every rebuild and is the quickest way to confirm
   what is actually deployed; nvngx_dlss.dll 310.9.1, 16 shader overrides,
   `清空着色器缓存.bat`, `MT-CN_说明.txt`, `MT-CN_说明\README_部署与撤回.txt`.
@@ -131,18 +131,15 @@ Diagnostics / infra:
 
 ## Backlog (in order)
 
-1. **T3 #6 same-frame PiP (second target set)** — the only remaining development
-   task. **Stage 0 (naming) is now resolved — see the T3 #6 section of
-   `docs/superpowers/plans/2026-10-17-tier23-performance-work.md`**: the RT/texture
-   factories are name-keyed dedup maps (`ResourceManager_Resources.cpp:363-380`
-   and `:458-494`), so a second set *cannot* be built under the same names at all;
-   the second set registers as `$user$svp*` and switching re-points the shared
-   `$user$*` textures with `surface_set`, exactly like the existing
-   `bus_texture_slot` aliasing in `Layers/xrRender/dxRenderDeviceRender.cpp:8-73`.
-   Next: stage 1 (create the lens set lazily on the first magnifying ADS, nothing
-   switches yet). Reference implementation: `C:\game\xray-monolith-pipdlss\...\svp_*`,
-   `SvpDlss.h`, `TargetSVP`. Goal: lens rendered in the same frame (no ghosting from
-   the 2-frame-delayed SecondVP) and no 15-20 fps cost while an optic is equipped.
+1. **T3 #6 same-frame PiP (second target set)** — **implemented end to end
+   (stages 0-5), awaiting the player's in-game test.** See the T3 #6 section of
+   `docs/superpowers/plans/2026-10-17-tier23-performance-work.md` for the design,
+   the evidence, the new `r__svp_same_frame` switch (0 = full legacy fallback) and
+   the verification checklist. In short: the lens and the main view are drawn in one
+   frame from two camera snapshots, the lens renders into a small second target set
+   (`$svp`-suffixed names, remapped onto the stock `$user$*` textures by
+   `SetActive`), the swapchain copy and the skipped Present are gone, and the
+   scope-resolution override no longer fires while that set handles the lens.
 2. ~~Optick capture trigger (console command) so the profiler is usable.~~ **Done**
    (see the diagnostics section; needs one in-game run to be exercised).
 3. Tier-1 A/B data from the player (FPS + `uSheduler_L` + `queue:`) → then fix
@@ -158,8 +155,14 @@ Diagnostics / infra:
 - Confirm the aim pose is fixed (`mt_calc_bones 1`), the plain log survives, and
   `spawn_antifreeze_max_per_frame 8` vs `0` only changes smoothness, not content.
 - Verify the deployed exe is the new one: the payload `bin\AnomalyDX11AVX.exe`
-  must hash to `3B8EF3F245E9…` (SHA256), then play a minute — the `optick_*`
+  must hash to `8E9FA2238E19…` (SHA256), then play a minute — the `optick_*`
   commands must appear in the console (Tab-completion) and
   `optick_start` → `optick_stop` must log
   `* [OPTICK] capture started` / `capture saved to 'optick_capture.opt'`.
-- Decide when to push the local commits (34 as of this checkpoint).
+- **Test the same-frame lens** (T3 #6, the headline change): aim through a magnifying
+  optic, pan hard and confirm the lens image no longer trails the main view; `rs_stats
+  on` must show `RENDER:` not doubling and the FPS back at the no-optic level. If the
+  lens misbehaves, `r__svp_same_frame 0` restores the previous behaviour exactly.
+  Full checklist: the "Verification checklist for the in-game test" section of the
+  tier 2/3 plan.
+- Decide when to push the local commits (38 as of this checkpoint).
