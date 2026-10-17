@@ -8,6 +8,13 @@ Read this first in a fresh session; it replaces the previous conversation.
   user's fork `qy0214/xray-monolith-MT-CN` (branch `all-in-one-vs2022-wpo-mt`).
   Upstream must never be touched. **30 local commits are unpushed; push only when
   the user explicitly approves.**
+- **HARD RULE (player, 2026-10-18): never write into the game `bin\`** - it holds the
+  pack's ORIGINAL engine and the player resets that tree. Deploy only into
+  `MODS\MT-CN\bin\` and let MO2/JSGME mount it over `bin`. An earlier session copied a
+  build into `bin\AnomalyDX11AVX.exe` to remove a version ambiguity; that was wrong, the
+  player's reset reverts it, and it must never be repeated. Verify which build is running
+  from the log stamp instead (`* [MT-CN] engine build <date> <time>, same-frame PiP path
+  ...`), which every build now prints at startup.
 - Engine must stay drop-in compatible with the ANTHOLOGY 2.1 modpack:
   "compatibility with the mods, not parity with a reference engine". Do not modify
   the modpack. Do not change the display resolution. Everything changed/compiled
