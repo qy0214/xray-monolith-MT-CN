@@ -554,6 +554,7 @@ void CRender::create()
 		Msg("* [PIP] pack PiP optics policy %s", Device.m_SecondViewport.pip_lens_shaders ? "detected" : "not in use");
 	}
 
+	Msg("* [MT-CN] engine build %s %s, same-frame PiP path %s", __DATE__, __TIME__, SvpSameFramePathEnabled() ? "ENABLED" : "parked");
 	Models = xr_new<CModelPool>();
 	PSLibrary.OnCreate();
 	HWOCC.occq_create(occq_size);

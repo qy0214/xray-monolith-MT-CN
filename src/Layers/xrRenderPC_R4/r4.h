@@ -1,5 +1,9 @@
 #pragma once
 
+// Startup stamp helper (defined in r4_R_render.cpp): reports whether the same-frame PiP
+// path is enabled, so the log can state which engine build is actually running.
+bool SvpSameFramePathEnabled();
+
 #include "../xrRender/r__dsgraph_manager.h"
 #include "../xrRender/r__sector.h"
 #include "../xrRender/r__occlusion.h"

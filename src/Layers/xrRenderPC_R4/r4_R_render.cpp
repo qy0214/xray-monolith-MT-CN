@@ -219,6 +219,11 @@ namespace svpcam
 // finished and verified without the player acting as the test rig.
 static const bool SVP_SAME_FRAME_READY = false;
 
+// Startup stamp helper (see CRender::create): lets the log state which engine build is
+// actually running and whether the same-frame PiP path is live, so a stale exe in the
+// game bin can never masquerade as a fresh one again.
+bool SvpSameFramePathEnabled() { return SVP_SAME_FRAME_READY; }
+
 void CRender::Render()
 {
 	PIX_EVENT_C(CRender_Render, dx10_marker_frame);
