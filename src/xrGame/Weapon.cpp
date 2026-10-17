@@ -3393,6 +3393,23 @@ void CWeapon::UpdateSecondVP()
 			m_zoom_params.m_fSecondVPFovFactor = lensFov;
 	}
 
+	// PiP diagnostic (throttled): prints what the lens FOV lookup actually saw, so a
+	// mismatch between the pack's child sections and the engine's section names shows
+	// up in the log instead of needing another guess.
+	if (m_zoomtype == 0 && (Device.dwFrame % 300) == 0)
+	{
+		shared_str diagSect = cNameSect();
+		shared_str diagScope = IsScopeAttached() ? GetScopeName() : shared_str();
+		const bool sectHas = diagSect.size() && pSettings->section_exist(*diagSect)
+			&& pSettings->line_exist(*diagSect, "scope_lense_fov");
+		const bool scopeHas = diagScope.size() && pSettings->section_exist(*diagScope)
+			&& pSettings->line_exist(*diagScope, "scope_lense_fov");
+		Msg("* [PIP/scope] weapon='%s' has_line=%d  scope='%s' has_line=%d  attached=%d zoomtype=%d factor=%.4f",
+			diagSect.size() ? *diagSect : "(none)", sectHas ? 1 : 0,
+			diagScope.size() ? *diagScope : "(none)", scopeHas ? 1 : 0,
+			IsScopeAttached() ? 1 : 0, m_zoomtype, m_zoom_params.m_fSecondVPFovFactor);
+	}
+
 	Device.m_SecondViewport.SetSVPLensFov(m_zoom_params.m_fSecondVPFovFactor);
 	Device.m_SecondViewport.SetSVPActive(m_zoomtype == 0 && pActor->cam_Active() == pActor->cam_FirstEye() && IsSecondVPZoomPresent() && m_zoom_params.m_fZoomRotationFactor > 0.05f);
 }
