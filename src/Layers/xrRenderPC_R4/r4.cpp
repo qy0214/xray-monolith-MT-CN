@@ -533,7 +533,13 @@ void CRender::create()
 
 	m_bMakeAsyncSS = false;
 
+	// T3 #9a baseline: the reference build creates these in parallel and logs the
+	// total, so measure ours the same way before changing anything.
+	const u64 rtCreateStart = CPU::QPC();
 	Target = xr_new<CRenderTarget>(); // Main target
+	Msg("* [STARTUP/RENDER TARGET] mode=serial total=%.0f ms (scene %ux%u display %ux%u)",
+		float(double(CPU::QPC() - rtCreateStart) * 1000.0 / double(CPU::qpc_freq)),
+		dlss::RenderWidth(), dlss::RenderHeight(), Device.dwWidth, Device.dwHeight);
 
 	Models = xr_new<CModelPool>();
 	PSLibrary.OnCreate();
@@ -582,7 +588,11 @@ void CRender::reset_end()
 {
 	HWOCC.occq_create(occq_size);
 
+	const u64 rtCreateStart = CPU::QPC();
 	Target = xr_new<CRenderTarget>();
+	Msg("* [RESET/RENDER TARGET] mode=serial total=%.0f ms (scene %ux%u display %ux%u)",
+		float(double(CPU::QPC() - rtCreateStart) * 1000.0 / double(CPU::qpc_freq)),
+		dlss::RenderWidth(), dlss::RenderHeight(), Device.dwWidth, Device.dwHeight);
 
 	//AVO: let's reload details while changed details options on vid_restart
 	if (b_loaded && ((dm_current_size != dm_size) || (ps_r__Detail_density != ps_current_detail_density) || (
