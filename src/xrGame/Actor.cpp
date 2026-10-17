@@ -1112,11 +1112,13 @@ float CActor::currentFOV()
 	{
 		if (pWeapon->GetZoomFactor() == 0)
 			return atan(tan(g_fov * (0.5 * PI / 180)) / g_ironsights_factor) / (0.5 * PI / 180);
-		// NOTE (PiP): no extra branch here. This engine and this pack already keep the main
-		// view un-magnified: the 3DSS optics put their magnification in the lens shader, not
-		// in the camera, so the reference style "main view stays wide" test was never needed
-		// (and forcing g_fov changed the stock ADS feel). The lens magnification is the
-		// second viewport's own camera (svpcam::DeriveZoom), which does not involve this.
+		// PiP (T3 #6): while the renderer draws the zoom into the lens, the main view must
+		// NOT zoom - the magnification belongs to the lens image. This is PiP scoped: it
+		// only applies on frames where the lens is really rendered, so the plain 3DSS setup
+		// (where the camera never magnified anyway) is untouched. Confirmed as the right
+		// lever: currentFOV() feeds cam_Update (Actor.cpp) and therefore the camera's f_fov.
+		else if (Device.m_SecondViewport.true_pip_rendering)
+			return g_fov;
 		else
 			return pWeapon->GetZoomFactor() * (0.75f);
 	}
