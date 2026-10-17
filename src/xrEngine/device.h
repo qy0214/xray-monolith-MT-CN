@@ -156,6 +156,11 @@ public:
 		// refreshed once per frame from the frame-level predicate.
 		bool m_render_pass_is_svp = false;
 
+		// PiP: set by the renderer while it draws the lens itself in the same frame.
+		// The legacy per-frame camera alternation must then stop: it is what magnified
+		// the whole screen (main view included) and cost a frame of lag.
+		bool true_pip_same_frame = false;
+
 		IC bool IsSVPActive() { return isActive; }
 		void SetSVPActive(bool bState);
 		bool    IsSVPFrame();

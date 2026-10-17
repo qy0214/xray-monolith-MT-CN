@@ -1000,5 +1000,11 @@ void CRenderDevice::CSecondVPParams::SetSVPActive(bool bState) //--#SM+#-- +Seco
 
 bool CRenderDevice::CSecondVPParams::IsSVPFrame() //--#SM+#-- +SecondVP+
 {
+	// PiP: while the renderer draws the lens itself in the same frame, every frame
+	// stays a normal (unmagnified) frame - the alternation is what magnified the
+	// whole screen and what made the lens one frame old
+	if (true_pip_same_frame)
+		return false;
+
 	return IsSVPActive() && Device.dwFrame % frameDelay == 0;
 }

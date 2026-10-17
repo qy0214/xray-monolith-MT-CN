@@ -167,6 +167,30 @@ namespace svpcam
 		RCache.set_xform_view(Device.mView);
 		RCache.set_xform_project(Device.mProject);
 	}
+
+	// The lens camera: the same eye and HUD projection as the main view, with the
+	// projection magnified by the optic's zoom factor (hud_params.y is the second
+	// viewport zoom, hud_params.x the ADS zoom). The reference derives a full optics
+	// camera here; this covers the visible part of it.
+	void DeriveZoom(View& z, const View& m)
+	{
+		z = m;
+
+		float mag = 1.0f;
+		if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
+		{
+			const Fvector4& hud = g_pGamePersistent->m_pGShaderConstants->hud_params;
+			mag = (hud.y > 1.01f) ? hud.y : hud.x;
+		}
+
+		if (mag > 1.01f)
+		{
+			z.mProject._11 *= mag;
+			z.mProject._22 *= mag;
+			z.mFullTransform.mul(z.mView, z.mProject);
+		}
+		z.valid = true;
+	}
 }
 
 void CRender::Render()
@@ -268,16 +292,20 @@ void CRender::Render()
 		&& g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x > 1.25f
 		&& (Device.dwFrame % 180) == 0)
 		Msg("* [PIP] magnified optic in use but the game reported no second viewport (IsSVPActive=0): the mod drives the lens itself, same-frame PiP is idle");
-	if (pipOn)
+	// PiP: from here on the renderer owns the lens view, so the game must stop
+	// alternating the camera (CSecondVPParams::IsSVPFrame) and the lens camera is
+	// derived from the optic's magnification instead of a second game frame
+	Device.m_SecondViewport.true_pip_same_frame = pipOn && TargetSVP != nullptr;
+
+	if (pipOn && TargetSVP)
 	{
-		svpcam::Capture(Device.m_SecondViewport.IsSVPFrame() ? svpcam::s_zoom : svpcam::s_main);
-		if (!svpcam::Ready())
-			return;	// one frame to learn both cameras (the backbuffer simply repeats)
+		svpcam::Capture(svpcam::s_main); // the game camera is the normal one now
+		svpcam::DeriveZoom(svpcam::s_zoom, svpcam::s_main);
 	}
 
 	dlss::BeginScene();
 
-	const int viewCount = pipOn ? 2 : 1;
+	const int viewCount = (pipOn && TargetSVP) ? 2 : 1;
 	for (int view = 0; view < viewCount; ++view)
 	{
 		if (viewCount == 2)
