@@ -227,16 +227,9 @@ void CRenderTarget::phase_dlss_postprocess()
 		RImplementation.GMBase.r_dsgraph_render_native_ui(renderHudUi);
 	}
 
-	// Screen-locked overlays belong on the display-resolution source, so they are
-	// drawn after reconstruction instead of being fed back into DLSS history.
-	if (ps_r2_mask_control.x > 0)
-	{
-		phase_gasmask_dudv();
-		if (ps_r2_drops_control.x > 0) phase_gasmask_drops();
-	}
-	if (ps_r2_nightvision > 0) phase_nightvision();
-	if (ps_r2_heatvision > 0) phase_heatvision();
-	if (scope_fake_enabled) phase_fakescope();
+	// The screen-space overlays (gas mask, night vision, heat vision, fake scope)
+	// are drawn in phase_combine, before the upscaler: they consume scene-extent
+	// buffers and are reconstructed together with the scene.
 }
 
 void CRenderTarget::phase_pp()

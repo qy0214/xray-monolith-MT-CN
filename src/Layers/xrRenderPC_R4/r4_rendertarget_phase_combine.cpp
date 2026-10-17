@@ -567,7 +567,13 @@ void CRenderTarget::phase_combine()
 		phase_lut();
 	}
 
-	if(ps_r2_mask_control.x > 0 && !dlss::Configured())
+	// These overlays read the G-buffer, heat mask and blur chain, which all live
+	// at the scene render extent, so they belong here - before the upscaler
+	// reconstructs the display-resolution image. Running them afterwards left
+	// their full-screen quad sized for the render extent inside a display-sized
+	// target, which squeezed the whole overlay into the top-left corner, and made
+	// the scene-space effects sample the smaller buffers at the wrong scale.
+	if(ps_r2_mask_control.x > 0)
 	{
 		phase_gasmask_dudv();
 		if (ps_r2_drops_control.x > 0)
@@ -576,15 +582,15 @@ void CRenderTarget::phase_combine()
 		}
 	}
 	
-	if(ps_r2_nightvision > 0 && !dlss::Configured())
+	if(ps_r2_nightvision > 0)
 		phase_nightvision();
 
 	//--DSR-- HeatVision_start
-	if (ps_r2_heatvision > 0 && !dlss::Configured())
+	if (ps_r2_heatvision > 0)
 		phase_heatvision();
 	//--DSR-- HeatVision_end
 
-	if (scope_fake_enabled && !dlss::Configured())
+	if (scope_fake_enabled)
 	{
 		phase_fakescope(); //crookr
 	}

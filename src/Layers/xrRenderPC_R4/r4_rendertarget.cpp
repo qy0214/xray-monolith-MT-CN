@@ -674,10 +674,10 @@ CRenderTarget::CRenderTarget()
 		// the upscaler render extent made that copy size-mismatched and left the
 		// handheld PDA black. Keep it at display resolution.
 		if (RImplementation.o.dx11_hdr10) {
-			rt_secondVP.create(r2_RT_secondVP, w, h, D3DFMT_A2R10G10B10, 1); //--#SM+#-- +SecondVP+ // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
+			rt_secondVP.create(r2_RT_secondVP, Device.dwWidth, Device.dwHeight, D3DFMT_A2R10G10B10, 1); //--#SM+#-- +SecondVP+ // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
 			rt_ui_pda.create(r2_RT_ui, Device.dwWidth, Device.dwHeight, D3DFMT_A2R10G10B10); // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
 		} else {
-			rt_secondVP.create(r2_RT_secondVP, w, h, D3DFMT_A8R8G8B8, 1); //--#SM+#-- +SecondVP+
+			rt_secondVP.create(r2_RT_secondVP, Device.dwWidth, Device.dwHeight, D3DFMT_A8R8G8B8, 1); //--#SM+#-- +SecondVP+
 			rt_ui_pda.create(r2_RT_ui, Device.dwWidth, Device.dwHeight, D3DFMT_A8R8G8B8);
 		}
 
