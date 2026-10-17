@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "../../xrCore/mt_build.h"
+#include "../../xrEngine/console_registry.h"
 #include "../../xrEngine/igame_persistent.h"
 #include "../xrRender/FBasicVisual.h"
 #include "../xrRender/UpscalerCompat.h"
@@ -147,6 +148,18 @@ namespace svpcam
 	float s_magSmooth = 0.f;
 	float s_lastMagTarget = 0.f;
 
+	// Live tuning of the lens magnification in percent of the optic's authored value.
+	// Some packs leave a sight's zoom range undefined (the engine then reports g_fov as its
+	// highest power, i.e. 1x), so the authored lens FOV is the only usable number and the
+	// player needs a way to settle the exact power without a new build per guess. Default
+	// 100 = exactly what the optic authors.
+	int s_lensPowerPct = 100;
+
+	void RegisterLensCvars()
+	{
+		xr_console_register_int_cvar("r__svp_lens_power", &s_lensPowerPct, 25, 400);
+	}
+
 	void Capture(View& v)
 	{
 		v.mView.set(Device.mView);
@@ -198,7 +211,7 @@ namespace svpcam
 			? Device.m_SecondViewport.svp_base_fov : Device.fFOV;
 		if (lensFov > 1.0f && lensFov < 89.0f && baseFov > 1.0f)
 		{
-			const float target = baseFov / lensFov;
+			const float target = baseFov / lensFov * (float(s_lensPowerPct) * 0.01f);
 			// ~0.12 s time constant, i.e. the same feel as the stock zoom animation. The
 			// smoothing must start from the target when the lens was not rendering just
 			// before: ramping from zero made the first frames of every aim LESS magnified
@@ -239,6 +252,12 @@ namespace svpcam
 		s_lastMag = mag;
 		z.valid = true;
 	}
+}
+
+// Global-scope entry point for r4.cpp (the tuning cvars live in the svpcam namespace).
+void SvpRegisterLensCvars()
+{
+	svpcam::RegisterLensCvars();
 }
 
 // PiP lens content probe (diagnostic, throttled): reads back a 16x16 block from the centre

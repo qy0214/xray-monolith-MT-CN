@@ -3375,22 +3375,18 @@ void CWeapon::UpdateSecondVP()
 		&& (pActor->cam_Active() == pActor->cam_FirstEye())
 		&& (m_zoom_params.m_fZoomRotationFactor > 0.05f);
 
-	// PiP: the lens camera renders with the sight's own lens FOV at the power the player
-	// actually selected. The pack stores that FOV for the sight's HIGHEST power, and the
-	// engine's zoom factor is FOV-like: it sits at m_fScopeZoomFactor for the highest power
-	// (the lower bound of its clamp) and grows towards min_zoom_factor as the player zooms
-	// out, so multiplying the configured FOV by that ratio gives the current power. The
-	// previous version fed the raw runtime zoom in as a fraction of 100, which produced a 46
-	// degree lens for a 24x sight - less magnification than the naked eye, a washed out and
-	// dark lens with the sight's vignetting rings across it.
+	// PiP: the lens camera renders with the sight's own lens FOV. The packs store it per
+	// sight in scope_lense_fov (child section, e.g. wpn_rsass_echo1), in degrees, and state
+	// the magnification as g_fov / scope_lense_fov - and it is the same quantity the lens
+	// shaders receive, so engine and shader agree on the power.
+	//
+	// A dynamic ratio was tried and removed: the packs define neither scope_zoom_factor nor
+	// the zoom range for these sights, so the engine's zoom factor degenerates to g_fov and
+	// the ratio is meaningless - it produced a lens FOV of 72 degrees for a 24x sight, i.e.
+	// a view wider than the naked eye, which is what the last round reported. The optic's
+	// authored value is authoritative; variable power is the shader side's business.
 	float lensFov = 0.0f;
-	const float configLensFov = GetSecondVPZoomFactor();
-	if (m_zoom_params.m_bUseDynamicZoom && IsSecondVPZoomPresent()
-		&& m_zoom_params.m_fScopeZoomFactor > 0.01f && GetZoomFactor() > 0.01f)
-	{
-		lensFov = configLensFov * (GetZoomFactor() / m_zoom_params.m_fScopeZoomFactor);
-	}
-	else if (IsScopeAttached() || m_zoomtype == 0)
+	if (IsScopeAttached() || m_zoomtype == 0)
 	{
 		shared_str sect = cNameSect();
 		if (sect.size() && pSettings->section_exist(*sect) && pSettings->line_exist(*sect, "scope_lense_fov"))
@@ -3404,10 +3400,9 @@ void CWeapon::UpdateSecondVP()
 		}
 	}
 
-	// A ratio blown up by a bad zoom state must not reach the camera: fall back to the
-	// configured (highest power) FOV, which is always a sane lens.
+	// A bad value must not reach the camera: fall back to the sight's legacy lens FOV.
 	if (!(lensFov > 0.5f && lensFov < 120.0f))
-		lensFov = configLensFov;
+		lensFov = GetSecondVPZoomFactor();
 
 	Device.m_SecondViewport.SetSVPInputs(magnifies, lensFov, float(g_fov));
 

@@ -1,6 +1,10 @@
 #include "stdafx.h"
 #include "r4.h"
 #include "../../xrCore/mt_build.h"
+#include "../../xrEngine/console_registry.h"
+
+// Defined in r4_R_render.cpp (PiP lens tuning cvars).
+void SvpRegisterLensCvars();
 #include "../xrRender/fbasicvisual.h"
 #include "../../xrEngine/xr_object.h"
 #include "../../xrEngine/CustomHUD.h"
@@ -573,6 +577,8 @@ void CRender::create()
 				exeTime = (u64(fad.ftLastWriteTime.dwHighDateTime) << 32) | u64(fad.ftLastWriteTime.dwLowDateTime);
 			}
 		}
+	SvpRegisterLensCvars();
+
 		Msg("* [MT-CN] engine build %s %s pipBuild=%d exeTime=%llu exeSize=%llu, same-frame PiP path %s",
 			__DATE__, __TIME__, MT_PIP_BUILD, exeTime, exeSize, SvpSameFramePathEnabled() ? "ENABLED" : "parked");
 	}
