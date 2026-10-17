@@ -50,7 +50,17 @@ void ResetHistory() { backend.ResetHistory(); fsrBackend.ResetHistory(); }
 // cannot align - it would smear it and trail behind camera motion. While one of
 // them is active the jitter is dropped and the history is invalidated every
 // frame, so the upscale stays spatial and stable instead of ghosting.
-bool StableOverlaysActive() { return ps_r2_heatvision > 0 || ps_r2_nightvision > 0; }
+bool StableOverlaysActive()
+{
+    // Device views (heat vision, night vision) rebuild the image every frame from
+    // an animated noise field, which the temporal upscaler cannot align.
+    if (ps_r2_heatvision > 0 || ps_r2_nightvision > 0) return true;
+    // A second viewport optic (PiP scope) shows a deliberately frame-delayed copy
+    // of the world inside its lens: reprojecting that stale image with the scene
+    // motion vectors is what leaves the heavy trailing while panning.
+    if (Device.m_SecondViewport.IsSVPActive()) return true;
+    return false;
+}
 bool reportedStableOverlays = false;
 }
 
@@ -244,9 +254,12 @@ void BeginScene()
     if (stableOverlay != reportedStableOverlays)
     {
         reportedStableOverlays = stableOverlay;
-        Msg("[Upscaler] device view %s: temporal history and jitter %s",
-            stableOverlay ? "on (heat/night vision)" : "off",
-            stableOverlay ? "disabled while it is active" : "restored");
+        if (!stableOverlay)
+            Msg("[Upscaler] device view off: temporal history and jitter restored");
+        else if (Device.m_SecondViewport.IsSVPActive())
+            Msg("[Upscaler] second viewport active: temporal history and jitter disabled (the lens shows a frame-delayed copy)");
+        else
+            Msg("[Upscaler] device view on (heat/night vision): temporal history and jitter disabled while it is active");
     }
     if (Active())
     {
