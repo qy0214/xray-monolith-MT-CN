@@ -9,11 +9,57 @@ void dxStatsRender::Copy(IStatsRender& _in)
 	*this = *((dxStatsRender*)&_in);
 }
 
+namespace render_stats
+{
+	const char* const sectionNames[SectionCount] = { "traverse", "gbuffer", "lights", "combine", "hud", "pp", "other" };
+	float sectionMs[SectionCount] = {};
+	float frameMs = 0.f;
+	static float accumulator[SectionCount] = {};
+
+	float MsSince(u64 start)
+	{
+		return float(double(CPU::QPC() - start) * 1000.0 / double(CPU::qpc_freq));
+	}
+
+	void BeginFrame()
+	{
+		for (int i = 0; i < SectionCount; ++i) accumulator[i] = 0.f;
+	}
+
+	void Add(Section section, float ms)
+	{
+		accumulator[section] += ms;
+	}
+
+	void Publish(float totalMs)
+	{
+		// HudSub and PpSub are already inside Combine, so they stay informational
+		// and only the top level sections feed the remainder.
+		float known = 0.f;
+		for (int i = 0; i < SectionCount; ++i)
+		{
+			if (i == Other || i == HudSub || i == PpSub) continue;
+			known += accumulator[i];
+		}
+		const float rest = totalMs - known;
+		accumulator[Other] = rest > 0.f ? rest : 0.f;
+		frameMs = totalMs;
+		for (int i = 0; i < SectionCount; ++i) sectionMs[i] = accumulator[i];
+	}
+}
+
 void dxStatsRender::OutData1(CGameFont& F)
 {
 	F.OutNext("VERT:        %d/%d", RCache.stat.verts, RCache.stat.calls ? RCache.stat.verts / RCache.stat.calls : 0);
 	F.OutNext("POLY:        %d/%d", RCache.stat.polys, RCache.stat.calls ? RCache.stat.polys / RCache.stat.calls : 0);
 	F.OutNext("DIP/DP:      %d", RCache.stat.calls);
+
+	F.OutNext("RENDER:      %5.1f ms  trv %.1f gbuf %.1f light %.1f comb %.1f other %.1f",
+		render_stats::frameMs, render_stats::sectionMs[render_stats::Traverse],
+		render_stats::sectionMs[render_stats::GBuffer], render_stats::sectionMs[render_stats::Lights],
+		render_stats::sectionMs[render_stats::Combine], render_stats::sectionMs[render_stats::Other]);
+	F.OutNext("             in combine: hud %.1f pp %.1f", render_stats::sectionMs[render_stats::HudSub],
+		render_stats::sectionMs[render_stats::PpSub]);
 
 	// What the upscaler is actually fed with: the scene extent and, when a
 	// magnifying optic raised it, the scope override. Equal sizes = no upscale.

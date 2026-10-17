@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "../xrRender/dxStatsRender.h"
 #include "r4_rendertarget.h"
 #include "../../xrEngine/customhud.h"
 
@@ -235,7 +236,11 @@ void CRenderTarget::phase_dlss_postprocess()
 
 void CRenderTarget::phase_pp()
 {
+	// The upscale/post-source pass is the part of the frame that differs most from
+	// the reference build, so it gets its own slice of the frame statistics.
+	const u64 statsPp = CPU::QPC();
 	phase_dlss_postprocess();
+	render_stats::Add(render_stats::PpSub, render_stats::MsSince(statsPp));
 	// combination/postprocess
 	u_setrt(Device.dwWidth, Device.dwHeight, HW.pBaseRT,NULL,NULL, HW.pBaseZB);
 	// Display-resolution pass: the scene left the viewport at the render size.

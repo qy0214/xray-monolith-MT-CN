@@ -10,6 +10,7 @@
 #include "../xrRender/QueryHelper.h"
 
 #include	"../xrRender/dxRenderDeviceRender.h"
+#include	"../xrRender/dxStatsRender.h"
 
 void CRender::render_menu()
 {
@@ -168,6 +169,12 @@ void CRender::Render()
 
 	//.	VERIFY					(g_pGameLevel && g_pGameLevel->pHUD);
 
+	// Frame statistics: a handful of QPC reads per frame, published for the stats
+	// overlay and the periodic log line. No GPU work and no allocations.
+	const u64 statsFrameStart = CPU::QPC();
+	u64 statsMark = statsFrameStart;
+	render_stats::BeginFrame();
+
 	dlss::BeginScene();
 	// Configure
 	RImplementation.o.distortion = FALSE; // disable distorion
@@ -224,6 +231,9 @@ void CRender::Render()
 		Target->u_setrt(RenderScreenWidth(), RenderScreenHeight(), NULL, NULL, NULL, !RImplementation.o.dx10_msaa ? Target->u_SceneDepth() : Target->rt_MSAADepth->pZRT);
 	}
 
+	render_stats::Add(render_stats::Traverse, render_stats::MsSince(statsMark));
+	statsMark = CPU::QPC();
+
 	//******* Main render :: PART-0	-- first
 	{
 		PIX_EVENT_C(DEFER_PART0_SPLIT, dx10_marker_gbuffer);
@@ -272,6 +282,9 @@ void CRender::Render()
 		if (Details) Details->Render();
 		Target->phase_scene_end();
 	}
+
+	render_stats::Add(render_stats::GBuffer, render_stats::MsSince(statsMark));
+	statsMark = CPU::QPC();
 
 	// Wall marks
 	if (Wallmarks)
@@ -410,6 +423,9 @@ void CRender::Render()
 
 	phase = PHASE_NORMAL;
 
+	render_stats::Add(render_stats::Lights, render_stats::MsSince(statsMark));
+	statsMark = CPU::QPC();
+
 	// Postprocess
 	{
 		PIX_EVENT_C(DEFER_LIGHT_COMBINE, dx10_marker_lights);
@@ -419,11 +435,37 @@ void CRender::Render()
 	if (Details)
 		Details->details_clear();
 
+	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
+	render_stats::Publish(render_stats::MsSince(statsFrameStart));
+
+	// Periodic statistics line: the same numbers as the rs_stats overlay, written
+	// to the log every few seconds so a session log carries them for analysis.
+	static u32 statsLastLog = 0;
+	if (Device.dwTimeGlobal - statsLastLog >= 5000)
+	{
+		statsLastLog = Device.dwTimeGlobal;
+		unsigned sceneW = 0, sceneH = 0, scopePct = 0;
+		RenderUpscalerStats(sceneW, sceneH, scopePct);
+		const float fps = Device.fTimeDelta > 0.f ? 1.f / Device.fTimeDelta : 0.f;
+		const float rfps = render_stats::frameMs > 0.f ? 1000.f / render_stats::frameMs : 0.f;
+		Msg("* [STATS] fps=%.1f rfps=%.1f render=%.1fms verts=%u/%u polys=%u/%u dips=%u | scene=%ux%u->%ux%u scope=%u pip=%d heat=%d nvg=%d | trv=%.1f gbuf=%.1f light=%.1f comb=%.1f (hud=%.1f pp=%.1f) other=%.1f",
+			fps, rfps, render_stats::frameMs,
+			RCache.stat.verts, RCache.stat.calls ? RCache.stat.verts / RCache.stat.calls : 0,
+			RCache.stat.polys, RCache.stat.calls ? RCache.stat.polys / RCache.stat.calls : 0,
+			RCache.stat.calls,
+			sceneW, sceneH, Device.dwWidth, Device.dwHeight, scopePct,
+			Device.m_SecondViewport.IsSVPActive() ? 1 : 0, ps_r2_heatvision, ps_r2_nightvision,
+			render_stats::sectionMs[render_stats::Traverse], render_stats::sectionMs[render_stats::GBuffer],
+			render_stats::sectionMs[render_stats::Lights], render_stats::sectionMs[render_stats::Combine],
+			render_stats::sectionMs[render_stats::HudSub], render_stats::sectionMs[render_stats::PpSub],
+			render_stats::sectionMs[render_stats::Other]);
+	}
 }
 #include "../xrRender/CHudInitializer.h"
 
 void CRender::render_forward()
 {
+	const u64 statsHud = CPU::QPC();
 	RImplementation.o.distortion = RImplementation.o.distortion_enabled; // enable distorion
 
 	//******* Main render - second order geometry (the one, that doesn't support deffering)
@@ -455,6 +497,7 @@ void CRender::render_forward()
 	}
 
 	RImplementation.o.distortion = FALSE; // disable distorion
+	render_stats::Add(render_stats::HudSub, render_stats::MsSince(statsHud));
 }
 
 // Redotix99: for 3D Shader Based Scopes
