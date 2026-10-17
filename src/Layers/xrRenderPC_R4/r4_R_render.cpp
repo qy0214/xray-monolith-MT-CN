@@ -316,7 +316,7 @@ void CRender::Render()
 	if (!Device.m_SecondViewport.IsSVPActive() && g_pGamePersistent
 		&& g_pGamePersistent->m_pGShaderConstants
 		&& g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x > 1.25f
-		&& (Device.dwFrame % 180) == 0)
+		&& (Device.dwFrame % 600) == 0)
 		Msg("* [PIP] magnified optic in use but the game reported no second viewport (IsSVPActive=0): the mod drives the lens itself, same-frame PiP is idle");
 	// PiP: from here on the renderer owns the lens view, so the game must stop
 	// alternating the camera (CSecondVPParams::IsSVPFrame) and the lens camera is
@@ -338,7 +338,9 @@ void CRender::Render()
 		if (viewCount == 2)
 		{
 			const bool lensPass = (view == 0);
-			(lensPass ? TargetSVP : TargetMain)->SetActive();
+			CRenderTarget* passTarget = lensPass ? TargetSVP : TargetMain;
+			if (passTarget)
+				passTarget->SetActive();
 			svpcam::Apply(lensPass ? svpcam::s_zoom : svpcam::s_main);
 			render_stats::SetSuppress(lensPass);
 		}
@@ -619,7 +621,7 @@ void CRender::Render()
 	render_stats::SetSuppress(false);
 
 	// PiP: the main set stays active for the rest of the frame (HUD, PP, UI)
-	if (viewCount == 2 && Target != TargetMain)
+	if (viewCount == 2 && TargetMain && Target != TargetMain)
 		TargetMain->SetActive(true);
 
 	render_stats::Publish(render_stats::MsSince(statsFrameStart));

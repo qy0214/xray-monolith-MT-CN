@@ -544,25 +544,14 @@ void CRender::create()
 		float(double(CPU::QPC() - rtCreateStart) * 1000.0 / double(CPU::qpc_freq)),
 		dlss::RenderWidth(), dlss::RenderHeight(), Device.dwWidth, Device.dwHeight);
 
-	// PiP (T3 #6): detect the pack's PiP lens shader once. It samples $user$viewport2,
-	// the plain 3DSS one does not; everything PiP-side (wide main view, second view for
-	// every magnifying optic) stays off when the module is not in use.
+	// PiP (T3 #6): the pack's PiP module ships mod_system_pip_scope_policy.ltx with its
+	// optics policy. Detect it by that stable config file rather than scanning compiled
+	// shader text: a shader recompile cannot invalidate a file existence test.
 	{
-		bool detected = false;
-		IReader* R = FS.r_open("$game_shaders$", "r3\\models_scope_reticle.s");
-		if (!R)
-			R = FS.r_open("$game_shaders$", "r4\\models_scope_reticle.s");
-		if (R)
-		{
-			char buf[4096];
-			const size_t n = R->length() < sizeof(buf) - 1 ? R->length() : sizeof(buf) - 1;
-			CopyMemory(buf, R->pointer(), n);
-			buf[n] = 0;
-			detected = strstr(buf, "viewport2") != nullptr;
-			FS.r_close(R);
-		}
-		Device.m_SecondViewport.pip_lens_shaders = detected;
-		Msg("* [PIP] pack PiP lens shaders %s", detected ? "detected" : "not in use");
+		string_path marker;
+		Device.m_SecondViewport.pip_lens_shaders =
+			FS.exist(marker, "$game_config$", "mod_system_pip_scope_policy.ltx") != nullptr;
+		Msg("* [PIP] pack PiP optics policy %s", Device.m_SecondViewport.pip_lens_shaders ? "detected" : "not in use");
 	}
 
 	Models = xr_new<CModelPool>();
