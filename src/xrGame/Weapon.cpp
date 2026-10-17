@@ -3375,9 +3375,20 @@ void CWeapon::UpdateSecondVP()
 	// stayed idle, leaving the lens black.
 	if (IsScopeAttached() || m_zoomtype == 0)
 	{
-		float lensFov = READ_IF_EXISTS(pSettings, r_float, cNameSect(), "scope_lense_fov", 0.0f);
+		// Null-safe lookups: CInifile::section_exist/line_exist crash on an empty name,
+		// and integrated-scope weapons have no separate scope item at all.
+		float lensFov = 0.0f;
+		shared_str sect = cNameSect();
+		if (sect.size() && pSettings->section_exist(*sect) && pSettings->line_exist(*sect, "scope_lense_fov"))
+			lensFov = pSettings->r_float(*sect, "scope_lense_fov");
+
 		if (lensFov <= 0.005f && IsScopeAttached())
-			lensFov = READ_IF_EXISTS(pSettings, r_float, GetScopeName(), "scope_lense_fov", 0.0f);
+		{
+			shared_str scope = GetScopeName();
+			if (scope.size() && pSettings->section_exist(*scope) && pSettings->line_exist(*scope, "scope_lense_fov"))
+				lensFov = pSettings->r_float(*scope, "scope_lense_fov");
+		}
+
 		if (lensFov > 0.005f)
 			m_zoom_params.m_fSecondVPFovFactor = lensFov;
 	}
