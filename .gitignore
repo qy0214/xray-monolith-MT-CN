@@ -41,4 +41,6 @@ compressor/gamedata.db0
 \#*\#
 *~
 
-__pycache__/src/tests/build/
+__pycache__/
+src/tests/build/
+
