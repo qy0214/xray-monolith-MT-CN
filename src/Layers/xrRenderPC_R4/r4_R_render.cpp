@@ -289,10 +289,12 @@ void CRender::Render()
 
 	// PiP (T3 #6): the second target set must exist before the scope-resolution
 	// decision below, which retires the override while that set handles the lens
-	// Only when the same-frame lens is actually enabled: creating the second set also
-	// retires the scope-resolution override below, so it must not exist while the path is
-	// parked (that oversight was why the lens still went black after parking).
-	if (SVP_SAME_FRAME_READY && compat::r__svp_same_frame && Device.m_SecondViewport.IsSVPActive())
+	// Create the lens set from the optic FACTS, never from the evaluated state: the state
+	// requires the set to exist (target_set_ready) while the set used to be created only
+	// once the state was already true, so nothing ever happened. The evaluated state is
+	// what turns the lens pass on afterwards.
+	if (SVP_SAME_FRAME_READY && compat::r__svp_same_frame && Device.m_SecondViewport.pip_lens_shaders
+		&& Device.m_SecondViewport.svp_optic_magnifies && Device.m_SecondViewport.svp_lens_fov > 1.0f)
 		EnsureTargetSVP();
 
 	// Scope-aware internal resolution: a rebuild here skips this frame, so the new
@@ -339,14 +341,12 @@ void CRender::Render()
 
 	const bool pipOn = SVP_SAME_FRAME_READY && Device.m_SecondViewport.svp_scope.lens_rendered;
 
-	// PiP diagnostic (throttled): a magnifying optic with no second viewport means the
-	// mod is driving the lens itself, i.e. the engine-side same-frame path is idle and
-	// $user$viewport2 will only be filled by the legacy swapchain copy
-	if (!Device.m_SecondViewport.IsSVPActive() && g_pGamePersistent
-		&& g_pGamePersistent->m_pGShaderConstants
-		&& g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x > 1.25f
-		&& (Device.dwFrame % 600) == 0)
-		Msg("* [PIP] magnified optic in use but the game reported no second viewport (IsSVPActive=0): the mod drives the lens itself, same-frame PiP is idle");
+	// PiP diagnostic (throttled): an optic the pack covers, but no second target set -
+	// either its creation failed or the path is disabled. This is the failure the lens
+	// going black used to hide behind.
+	if (Device.m_SecondViewport.pip_lens_shaders && Device.m_SecondViewport.svp_optic_magnifies
+		&& Device.m_SecondViewport.svp_lens_fov > 1.0f && TargetSVP == nullptr && (Device.dwFrame % 600) == 0)
+		Msg("* [PIP] optic is PiP capable but the second target set is missing (creation failed or path disabled)");
 	// PiP: from here on the renderer owns the lens view (the game alternation and the
 	// game side flags are already derived from the state evaluated above)
 	if (pipOn && TargetSVP)
