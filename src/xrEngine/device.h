@@ -162,27 +162,34 @@ public:
 		// the whole screen (main view included) and cost a frame of lag.
 		bool true_pip_same_frame = false;
 
-		// PiP: the active optic's lens FOV in degrees (0 = unknown). The game publishes
-		// it from the optic's "scope_lense_fov" (Weapon.cpp), and the renderer turns it
-		// into the lens magnification with the modpack's own formula (65 / fov).
+		// --- PiP second viewport ------------------------------------------------
+		// Threading contract (kept explicit because the game and the renderer run on
+		// different threads):
+		//   game thread  -> writes svp_lens_fov / calls SetSVPActive once per frame from
+		//                   CWeapon::UpdateSecondVP, and reads svp_scope (which the
+		//                   renderer published on the previous frame)
+		//   render thread -> reads those inputs exactly once per frame into locals
+		//                   (CRender::Render), evaluates svp_scope from them and writes
+		//                   the flags below; it is the only writer of m_render_pass_is_svp
+		// Every field is a single aligned scalar, so each side reads/writes it once per
+		// frame and no torn value can be observed. Do not add fields that are mutated
+		// from both sides.
+
+		// Active optic lens FOV in degrees (0 = unknown), published by the game.
 		float svp_lens_fov = 0.f;
 		IC void SetSVPLensFov(float fov) { svp_lens_fov = fov; }
 
-		// PiP: true when the pack's PiP module provides the lens shaders (they sample
-		// $user$viewport2). Detected once at startup, so with the module disabled the
-		// engine keeps the plain 3DSS behaviour untouched.
+		// Pack PiP module detected once at startup; everything PiP side stays off when
+		// it is not installed, so plain 3DSS keeps its own look untouched.
 		bool pip_lens_shaders = false;
 
-		// PiP: true on frames where the renderer really drew the lens into the second
-		// target set. The game side (wide main view, mouse sensitivity) must key off
-		// this and not off IsSVPActive(), otherwise a frame where the lens is not
-		// rendered would drop the main view's zoom with nothing to replace it.
+		// Derived view of svp_scope.lens_rendered, kept for the game-side readers
+		// (wide main view, aim sensitivity): only a frame that really drew the lens may
+		// take the zoom away from the main view or change the mouse ratio.
 		bool true_pip_rendering = false;
 
-		// C1: the one evaluated second-viewport state for the current frame. The
-		// renderer evaluates it once (xrCore/svp_scope_state.h) and every consumer -
-		// lens pass, wide main view, aim sensitivity, upscaler pass flags - reads this
-		// instead of carrying its own copy of the rules.
+		// Single evaluated state for this frame (see xrCore/svp_scope_state.h). The
+		// renderer writes it; the game side reads the previous frame's value.
 		SvpScopeState svp_scope;
 
 		IC bool IsSVPActive() { return isActive; }

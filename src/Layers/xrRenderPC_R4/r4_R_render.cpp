@@ -309,13 +309,14 @@ void CRender::Render()
 
 	svp_lens_rendered = false;
 
-	// C1: a single evaluation drives the whole PiP chain for this frame. The flags the
-	// subsystems read are derived views of it, not independent decisions - that drift
-	// is what let the lens pass, the wide main view and the mouse sensitivity disagree.
+	// C1/C2: the renderer reads the game published inputs exactly once per frame and
+	// evaluates the one state everything else derives from. Reading them again later in
+	// the frame would race with the game thread, which publishes them once per frame.
 	{
+		const float lensFov = Device.m_SecondViewport.svp_lens_fov;
+		const bool svpActive = Device.m_SecondViewport.IsSVPActive();
 		const SvpScopeInputs svpIn = svp_make_inputs(Device.m_SecondViewport.pip_lens_shaders,
-			compat::r__svp_same_frame != 0, Device.m_SecondViewport.IsSVPActive(),
-			Device.m_SecondViewport.svp_lens_fov > 1.0f, TargetSVP != nullptr);
+			compat::r__svp_same_frame != 0, svpActive, lensFov > 1.0f, TargetSVP != nullptr);
 		Device.m_SecondViewport.svp_scope = svp_evaluate_scope(svpIn);
 	}
 
@@ -631,9 +632,15 @@ void CRender::Render()
 
 	render_stats::SetSuppress(false);
 
-	// PiP: the main set stays active for the rest of the frame (HUD, PP, UI)
+	// PiP: the main set stays active for the rest of the frame (HUD, PP, UI). Reaching
+	// this with the lens still active would mean the frame ended on the second set and
+	// every display-sized consumer would have seen the lens extent - that is a state
+	// leak, so say so instead of silently restoring (the main pass is always last).
 	if (viewCount == 2 && TargetMain && Target != TargetMain)
+	{
 		TargetMain->SetActive(true);
+		Msg("! [PIP] frame ended on the lens target set; main set restored (state leak)");
+	}
 
 	render_stats::Publish(render_stats::MsSince(statsFrameStart));
 }

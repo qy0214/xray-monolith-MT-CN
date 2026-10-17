@@ -463,6 +463,11 @@ void generate_jitter(DWORD* dest, u32 elem_count)
 // The stock $user$* texture objects are shared by name (the resource manager is a
 // name-keyed dedup map), so switching sets is one surface_set per remap entry; the
 // bind cache keys on texture identity, so it must be invalidated first.
+//
+// This writes engine/render globals (HW base views, Device dimensions/aspect, the
+// viewport) - that is the frame context of the whole pipeline, which is why the caller
+// must always finish the frame on the main set: CRender::Render orders the lens pass
+// first, the main pass last, and reports a leak if that order is ever broken.
 void CRenderTarget::SetActive(bool force)
 {
 	if (m_is_main_target)
