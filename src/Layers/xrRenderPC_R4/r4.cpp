@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "r4.h"
+#include "../../xrCore/mt_build.h"
 #include "../xrRender/fbasicvisual.h"
 #include "../../xrEngine/xr_object.h"
 #include "../../xrEngine/CustomHUD.h"
@@ -554,7 +555,27 @@ void CRender::create()
 		Msg("* [PIP] pack PiP optics policy %s", Device.m_SecondViewport.pip_lens_shaders ? "detected" : "not in use");
 	}
 
-	Msg("* [MT-CN] engine build %s %s, same-frame PiP path %s", __DATE__, __TIME__, SvpSameFramePathEnabled() ? "ENABLED" : "parked");
+	// Build identity, and it has to be reproducible from the outside: the compiled
+	// __DATE__/__TIME__ strings go stale whenever an incremental build leaves this
+	// translation unit alone, so they cannot answer "which payload am I running". The
+	// loaded module's own file time and size are read from the mounted exe (MO2 mounts
+	// MODS\MT-CN\bin over bin), which is exactly what the deployment step replaces, and
+	// MT_PIP_BUILD is bumped in the commit that changes the PiP path.
+	{
+		u64 exeTime = 0, exeSize = 0;
+		wchar_t exePath[MAX_PATH] = {};
+		if (GetModuleFileNameW(nullptr, exePath, MAX_PATH))
+		{
+			WIN32_FILE_ATTRIBUTE_DATA fad = {};
+			if (GetFileAttributesExW(exePath, GetFileExInfoStandard, &fad))
+			{
+				exeSize = (u64(fad.nFileSizeHigh) << 32) | u64(fad.nFileSizeLow);
+				exeTime = (u64(fad.ftLastWriteTime.dwHighDateTime) << 32) | u64(fad.ftLastWriteTime.dwLowDateTime);
+			}
+		}
+		Msg("* [MT-CN] engine build %s %s pipBuild=%d exeTime=%llu exeSize=%llu, same-frame PiP path %s",
+			__DATE__, __TIME__, MT_PIP_BUILD, exeTime, exeSize, SvpSameFramePathEnabled() ? "ENABLED" : "parked");
+	}
 	Models = xr_new<CModelPool>();
 	PSLibrary.OnCreate();
 	HWOCC.occq_create(occq_size);

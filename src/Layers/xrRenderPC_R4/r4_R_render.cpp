@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "../../xrCore/mt_build.h"
 #include "../../xrEngine/igame_persistent.h"
 #include "../xrRender/FBasicVisual.h"
 #include "../xrRender/UpscalerCompat.h"
@@ -137,6 +138,11 @@ namespace svpcam
 
 	View s_main, s_zoom;
 
+	// Magnification actually applied to the lens camera by the last DeriveZoom() call.
+	// Logged with the lens probe so a wrong lens image can be attributed to the camera
+	// derivation instead of being guessed at.
+	float s_lastMag = 0.f;
+
 	void Capture(View& v)
 	{
 		v.mView.set(Device.mView);
@@ -190,6 +196,7 @@ namespace svpcam
 				z.mProject._22 *= mag;
 				z.mFullTransform.mul(z.mView, z.mProject);
 			}
+			s_lastMag = mag;
 			z.valid = true;
 			return;
 		}
@@ -207,8 +214,92 @@ namespace svpcam
 			z.mProject._22 *= mag;
 			z.mFullTransform.mul(z.mView, z.mProject);
 		}
+		s_lastMag = mag;
 		z.valid = true;
 	}
+}
+
+// PiP lens content probe (diagnostic, throttled): reads back a 16x16 block from the centre
+// of the second view's scene result and of the texture the lens material actually samples.
+// A black lens has three very different causes and the log must separate them:
+//   source black             -> the second view rendered nothing (camera, culling, combine)
+//   source good, dst black   -> the blit did not land (format or size mismatch) or the
+//                               destination is not the surface the shader resolves
+//   both good                -> the content path is fine and the disagreement is on the
+//                               shader side (scope_svp, motion, sampling)
+static void svp_probe_rt(LPCSTR tag, ref_rt& rt)
+{
+	if (!rt || !rt->pTexture)
+	{
+		Msg("* [PIP] probe %s: no texture", tag);
+		return;
+	}
+
+	ID3D11Resource* res = rt->pTexture->surface_get();
+	if (!res)
+	{
+		Msg("* [PIP] probe %s: no surface", tag);
+		return;
+	}
+
+	ID3D11Texture2D* tex = nullptr;
+	if (FAILED(res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex)) || !tex)
+	{
+		Msg("* [PIP] probe %s: not a 2D texture", tag);
+		_RELEASE(res);
+		return;
+	}
+
+	D3D11_TEXTURE2D_DESC d = {};
+	tex->GetDesc(&d);
+
+	D3D11_TEXTURE2D_DESC s = d;
+	s.Usage = D3D11_USAGE_STAGING;
+	s.BindFlags = 0;
+	s.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+	s.MiscFlags = 0;
+	s.ArraySize = 1;
+	s.MipLevels = 1;
+	s.SampleDesc.Count = 1;
+	s.SampleDesc.Quality = 0;
+
+	ID3D11Texture2D* stg = nullptr;
+	if (FAILED(HW.pDevice->CreateTexture2D(&s, nullptr, &stg)) || !stg)
+	{
+		Msg("* [PIP] probe %s: staging failed fmt=%u %ux%u", tag, d.Format, d.Width, d.Height);
+		_RELEASE(tex);
+		_RELEASE(res);
+		return;
+	}
+
+	HW.pContext->CopyResource(stg, tex);
+
+	D3D11_MAPPED_SUBRESOURCE m = {};
+	if (SUCCEEDED(HW.pContext->Map(stg, 0, D3D11_MAP_READ, 0, &m)))
+	{
+		const u32 bpp = (d.Format == DXGI_FORMAT_R16G16B16A16_FLOAT) ? 8u : 4u;
+		const u32 cx = d.Width / 2, cy = d.Height / 2;
+		u64 sum[4] = { 0, 0, 0, 0 };
+		u32 n = 0;
+		for (u32 y = cy - 8; y < cy + 8; ++y)
+			for (u32 x = cx - 8; x < cx + 8; ++x)
+			{
+				const u8* p = (const u8*)m.pData + size_t(y) * m.RowPitch + size_t(x) * bpp;
+				for (int i = 0; i < 4; ++i) sum[i] += p[i];
+				++n;
+			}
+		Msg("* [PIP] probe %s: fmt=%u %ux%u centre b=%u g=%u r=%u a=%u", tag, d.Format, d.Width, d.Height,
+			u32(sum[0] / n), u32(sum[1] / n), u32(sum[2] / n), u32(sum[3] / n));
+		HW.pContext->Unmap(stg, 0);
+	}
+	else
+	{
+		Msg("* [PIP] probe %s: map failed", tag);
+	}
+
+	_RELEASE(stg);
+	_RELEASE(tex);
+	_RELEASE(res);
 }
 
 // PiP (T3 #6): parked at file scope so the early second-viewport allocation gate can see
@@ -339,8 +430,9 @@ void CRender::Render()
 	// a single round - whether the lens rendered, whether the set exists, the kill switch
 	// and the resolved lens FOV.
 	if (Device.m_SecondViewport.svp_optic_magnifies && (Device.dwFrame % 300) == 0)
-		Msg("* [PIP] state lens=%d target=%d switch=%d lensFov=%.3f",
-			Device.m_SecondViewport.svp_scope.lens_rendered ? 1 : 0, TargetSVP ? 1 : 0,
+		Msg("* [PIP] state build=%d lens=%d pub=%d target=%d switch=%d lensFov=%.3f",
+			MT_PIP_BUILD, Device.m_SecondViewport.svp_scope.lens_rendered ? 1 : 0,
+			svp_lens_rendered ? 1 : 0, TargetSVP ? 1 : 0,
 			compat::r__svp_same_frame, Device.m_SecondViewport.svp_lens_fov);
 
 	Device.true_pip_on = Device.m_SecondViewport.svp_scope.lens_rendered;
@@ -639,8 +731,7 @@ void CRender::Render()
 	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
 		if (viewCount == 2 && view == 0 && TargetSVP && TargetSVP->rt_Generic_0)
 		{
-			// Publish the lens pass's scene result where the lens material really samples
-			// it. Two facts fix the naming here (r4_rendertarget.cpp):
+			// Publish the lens pass's scene result where the lens material really samples			// it. Two facts fix the naming here (r4_rendertarget.cpp):
 			//  - createUnique() suffixes every second set RT with the set name, so
 			//    TargetSVP->rt_secondVP is "$user$viewport2$<set>" - a texture no shader
 			//    reads, writing into it is what kept the lens black;
@@ -659,6 +750,21 @@ void CRender::Render()
 					HW.pContext->CopyResource(lensDst->rt_secondVP->pSurface, lensSrc);
 					_RELEASE(lensSrc);
 					svp_lens_rendered = true;
+
+					// Throttled content probe (see svp_probe_rt): one readback tells us
+					// whether the second view rendered anything and whether the blit
+					// landed in the texture the lens material resolves.
+					static u32 s_lensProbe_at = 0;
+					if (Device.dwFrame >= s_lensProbe_at)
+					{
+						s_lensProbe_at = Device.dwFrame + 240;
+						Msg("* [PIP] lens mag=%.3f fFOV=%.3f lensFov=%.3f hdr10=%d sameSurface=%d",
+							svpcam::s_lastMag, Device.fFOV, Device.m_SecondViewport.svp_lens_fov,
+							RImplementation.o.dx11_hdr10 ? 1 : 0,
+							(TargetSVP->rt_Generic_0->pSurface == lensDst->rt_secondVP->pSurface) ? 1 : 0);
+						svp_probe_rt("src(2ndView generic0)", TargetSVP->rt_Generic_0);
+						svp_probe_rt("dst($user$viewport2)", lensDst->rt_secondVP);
+					}
 				}
 			}
 		}
