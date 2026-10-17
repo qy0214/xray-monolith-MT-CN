@@ -85,6 +85,10 @@ void CLevel::g_cl_Spawn(LPCSTR name, u8 rp, u16 flags, Fvector pos)
 #	include "ai_debug.h"
 #endif // DEBUG
 
+// Spawn antifreeze: per-frame cap on how many queued entities are fully spawned,
+// so a burst (level load, population spawn) is spread over frames. 0 = no cap.
+int psSpawnAntifreezeMaxPerFrame = 8;
+
 void CLevel::g_sv_Spawn(CSE_Abstract* E)
 {
 #ifdef DEBUG_MEMORY_MANAGER
@@ -269,8 +273,26 @@ CSE_Abstract* CLevel::spawn_item(LPCSTR section, const Fvector& position, u32 le
 
 void CLevel::ProcessGameSpawns()
 {
-	while (!game_spawn_queue.empty())
+	// Spawn antifreeze: consume at most spawn_antifreeze_max_per_frame entities this
+	// frame and leave the rest in game_spawn_queue for later frames. The queue is the
+	// engine's own deferral path, so nothing is lost and no item is re-queued inside
+	// the drain loop. Critical spawns that call g_sv_Spawn directly are unaffected.
+	u32 budget = u32(-1);
+	if (psSpawnAntifreezeMaxPerFrame > 0)
 	{
+		if (Device.dwFrame != m_spawn_antifreeze_frame)
+		{
+			m_spawn_antifreeze_frame = Device.dwFrame;
+			m_spawn_antifreeze_count = 0;
+		}
+		const u32 cap = u32(psSpawnAntifreezeMaxPerFrame);
+		budget = (m_spawn_antifreeze_count < cap) ? (cap - m_spawn_antifreeze_count) : 0;
+		m_spawn_antifreeze_count += budget;
+	}
+
+	while (!game_spawn_queue.empty() && budget > 0)
+	{
+		--budget;
 		CSE_Abstract* E = game_spawn_queue.front();
 
 		g_sv_Spawn(E);

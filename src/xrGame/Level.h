@@ -169,6 +169,12 @@ public:
 	bool game_configured = false;
 	NET_Queue_Event* game_events = nullptr;
 	xr_deque<CSE_Abstract*> game_spawn_queue;
+
+	// Spawn antifreeze: entities spawned this frame and the frame the counter belongs
+	// to. ProcessGameSpawns() stops draining game_spawn_queue once the per-frame cap
+	// is reached, so the rest spawn on later frames (see spawn_antifreeze_max_per_frame).
+	u32 m_spawn_antifreeze_frame = u32(-1);
+	u32 m_spawn_antifreeze_count = 0;
 	xrServer* Server = nullptr;
 	GlobalFeelTouch m_feel_deny;
 	CZoneList* hud_zones_list = nullptr;

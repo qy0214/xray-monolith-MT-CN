@@ -75,7 +75,6 @@ namespace compat
 	extern int		mt_load_spawn_decode;
 	extern int		load_defer_full_lua_gc;
 	extern int		load_world_warmup_ms;
-	extern int		spawn_antifreeze_max_per_frame;
 	// Lua GC tuning page.
 	extern int		lua_parallel_gc_adaptive;
 	extern int		lua_parallel_gc_budget_us;

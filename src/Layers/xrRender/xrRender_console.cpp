@@ -1387,7 +1387,6 @@ namespace compat
 	int		mt_load_spawn_decode = 1;
 	int		load_defer_full_lua_gc = 1;
 	int		load_world_warmup_ms = 0;
-	int		spawn_antifreeze_max_per_frame = 8;
 
 	int		lua_parallel_gc_adaptive = 1;
 	int		lua_parallel_gc_budget_us = 2000;
@@ -1472,7 +1471,6 @@ namespace compat
 		CMD4(CCC_Integer, "mt_load_spawn_decode", &mt_load_spawn_decode, 0, 2);
 		CMD4(CCC_Integer, "load_defer_full_lua_gc", &load_defer_full_lua_gc, 0, 2);
 		CMD4(CCC_Integer, "load_world_warmup_ms", &load_world_warmup_ms, 0, 2000000000);
-		CMD4(CCC_Integer, "spawn_antifreeze_max_per_frame", &spawn_antifreeze_max_per_frame, 0, 1000000);
 
 		CMD4(CCC_Integer, "lua_parallel_gc_adaptive", &lua_parallel_gc_adaptive, 0, 2);
 		CMD4(CCC_Integer, "lua_parallel_gc_budget_us", &lua_parallel_gc_budget_us, 0, 2000000000);

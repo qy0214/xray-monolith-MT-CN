@@ -87,6 +87,7 @@ extern float g_step_particle_distance;
 
 // Lua
 extern int psLUA_GCSTEP;
+extern int psSpawnAntifreezeMaxPerFrame;
 extern int psLua_ParallelGCStep;
 extern int psLua_ParallelGC_CallAmount;
 extern BOOL psLua_ParallelGC_debug;
@@ -2751,6 +2752,8 @@ void CCC_RegisterCommands()
 
     // Moved lua_gcstep outside of DEBUG to allow for easier experimentation.
 	CMD4(CCC_Integer, "lua_gcstep", &psLUA_GCSTEP, 1, 1000);
+	// Spawn antifreeze: spread a spawn burst over frames (0 = no cap, the default).
+	CMD4(CCC_Integer, "spawn_antifreeze_max_per_frame", &psSpawnAntifreezeMaxPerFrame, 0, 1000000);
 
 	// demonized: GC step that is used for repeated calls on second thread while frame is rendering, limit to small values
 	CMD4(CCC_Integer, "lua_parallel_gcstep", &psLua_ParallelGCStep, 1, 100);
