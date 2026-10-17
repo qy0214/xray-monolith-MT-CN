@@ -44,6 +44,12 @@ namespace compat
 	// engine-owned: 1 while the current ADS is a PiP (second viewport) ADS.
 	extern int		scope_lense_ads_is_pip;
 
+	// PiP (T3 #6) same-frame lens: 1 (default) renders the second viewport into the
+	// second target set inside the main frame; 0 restores the legacy behaviour
+	// (scope frame rendered to the swapchain, copied into $user$viewport2, Present
+	// skipped). Kept as the switch to fall back to if the lens misbehaves.
+	extern int		r__svp_same_frame;
+
 	// --- flora/season style (modpack runtime seasons) and its snow options.
 	// anthology_flora_style (bound in Blender_Recorder) is what the pack's terrain
 	// and snow wallmark shaders read; the r4_snow_* values drive the pack's MCM

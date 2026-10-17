@@ -28,6 +28,9 @@ namespace render_stats
 	void BeginFrame();
 	void Add(Section section, float ms);
 	void Publish(float totalMs);
+	// PiP (T3 #6): the second-viewport pass is part of the same frame but must not
+	// feed the frame's numbers (otherwise every section doubles while aiming).
+	void SetSuppress(bool on);
 }
 
 class dxStatsRender : public IStatsRender

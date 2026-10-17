@@ -1402,6 +1402,7 @@ namespace compat
 	int		scope_lense_head_thermal_active = 0;
 
 	int		r__menu_framelimit = 0;
+	int		r__svp_same_frame = 1;	// PiP (T3 #6): same-frame lens on by default
 	float	r__npc_torch_dynamic_distance = 30.0f;
 
 	int		session_start = 0;
@@ -1486,6 +1487,7 @@ namespace compat
 		CMD4(CCC_Integer, "scope_lense_head_thermal_active", &scope_lense_head_thermal_active, 0, 1);
 
 		CMD4(CCC_Integer, "r__menu_framelimit", &r__menu_framelimit, 0, 1000);
+		CMD4(CCC_Integer, "r__svp_same_frame", &r__svp_same_frame, 0, 1);
 		CMD4(CCC_Float, "r__npc_torch_dynamic_distance", &r__npc_torch_dynamic_distance, 0.0f, 10000.0f);
 
 		CMD4(CCC_Integer, "session_start", &session_start, 0, 2000000000);

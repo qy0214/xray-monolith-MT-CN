@@ -81,7 +81,7 @@ static bool ScopeResolutionRequested()
 	// has nothing left to buy - the scope frame renders at that set's own extent.
 	// It stays as the fallback for when the set could not be created (out of VRAM)
 	// and for the pure screen-space magnification cases below.
-	if (RImplementation.TargetSVP && Device.m_SecondViewport.IsSVPActive())
+	if (compat::r__svp_same_frame && RImplementation.TargetSVP && Device.m_SecondViewport.IsSVPActive())
 		return false;
 
 	const float zoom = g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x;
@@ -120,6 +120,54 @@ static bool UpdateScopeResolution()
 }
 
 extern u32 g_r;
+
+// PiP (T3 #6): the game alternates the camera per frame (the SVP frame carries the
+// zoomed one), so the renderer keeps a copy of both cameras instead of deriving the
+// optics zoom itself, and applies whichever one a pass needs.
+namespace svpcam
+{
+	struct View
+	{
+		Fmatrix mView, mProject, mProjectHud, mFullTransform, mInvView;
+		Fvector4 hudFov;
+		bool valid;
+
+		View() : valid(false) { hudFov.set(0.f, 0.f, 0.f, 0.f); }
+	};
+
+	View s_main, s_zoom;
+
+	void Capture(View& v)
+	{
+		v.mView.set(Device.mView);
+		v.mProject.set(Device.mProject);
+		v.mProjectHud.set(Device.mProjectHud);
+		v.mFullTransform.set(Device.mFullTransform);
+		v.mInvView.set(Device.mInvView);
+		if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
+			v.hudFov.set(g_pGamePersistent->m_pGShaderConstants->hud_fov_params);
+		v.valid = true;
+	}
+
+	bool Ready() { return s_main.valid && s_zoom.valid; }
+
+	void Apply(const View& v)
+	{
+		if (!v.valid)
+			return;
+
+		Device.mView.set(v.mView);
+		Device.mProject.set(v.mProject);
+		Device.mProjectHud.set(v.mProjectHud);
+		Device.mFullTransform.set(v.mFullTransform);
+		Device.mInvView.set(v.mInvView);
+		if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
+			g_pGamePersistent->m_pGShaderConstants->hud_fov_params.set(v.hudFov);
+
+		RCache.set_xform_view(Device.mView);
+		RCache.set_xform_project(Device.mProject);
+	}
+}
 
 void CRender::Render()
 {
@@ -186,7 +234,7 @@ void CRender::Render()
 
 	// PiP (T3 #6): the second target set must exist before the scope-resolution
 	// decision below, which retires the override while that set handles the lens
-	if (Device.m_SecondViewport.IsSVPActive())
+	if (compat::r__svp_same_frame && Device.m_SecondViewport.IsSVPActive())
 		EnsureTargetSVP();
 
 	// Scope-aware internal resolution: a rebuild here skips this frame, so the new
@@ -205,19 +253,30 @@ void CRender::Render()
 	u64 statsMark = statsFrameStart;
 	render_stats::BeginFrame();
 
-	// PiP (T3 #6): on a scope frame the game has set the zoomed camera. Render that
-	// frame into the small second target set instead of copying the swapchain: the
-	// set's own $user$viewport2 then holds the lens image at that set's resolution,
-	// and Device.dw*/RenderScreenWidth follow the smaller extent for this pass.
-	const bool lensFrame = Device.m_SecondViewport.IsSVPActive() && Device.m_SecondViewport.IsSVPFrame();
-	if (lensFrame)
+	// PiP (T3 #6): the game alternates the camera per frame (IsSVPFrame() carries the
+	// zoomed one), so keep a copy of both cameras and draw the lens view and the
+	// normal view in the same frame, one pass each. The lens is then current, unlike
+	// the legacy scheme which copied the swapchain and skipped Present.
+	const bool pipOn = compat::r__svp_same_frame && Device.m_SecondViewport.IsSVPActive();
+	if (pipOn)
 	{
-		EnsureTargetSVP();
-		if (TargetSVP)
-			TargetSVP->SetActive();
+		svpcam::Capture(Device.m_SecondViewport.IsSVPFrame() ? svpcam::s_zoom : svpcam::s_main);
+		if (!svpcam::Ready())
+			return;	// one frame to learn both cameras (the backbuffer simply repeats)
 	}
 
 	dlss::BeginScene();
+
+	const int viewCount = pipOn ? 2 : 1;
+	for (int view = 0; view < viewCount; ++view)
+	{
+		if (viewCount == 2)
+		{
+			const bool lensPass = (view == 0);
+			(lensPass ? TargetSVP : TargetMain)->SetActive();
+			svpcam::Apply(lensPass ? svpcam::s_zoom : svpcam::s_main);
+			render_stats::SetSuppress(lensPass);
+		}
 	// Configure
 	RImplementation.o.distortion = FALSE; // disable distorion
 	Fcolor sun_color = ((light*)Lights.sun_adapted._get())->color;
@@ -477,11 +536,15 @@ void CRender::Render()
 	if (Details)
 		Details->details_clear();
 
-	// PiP: back to the main set for the rest of the frame (HUD, post-process, UI)
-	if (lensFrame && TargetMain)
+	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
+	}	// end of the per-view loop
+
+	render_stats::SetSuppress(false);
+
+	// PiP: the main set stays active for the rest of the frame (HUD, PP, UI)
+	if (viewCount == 2 && Target != TargetMain)
 		TargetMain->SetActive(true);
 
-	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
 	render_stats::Publish(render_stats::MsSince(statsFrameStart));
 }
 #include "../xrRender/CHudInitializer.h"
@@ -545,10 +608,13 @@ void CRender::RenderToTarget(RRT target)
 		RT = &(TargetMain ? TargetMain : Target)->rt_ui_pda;
 		break;
 	case rtSVP:
-		// PiP (T3 #6): the second viewport is no longer copied out of the swapchain -
-		// the scene renders into the second target set (see CRender::Render) and
-		// $user$viewport2 points at that set's rt_secondVP
-		return;
+		// PiP (T3 #6): with the same-frame lens the scene renders into the second
+		// target set and $user$viewport2 points at that set's rt_secondVP, so there
+		// is nothing to copy; the legacy path still needs the swapchain copy
+		if (compat::r__svp_same_frame)
+			return;
+		RT = &(TargetMain ? TargetMain : Target)->rt_secondVP;
+		break;
 	default:
 		Debug.fatal(DEBUG_INFO, "None or wrong Target specified: %i", target);
 		break;

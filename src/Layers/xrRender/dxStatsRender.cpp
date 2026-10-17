@@ -15,6 +15,7 @@ namespace render_stats
 	float sectionMs[SectionCount] = {};
 	float frameMs = 0.f;
 	static float accumulator[SectionCount] = {};
+	static bool s_suppress = false;
 
 	float MsSince(u64 start)
 	{
@@ -26,13 +27,20 @@ namespace render_stats
 		for (int i = 0; i < SectionCount; ++i) accumulator[i] = 0.f;
 	}
 
+	void SetSuppress(bool on)
+	{
+		s_suppress = on;
+	}
+
 	void Add(Section section, float ms)
 	{
+		if (s_suppress) return;
 		accumulator[section] += ms;
 	}
 
 	void Publish(float totalMs)
 	{
+		if (s_suppress) return;
 		// HudSub and PpSub are already inside Combine, so they stay informational
 		// and only the top level sections feed the remainder.
 		float known = 0.f;
