@@ -161,6 +161,12 @@ public:
 		// the whole screen (main view included) and cost a frame of lag.
 		bool true_pip_same_frame = false;
 
+		// PiP: the active optic's lens FOV in degrees (0 = unknown). The game publishes
+		// it from the optic's "scope_lense_fov" (Weapon.cpp), and the renderer turns it
+		// into the lens magnification with the modpack's own formula (65 / fov).
+		float svp_lens_fov = 0.f;
+		IC void SetSVPLensFov(float fov) { svp_lens_fov = fov; }
+
 		IC bool IsSVPActive() { return isActive; }
 		void SetSVPActive(bool bState);
 		bool    IsSVPFrame();

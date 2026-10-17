@@ -3365,6 +3365,9 @@ void CWeapon::UpdateSecondVP()
 		return;
 
 	CActor* pActor = smart_cast<CActor*>(H_Parent());
+	// PiP: hand the optic's lens FOV to the renderer, which derives the lens camera
+	// from it (magnification = g_fov / lens_fov, the modpack's own formula)
+	Device.m_SecondViewport.SetSVPLensFov(m_zoom_params.m_fSecondVPFovFactor);
 	Device.m_SecondViewport.SetSVPActive(m_zoomtype == 0 && pActor->cam_Active() == pActor->cam_FirstEye() && IsSecondVPZoomPresent() && m_zoom_params.m_fZoomRotationFactor > 0.05f);
 }
 

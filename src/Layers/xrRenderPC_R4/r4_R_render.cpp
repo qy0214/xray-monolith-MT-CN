@@ -176,6 +176,24 @@ namespace svpcam
 	{
 		z = m;
 
+		// Preferred: the optic's own lens FOV, published by the game (Weapon.cpp). The
+		// modpack tunes those values for the default g_fov of 65 and states the
+		// magnification as 65 / scope_lens_fov, i.e. the ratio of the current FOV to
+		// the lens FOV. This is exact, unlike the shader factors below.
+		const float lensFov = Device.m_SecondViewport.svp_lens_fov;
+		if (lensFov > 1.0f && lensFov < 89.0f && Device.fFOV > 1.0f)
+		{
+			const float mag = Device.fFOV / lensFov;
+			if (mag > 1.001f)
+			{
+				z.mProject._11 *= mag;
+				z.mProject._22 *= mag;
+				z.mFullTransform.mul(z.mView, z.mProject);
+			}
+			z.valid = true;
+			return;
+		}
+
 		float mag = 1.0f;
 		if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
 		{
