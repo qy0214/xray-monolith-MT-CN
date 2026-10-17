@@ -9,6 +9,7 @@
 
 #include "pure.h"
 #include "../xrCore/xrSyncronize.h"
+#include "../xrCore/svp_scope_state.h"
 //#include "hw.h"
 #include "../xrcore/ftimer.h"
 #include "stats.h"
@@ -177,6 +178,12 @@ public:
 		// this and not off IsSVPActive(), otherwise a frame where the lens is not
 		// rendered would drop the main view's zoom with nothing to replace it.
 		bool true_pip_rendering = false;
+
+		// C1: the one evaluated second-viewport state for the current frame. The
+		// renderer evaluates it once (xrCore/svp_scope_state.h) and every consumer -
+		// lens pass, wide main view, aim sensitivity, upscaler pass flags - reads this
+		// instead of carrying its own copy of the rules.
+		SvpScopeState svp_scope;
 
 		IC bool IsSVPActive() { return isActive; }
 		void SetSVPActive(bool bState);

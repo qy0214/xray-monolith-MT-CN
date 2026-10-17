@@ -307,8 +307,23 @@ void CRender::Render()
 	// this engine renders the lens every frame.
 	static const bool SVP_SAME_FRAME_READY = true;
 
-	const bool pipOn = SVP_SAME_FRAME_READY && compat::r__svp_same_frame && Device.m_SecondViewport.IsSVPActive();
 	svp_lens_rendered = false;
+
+	// C1: a single evaluation drives the whole PiP chain for this frame. The flags the
+	// subsystems read are derived views of it, not independent decisions - that drift
+	// is what let the lens pass, the wide main view and the mouse sensitivity disagree.
+	{
+		const SvpScopeInputs svpIn = svp_make_inputs(Device.m_SecondViewport.pip_lens_shaders,
+			compat::r__svp_same_frame != 0, Device.m_SecondViewport.IsSVPActive(),
+			Device.m_SecondViewport.svp_lens_fov > 1.0f, TargetSVP != nullptr);
+		Device.m_SecondViewport.svp_scope = svp_evaluate_scope(svpIn);
+	}
+
+	Device.true_pip_on = Device.m_SecondViewport.svp_scope.lens_rendered;
+	Device.m_SecondViewport.true_pip_rendering = Device.m_SecondViewport.svp_scope.lens_rendered;
+	Device.m_SecondViewport.true_pip_same_frame = Device.m_SecondViewport.svp_scope.lens_rendered;
+
+	const bool pipOn = SVP_SAME_FRAME_READY && Device.m_SecondViewport.svp_scope.lens_rendered;
 
 	// PiP diagnostic (throttled): a magnifying optic with no second viewport means the
 	// mod is driving the lens itself, i.e. the engine-side same-frame path is idle and
@@ -318,11 +333,8 @@ void CRender::Render()
 		&& g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x > 1.25f
 		&& (Device.dwFrame % 600) == 0)
 		Msg("* [PIP] magnified optic in use but the game reported no second viewport (IsSVPActive=0): the mod drives the lens itself, same-frame PiP is idle");
-	// PiP: from here on the renderer owns the lens view, so the game must stop
-	// alternating the camera (CSecondVPParams::IsSVPFrame) and the lens camera is
-	// derived from the optic's magnification instead of a second game frame
-	Device.m_SecondViewport.true_pip_same_frame = pipOn && TargetSVP != nullptr;
-
+	// PiP: from here on the renderer owns the lens view (the game alternation and the
+	// game side flags are already derived from the state evaluated above)
 	if (pipOn && TargetSVP)
 	{
 		svpcam::Capture(svpcam::s_main); // the game camera is the normal one now
@@ -331,8 +343,7 @@ void CRender::Render()
 
 	dlss::BeginScene();
 
-	const int viewCount = (pipOn && TargetSVP) ? 2 : 1;
-	Device.m_SecondViewport.true_pip_rendering = (viewCount == 2);
+	const int viewCount = pipOn ? 2 : 1;
 	for (int view = 0; view < viewCount; ++view)
 	{
 		if (viewCount == 2)

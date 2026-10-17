@@ -58,5 +58,17 @@ void run_svp_scope_state_tests()
 	s = svp_evaluate_scope(no_zoom);
 	CHECK(!s.lens_rendered && !s.main_view_wide && !s.aim_sensitivity_lens);
 
-	std::printf("[tests] svp_scope_state: 4 states, 19 checks\n");
+	// the kill switch (r__svp_same_frame 0) must disable the whole chain
+	SvpScopeInputs sw = svp_make_inputs(true, false, true, true, true);
+	CHECK(!sw.pack_pip_module);
+	s = svp_evaluate_scope(sw);
+	CHECK(!s.lens_rendered && !s.main_view_wide && !s.aim_sensitivity_lens);
+
+	// the input builder passes the optic facts through unchanged
+	SvpScopeInputs ok = svp_make_inputs(true, true, true, true, true);
+	CHECK(ok.pack_pip_module && ok.optic_magnifies && ok.optic_policy_allows && ok.target_set_ready);
+	s = svp_evaluate_scope(ok);
+	CHECK(s.lens_rendered && s.main_view_wide && s.aim_sensitivity_lens);
+
+	std::printf("[tests] svp_scope_state: 6 states, 25 checks\n");
 }

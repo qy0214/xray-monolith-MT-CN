@@ -40,3 +40,16 @@ inline SvpScopeState svp_evaluate_scope(const SvpScopeInputs& in)
 	out.aim_sensitivity_lens = out.lens_rendered;
 	return out;
 }
+
+// Builds the inputs from the facts the subsystems hold. The kill switch is folded in
+// here so no consumer has to remember it.
+inline SvpScopeInputs svp_make_inputs(bool pack_pip_module, bool same_frame_enabled, bool optic_magnifies,
+                                      bool optic_policy_allows, bool target_set_ready)
+{
+	SvpScopeInputs in;
+	in.pack_pip_module = pack_pip_module && same_frame_enabled;
+	in.optic_magnifies = optic_magnifies;
+	in.optic_policy_allows = optic_policy_allows;
+	in.target_set_ready = target_set_ready;
+	return in;
+}
