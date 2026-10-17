@@ -605,6 +605,22 @@ void CRender::EnsureTargetSVP()
 	}
 
 	TargetSVP = xr_new<CRenderTarget>("svp", w, h);
+
+	// CHK_DX is a no-op, so a VRAM-exhausted creation fails silently: never keep a
+	// half-built target (the whole PiP path keys off TargetSVP being valid, and a
+	// missing set simply falls back to the legacy behaviour and the scope override)
+	const bool svp_rt_ok = TargetSVP->rt_secondVP && TargetSVP->rt_secondVP->pSurface
+		&& TargetSVP->rt_baseRT && TargetSVP->rt_baseRT->pRT
+		&& TargetSVP->rt_baseZB && TargetSVP->rt_baseZB->pZRT
+		&& TargetSVP->rt_Color && TargetSVP->rt_Color->pRT
+		&& TargetSVP->rt_Position && TargetSVP->rt_Position->pRT;
+	if (!svp_rt_ok)
+	{
+		Msg("! [PIP] second viewport target creation FAILED (out of VRAM?), lens pass disabled");
+		xr_delete(TargetSVP);
+		return;
+	}
+
 	Msg("* [PIP] second viewport target set %ux%u created (scale %.0f%%)", w, h, scale * 100.0f);
 }
 

@@ -467,7 +467,16 @@ void CActor::IR_OnMouseMove(int dx, int dy)
 	const float LookFactor = GetLookFactor();
 
 	CCameraBase* C = cameras[cam_active];
-    float scale = (C->f_fov / g_fov) * (psMouseSens * sens_multiple) * psMouseSensScale / 50.f / LookFactor;
+    // PiP (T3 #6): while the SVP owns the zoom the main view stays wide, so the first
+    // eye sensitivity has to follow the lens FOV instead of C->f_fov - the reference
+    // engine does exactly this. Without it, aiming through a PiP optic feels far too
+    // fast because the mouse keeps using the wide main view's FOV.
+    float sensRatio = C->f_fov / g_fov;
+    if (cam_active == eacFirstEye && Device.true_pip_on && Device.m_SecondViewport.IsSVPActive()
+        && Device.m_SecondViewport.svp_lens_fov > 1.0f)
+        sensRatio = Device.m_SecondViewport.svp_lens_fov / g_fov;
+
+    float scale = sensRatio * (psMouseSens * sens_multiple) * psMouseSensScale / 50.f / LookFactor;
 	if (dx)
 	{
 		float d = float(dx) * scale;
