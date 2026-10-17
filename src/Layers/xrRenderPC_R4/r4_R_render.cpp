@@ -496,13 +496,6 @@ void CRender::Render()
 
 	for (int view = 0; view < viewCount; ++view)
 	{
-		// Per pass submission baseline (see the "pass ... submitted" line below).
-		const u32 stats_l0 = RImplementation.stats.l_total;
-		const u32 stats_q0 = RImplementation.stats.o_queries;
-		const u32 stats_c0 = RImplementation.stats.o_culled;
-		const u32 stats_i0 = RImplementation.stats.ic_total;
-		const u32 stats_s0 = (u32)RImplementation.stats.s_used;
-
 		const bool lensPass = (view < lensRuns);
 		const bool publish = lensPass && (view == lensRuns - 1);
 
@@ -511,7 +504,11 @@ void CRender::Render()
 			CRenderTarget* passTarget = lensPass ? TargetSVP : TargetMain;
 			if (passTarget)
 				passTarget->SetActive();
-			svpcam::Apply(lensPass ? svpcam::s_zoom : svpcam::s_main);
+			// Experiment: the first (discarded) lens run uses the MAIN camera and the
+			// published one uses the derived lens camera. If the main-camera run fills the
+			// second set's targets and the lens-camera run does not, the fault is in the
+			// derived camera; if neither fills them, the fault is in the target set itself.
+			svpcam::Apply((view == 0) ? svpcam::s_main : (lensPass ? svpcam::s_zoom : svpcam::s_main));
 			render_stats::SetSuppress(lensPass);
 		}
 	// Configure
@@ -775,15 +772,40 @@ void CRender::Render()
 
 	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
 
-		// Submission evidence per pass: a pass that submitted nothing and rendered
-		// nothing is a different problem from one that submitted content which then
-		// landed in the wrong target. The deltas matter, not the absolute values.
-		Msg("* [PIP] pass view=%d%s submitted ic=+%u culled=+%u queries=+%u lights=%u/%u s_used=+%d",
-			view, lensPass ? (publish ? "(lens,publish)" : "(lens,dry)") : "(main)",
-			RImplementation.stats.ic_total - stats_i0, RImplementation.stats.o_culled - stats_c0,
-			RImplementation.stats.o_queries - stats_q0,
-			RImplementation.stats.l_visible, RImplementation.stats.l_total,
-			(int)RImplementation.stats.s_used - (int)stats_s0);
+		// Binding evidence per pass: which set the renderer thinks is active, what the
+		// device extent is and what the upscaler thinks the render extent is. A mismatch
+		// here explains a pass that draws into something other than this set's targets.
+		if (lensPass || viewCount > 1)
+		{
+			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u set=%ux%u",
+				view, lensPass ? (publish ? "(lens,publish)" : "(lens,dry)") : "(main)",
+				(view == 0) ? "main" : "lens",
+				(RImplementation.Target == (lensPass ? (CRenderTarget*)TargetSVP : (CRenderTarget*)TargetMain)) ? "this" : "OTHER",
+				Device.dwWidth, Device.dwHeight, dlss::Configured() ? 1 : 0,
+				dlss::RenderWidth(), dlss::RenderHeight(),
+				lensPass ? (TargetSVP ? TargetSVP->Width : 0) : (TargetMain ? TargetMain->Width : 0),
+				lensPass ? (TargetSVP ? TargetSVP->Height : 0) : (TargetMain ? TargetMain->Height : 0));
+		}
+
+		if (lensPass && TargetSVP && TargetSVP->rt_Generic_0)
+		{
+			// Probe after every lens run so the discarded main-camera run and the
+			// published lens-camera run can be compared directly.
+			static u32 s_lensProbe_at = 0;
+			if (Device.dwFrame >= s_lensProbe_at)
+			{
+				if (view == 0)
+					s_lensProbe_at = Device.dwFrame + 240;
+				Msg("* [PIP] lens mag=%.3f fFOV=%.3f lensFov=%.3f hdr10=%d",
+					svpcam::s_lastMag, Device.fFOV, Device.m_SecondViewport.svp_lens_fov,
+					RImplementation.o.dx11_hdr10 ? 1 : 0);
+				svp_probe_composite();
+				svp_probe_rt(view == 0 ? "dry(generic0)" : "pub(generic0)", TargetSVP->rt_Generic_0);
+				svp_probe_rt(view == 0 ? "dry rt_Color" : "pub rt_Color", TargetSVP->rt_Color);
+				svp_probe_rt(view == 0 ? "dry rt_Position" : "pub rt_Position", TargetSVP->rt_Position);
+				svp_probe_rt(view == 0 ? "dry rt_Accum" : "pub rt_Accum", TargetSVP->rt_Accumulator);
+			}
+		}
 
 		if (publish && TargetSVP && TargetSVP->rt_Generic_0)
 		{
@@ -803,35 +825,6 @@ void CRender::Render()
 				// to name one specific set's texture.
 				HW.pContext->CopyResource(lensDst->rt_secondVP->pSurface, TargetSVP->rt_Generic_0->pSurface);
 				svp_lens_rendered = true;
-
-				// Throttled content probe (see svp_probe_rt): one readback tells us
-				// whether the second view rendered anything and whether the blit
-				// landed in the texture the lens material resolves.
-				static u32 s_lensProbe_at = 0;
-				if (Device.dwFrame >= s_lensProbe_at)
-				{
-					s_lensProbe_at = Device.dwFrame + 240;
-					Msg("* [PIP] lens mag=%.3f fFOV=%.3f lensFov=%.3f hdr10=%d sameSurface=%d",
-						svpcam::s_lastMag, Device.fFOV, Device.m_SecondViewport.svp_lens_fov,
-						RImplementation.o.dx11_hdr10 ? 1 : 0,
-						(TargetSVP->rt_Generic_0->pSurface == lensDst->rt_secondVP->pSurface) ? 1 : 0);
-					// Control first: the backbuffer is never black, so if this reads black
-					// the readback path itself is at fault and nothing else is evidence.
-					svp_probe_composite();
-					svp_probe_rt("src(2ndView generic0)", TargetSVP->rt_Generic_0);
-					svp_probe_rt("dst($user$viewport2)", lensDst->rt_secondVP);
-					svp_probe_rt("svp rt_Color(albedo)", TargetSVP->rt_Color);
-					svp_probe_rt("svp rt_Position(gbuf)", TargetSVP->rt_Position);
-					svp_probe_rt("svp rt_Accumulator(light)", TargetSVP->rt_Accumulator);
-					// Now read through pSurface these are trustworthy controls: the main
-					// set still holds the previous frame's finished content.
-					if (TargetMain)
-					{
-						svp_probe_rt("main rt_Color(albedo)", TargetMain->rt_Color);
-						svp_probe_rt("main rt_Accumulator(light)", TargetMain->rt_Accumulator);
-						svp_probe_rt("main rt_Generic_0(scene)", TargetMain->rt_Generic_0);
-					}
-				}
 			}
 		}
 	}	// end of the per-view loop
