@@ -112,6 +112,96 @@ Stages (each one committable, none required to land the next):
    session, **using the stage-0 `$user$svp*` naming helper**. Nothing switches yet;
    verify the main path is untouched (compare `rs_stats`, the PDA/scope behaviour
    and the shader cache hit rate).
+
+## Stage 1 — DONE (2026-10-17): target-set infrastructure, nothing switches yet
+
+Ported from the reference's shape, adapted to this engine:
+- `CRenderTarget(LPCSTR set_name, u32 width, u32 height)` (set_name `nullptr` = the
+  main viewport; the old default ctor forwards to it) with `Width`/`Height`,
+  `m_is_main_target`, `baseRT`/`baseZB`, `rt_baseRT`/`rt_baseZB`.
+- **All 87 RT creations in the ctor now go through a `createUnique` lambda**: the
+  main set keeps the stock name verbatim, a second set registers
+  `"<stock name>$<set_name>"`, and every call records (stock-named `ref_texture` ->
+  this set's `ref_rt`) in `RenderTargetRemaps`.
+- `SetActive(bool force)`: main restores `HW.secret_pBaseRT/ZB`; sets
+  `RImplementation.Target`, `hud_params.w`, `m_render_pass_is_svp`,
+  `Device.dw*`/`fASPECT`, `RCache.Invalidate()`, then `surface_set`s every remap
+  entry, `set_viewport_size`, `set_RT(baseRT)`/`set_ZB(baseZB)`.
+- `HW.secret_pBaseRT`/`secret_pBaseZB` are recorded where the swapchain views are
+  created (and nulled where they are released).
+- The upscaler context stays main-only: the second set does **not** call
+  `dlss::InitializeTargets()`/`ReleaseTargets()` (it is created/destroyed
+  mid-frame), and `rt_upscaler_camera_mv` is main-only so it is never remapped.
+- Nothing calls `SetActive` on the second set yet, and no second set is created
+  yet, so behaviour is unchanged by construction.
+
+## Why the lens lags today (drives stages 3-4)
+
+This engine already renders the second view **in-frame**: `r4_R_render.cpp:514`
+targets `Target->rt_secondVP` inside `Render()`. The one-frame delay (the ghosting
+root cause) comes from `dxRenderDeviceRender::End()`:
+
+```cpp
+if (!Device.m_SecondViewport.IsSVPFrame() && !Device.m_SecondViewport.isCamReady)
+    HW.m_pSwapChain->Present(...);   // the SVP frame is rendered but NOT presented
+```
+
+so the SVP content is only consumed by the *next* (main) frame. Same-frame PiP
+therefore means: render the second view into the second target set, restore the
+main set, render the main view, and present once — i.e. `IsSVPFrame()` must stop
+being a whole-frame property.
+
+## Stage 2 — DONE (2026-10-17): the second set is creatable, still nothing switches
+
+- `CRender::TargetMain` / `TargetSVP` (`r4.h`), `TargetMain = Target` on create/reset,
+  `TargetSVP = nullptr` on create/reset_begin, both dropped in `destroy()`.
+- `CRender::EnsureTargetSVP()` (in `r4.cpp`): creates `CRenderTarget("svp", side, side)`
+  lazily, `side` = `dwHeight/2` rounded up to a 32px step (never below 64), rebuilds
+  when the extent changes (falling back to the main set first). Nothing calls it yet,
+  so the extra RT chain does not exist during normal play.
+- `SetActive` is no longer wrapped in `#ifdef USE_DX11`: only the swapchain-view
+  restore and the `HW.secret_*` members are DX11-only, and the `HW.pBaseRT/ZB`
+  assignment is now null-guarded (the DX10 build compiles unchanged).
+
+## How the second view is produced today (measured, drives stage 3-4)
+
+- `Weapon.cpp:3368` publishes the state: `SetSVPActive(zoomed && first-eye &&
+  IsSecondVPZoomPresent() && rotation > 0.05)` ⇒ this is what `IsSVPActive()` means
+  (our Plan A scope-resolution override keys off it as well).
+- `CLevel::OnRender()` renders the HUD and, **on an SVP frame**, runs
+  `Render->RenderToTarget(Render->rtSVP)` (`Level.cpp:1315-1316`), which is a plain
+  **`CopyResource` of swapchain buffer 0** into `$user$viewport2`
+  (`r4_R_render.cpp:504-525`). In other words: on those frames the *whole* frame was
+  rendered with the zoomed camera, copied out, and `Present` was skipped — the lens
+  then samples a one-frame-old image. That is both the ghosting and why the scope
+  resolution override has to raise the *whole* frame's internal resolution.
+- So same-frame PiP = render the normal view **and** a small second view every frame,
+  present the normal one, and let the lens sample the second set. The two cameras are
+  not both available in this engine (no `Device.matrices[2]` like pipdlss): the game
+  alternates the camera per frame, so stage 3-4 snapshots both cameras
+  (`mView`/`mProject`/`mProjectHud`/`hud_fov_params`) instead of re-deriving the
+  optics zoom, and keeps `IsSVPFrame()` only as the "the zoomed camera was set this
+  frame" trigger (no more `Present` skip, no more `CopyResource`).
+
+## Remaining stages (revised, in order)
+
+2. `EnsureTargetSVP()` + `TargetSVP`/`TargetMain` in `CRender` (lazy, on the first
+   magnifying ADS; extent = even-rounded `Device.dwHeight/2` to start, no
+   supersample/adaptive policy yet). Still nothing switches.
+3. Convert the per-frame `Device.m_SecondViewport.IsSVPFrame()` render/shader
+   branches (`r4_R_render.cpp` 330/338, `r4_rendertarget_phase_combine.cpp`
+   94/110/338/346/540/549, `accum_spot/accum_point`) to the per-pass
+   `m_render_pass_is_svp` flag, so the SVP *pass* keeps its branches while the
+   frame as a whole is a normal, presentable frame.
+4. Render both passes in one `Render()` call: `TargetSVP->SetActive()` → second
+   view (reusing the existing SVP camera path) → `TargetMain->SetActive()` → main
+   view; drop the `Present` skip. The lens keeps sampling `$user$viewport2`, so
+   that one name must stay pointed at the **SVP set's** `rt_secondVP` (exclude it
+   from the main set's remap restore) — this also lets the second set be smaller
+   than the display, which is where the 15-20 fps comes back.
+5. Skip the temporal upscaler while the second set is the active pass (its extent
+   is already the final extent); keep `r__upscaler_scope_lock` as the fallback and
+   retire Plan A's rebuild path.
 2. Re-point the registered `$user$*` names to the other set's surfaces on switch
    (`Resources->_CreateTexture(name)->surface_set(other->pSurface)`), so all
    blenders that bind by name follow the active set.

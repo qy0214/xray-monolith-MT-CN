@@ -171,7 +171,13 @@ public:
 	CModelPool* Models;
 	CWallmarksEngine* Wallmarks;
 
-	CRenderTarget* Target; // Render-target
+	CRenderTarget* Target; // Render-target (currently active, see CRenderTarget::SetActive)
+
+	// PiP (T3 #6): the full-screen viewport and the lazily created second viewport
+	// set that the lens renders into. TargetMain == Target except while the second
+	// set is the active one.
+	CRenderTarget* TargetMain = nullptr;
+	CRenderTarget* TargetSVP = nullptr;
 
 	CLight_DB Lights;
 	SMAP_Allocator LP_smap_pool;
@@ -314,6 +320,10 @@ public:
 	virtual void destroy();
 	virtual void reset_begin();
 	virtual void reset_end();
+
+	// PiP (T3 #6): create the second target set on the first SVP pass (never when
+	// the lens is inactive), rebuilt when its extent changes.
+	void EnsureTargetSVP();
 
 	virtual void level_Load(IReader*);
 	virtual void level_Unload();

@@ -126,6 +126,21 @@ public:
 
 	ref_rt rt_secondVP;	// 32bit		(r,g,b,a) --//#SM+#-- +SecondVP+
 
+	// PiP (T3 #6): a second target set (the scope/lens view). Its RTs are created
+	// with a "$<set_name>" suffix because the resource manager is a name-keyed dedup
+	// map (_CreateRT/_CreateTexture return the existing object for a known name), so
+	// the second set must never claim the stock names. Every creation records the
+	// (stock name -> this set's RT) pair so SetActive() can point the shared
+	// stock-named textures at whichever set is rendering.
+	u32 Width = 0;
+	u32 Height = 0;
+	bool m_is_main_target = true;
+	ref_rt rt_baseRT; // PiP: this set's colour base (the main set uses the swapchain)
+	ref_rt rt_baseZB; // PiP: this set's depth base (the main set uses the swapchain)
+	ID3DRenderTargetView* baseRT = nullptr;
+	ID3DDepthStencilView* baseZB = nullptr;
+	xr_vector<std::pair<ref_texture, ref_rt>> RenderTargetRemaps;
+
 
 	ref_rt rt_fakescope;	// crookr fakescope
 
@@ -404,7 +419,13 @@ private:
 	bool m_bHasActiveVolumetric_spot;
 public:
 	CRenderTarget();
+	CRenderTarget(LPCSTR set_name, u32 width, u32 height);
 	~CRenderTarget();
+
+	// PiP (T3 #6): make this target set the active one — base views, viewport size
+	// and the stock-named textures remapped onto this set's surfaces. The main set
+	// restores the persistent swapchain views first.
+	void SetActive(bool force = false);
 	void accum_point_geom_create();
 	void accum_point_geom_destroy();
 	void accum_omnip_geom_create();

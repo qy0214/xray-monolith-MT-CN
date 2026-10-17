@@ -1108,9 +1108,11 @@ void CHW::OnAppActivate()
         if (!Core.ParamsData.test(ECoreParams::dxgi_old)) {
             _SHOW_REF("refCount:pBaseZB", pBaseZB);
             _RELEASE(pBaseZB);
+            secret_pBaseZB = nullptr;
 
             _SHOW_REF("refCount:pBaseRT", pBaseRT);
             _RELEASE(pBaseRT);
+            secret_pBaseRT = nullptr;
         }
 
         const auto& cd = m_ChainDesc;
@@ -1154,9 +1156,11 @@ void CHW::OnAppDeactivate()
         if (!Core.ParamsData.test(ECoreParams::dxgi_old)) {
             _SHOW_REF("refCount:pBaseZB", pBaseZB);
             _RELEASE(pBaseZB);
+            secret_pBaseZB = nullptr;
 
             _SHOW_REF("refCount:pBaseRT", pBaseRT);
             _RELEASE(pBaseRT);
+            secret_pBaseRT = nullptr;
         }
 
         const auto& cd = m_ChainDesc;
@@ -1518,6 +1522,13 @@ void CHW::UpdateViews()
     //	Create Depth/stencil view
     R = pDevice->CreateDepthStencilView(pDepthStencil, NULL, &pBaseZB);
     R_CHK(R);
+
+    // PiP (T3 #6): keep the swapchain views here, HW.pBaseRT/pBaseZB get
+    // re-pointed per active target set (see CRenderTarget::SetActive)
+#ifdef USE_DX11
+    secret_pBaseRT = pBaseRT;
+    secret_pBaseZB = pBaseZB;
+#endif
 
     pDepthStencil->Release();
 }

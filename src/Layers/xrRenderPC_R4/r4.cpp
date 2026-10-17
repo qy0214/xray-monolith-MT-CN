@@ -537,6 +537,8 @@ void CRender::create()
 	// total, so measure ours the same way before changing anything.
 	const u64 rtCreateStart = CPU::QPC();
 	Target = xr_new<CRenderTarget>(); // Main target
+	TargetMain = Target;
+	TargetSVP = nullptr;
 	Msg("* [STARTUP/RENDER TARGET] mode=serial total=%.0f ms (scene %ux%u display %ux%u)",
 		float(double(CPU::QPC() - rtCreateStart) * 1000.0 / double(CPU::qpc_freq)),
 		dlss::RenderWidth(), dlss::RenderHeight(), Device.dwWidth, Device.dwHeight);
@@ -555,6 +557,31 @@ void CRender::create()
 	Device.ModelDefferClear = xr_make_delegate(Models, &CModelPool::DeleteQueuedDeffer);
 }
 
+// PiP (T3 #6): allocate the second target set on the first SVP pass. While the lens
+// is inactive this is never called, so the extra RT chain costs nothing then.
+void CRender::EnsureTargetSVP()
+{
+	// square lens view at half the display height, rounded up to a 32px step so a
+	// few pixels of wobble reuses the whole set instead of rebuilding it
+	u32 side = (Device.dwHeight / 2) & ~1u;
+	if (side < 64) side = 64;
+	side = (side + 31u) & ~31u;
+
+	if (TargetSVP)
+	{
+		if (TargetSVP->Width == side && TargetSVP->Height == side)
+			return;
+
+		// extent changed: fall back to the main set before dropping the old one
+		if (Target == TargetSVP && TargetMain)
+			TargetMain->SetActive(true);
+		xr_delete(TargetSVP);
+	}
+
+	TargetSVP = xr_new<CRenderTarget>("svp", side, side);
+	Msg("* [PIP] second viewport target set %ux%u created", side, side);
+}
+
 void CRender::destroy()
 {
 	m_bMakeAsyncSS = false;
@@ -563,7 +590,11 @@ void CRender::destroy()
 
 	HWOCC.occq_destroy();
 	xr_delete(Models);
+	xr_delete(TargetSVP);
+	TargetSVP = nullptr;
 	xr_delete(Target);
+	TargetMain = nullptr;
+	Target = nullptr;
 	PSLibrary.OnDestroy();
 	Device.seqFrame.Remove(this);
 	Device.ModelDefferClear = nullptr;
@@ -580,7 +611,12 @@ void CRender::reset_begin()
 	}
 	//-AVO
 
+	// PiP: the second set only exists between SVP passes, recreate it lazily
+	xr_delete(TargetSVP);
+	TargetSVP = nullptr;
 	xr_delete(Target);
+	TargetMain = nullptr;
+	Target = nullptr;
 	HWOCC.occq_destroy();
 }
 
@@ -590,6 +626,7 @@ void CRender::reset_end()
 
 	const u64 rtCreateStart = CPU::QPC();
 	Target = xr_new<CRenderTarget>();
+	TargetMain = Target;
 	Msg("* [RESET/RENDER TARGET] mode=serial total=%.0f ms (scene %ux%u display %ux%u)",
 		float(double(CPU::QPC() - rtCreateStart) * 1000.0 / double(CPU::qpc_freq)),
 		dlss::RenderWidth(), dlss::RenderHeight(), Device.dwWidth, Device.dwHeight);

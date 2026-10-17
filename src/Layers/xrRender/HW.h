@@ -74,6 +74,10 @@ public:
 	IDXGISwapChain1*        m_pSwapChain;
 	ID3D11RenderTargetView*	pBaseRT;	//	combine with DX9 pBaseRT via typedef
 	ID3D11DepthStencilView*	pBaseZB;
+	// PiP (T3 #6): the persistent swapchain views. HW.pBaseRT/pBaseZB are
+	// re-pointed per active target set, so the main set restores from these.
+	ID3D11RenderTargetView*	secret_pBaseRT = nullptr;
+	ID3D11DepthStencilView*	secret_pBaseZB = nullptr;
 	ID3DUserDefinedAnnotation* pAnnotation;
 
 	CHWCaps					Caps;
