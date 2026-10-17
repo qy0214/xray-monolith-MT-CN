@@ -531,13 +531,6 @@ void CRenderTarget::phase_combine()
 		phase_ssfx_motion_blur();
 	}
 
-	// PiP (T3 #6): this pass feeds $user$viewport2 (the lens texture) only. The screen
-	// space overlays, bloom/DOF, the post-process chain and the temporal upscaler all
-	// belong to the main pass: running them twice per frame is what left the upscaler
-	// state invalid ("unable to swap until render target reset" / NGX E_INVALIDARG).
-	if (Device.true_pip_on && Device.m_SecondViewport.m_render_pass_is_svp)
-		return;
-
 	if (scope_3D_fake_enabled)
 	{
 		phase_3DSSReticle(); // Redotix99: for 3D Shader Based Scopes
@@ -589,6 +582,15 @@ void CRenderTarget::phase_combine()
 		}
 	}
 	
+	// PiP (T3 #6): this pass produces the lens image that the optic's own shader
+	// samples ($user$viewport2), so it must keep the device overlays the optic
+	// depends on - night vision and thermal. Skipping them here is exactly why the
+	// thermal sights lost their image. Everything from here on (the fake-scope quad,
+	// bloom, DOF, SMAA/TAA, the post-process chain and the temporal upscaler) belongs
+	// to the main pass; running it twice per frame is what left the upscaler state
+	// invalid ("unable to swap until render target reset", NGX E_INVALIDARG).
+	const bool svpLensPass = Device.true_pip_on && Device.m_SecondViewport.m_render_pass_is_svp;
+
 	if(ps_r2_nightvision > 0)
 		phase_nightvision();
 
@@ -596,6 +598,9 @@ void CRenderTarget::phase_combine()
 	if (ps_r2_heatvision > 0)
 		phase_heatvision();
 	//--DSR-- HeatVision_end
+
+	if (svpLensPass)
+		return;
 
 	if (scope_fake_enabled)
 	{
