@@ -666,6 +666,49 @@ static class cl_hud_fov_params : public R_constant_setup
 	}
 }	binder_hud_fov_params;
 
+// FDDA / device-screen contract (modpack exoskeleton screens). The pack's shaders
+// declare these as uniforms and read the actor condition, the screen interference
+// and the on-screen clock; without a provider they stayed at zero.
+static class cl_fdda_actor_params : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, g_pGamePersistent->m_pGShaderConstants->m_actor_params);
+	}
+}	binder_fdda_actor_params;
+
+static class cl_fdda_affects : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, g_pGamePersistent->m_pGShaderConstants->m_affects);
+	}
+}	binder_fdda_affects;
+
+static class cl_fdda_digiclock : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, g_pGamePersistent->m_pGShaderConstants->m_digiclock);
+	}
+}	binder_fdda_digiclock;
+
+static class cl_fdda_timearrow : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, g_pGamePersistent->m_pGShaderConstants->m_timearrow);
+	}
+}	binder_fdda_timearrow;
+
+static class cl_fdda_timearrow2 : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, g_pGamePersistent->m_pGShaderConstants->m_timearrow2);
+	}
+}	binder_fdda_timearrow2;
+
 static class cl_script_params : public R_constant_setup //--#SM+#--
 {
 	virtual void setup(R_constant* C)
@@ -1709,6 +1752,11 @@ void CBlender_Compile::SetMapping()
 	// misc
 	r_Constant("m_hud_params", &binder_hud_params);	//--#SM+#--
 	r_Constant("m_hud_fov_params", &binder_hud_fov_params);
+	r_Constant("m_actor_params", &binder_fdda_actor_params);
+	r_Constant("m_affects", &binder_fdda_affects);
+	r_Constant("m_digiclock", &binder_fdda_digiclock);
+	r_Constant("m_timearrow", &binder_fdda_timearrow);
+	r_Constant("m_timearrow2", &binder_fdda_timearrow2);
 	r_Constant("m_script_params", &binder_script_params); //--#SM+#--
 	r_Constant("m_blender_mode", &binder_blend_mode);	//--#SM+#--
 	

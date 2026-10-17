@@ -7,7 +7,7 @@
 // Set active profiler backend
 #if !defined(XRCORE_PROFILER)
     #define XRCORE_PROFILER PROFILER_NONE
-//  #define XRCORE_PROFILER PROFILER_OPTICK
+#define XRCORE_PROFILER PROFILER_OPTICK
 #endif
 
 // Implement profiler macro interface

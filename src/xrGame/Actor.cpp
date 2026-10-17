@@ -1238,6 +1238,27 @@ void CActor::UpdateCL()
 
 			g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x = pWeapon->CurrentZoomFactor();
 			g_pGamePersistent->m_pGShaderConstants->hud_fov_params.y = pWeapon->GetMinScopeZoomFactor();
+
+			// FDDA / device-screen contract (modpack exoskeleton screens): the actor
+			// condition drives their red..green tint, and the in-game clock drives
+			// the digital clock and the analog hands. The interference value stays
+			// 0, which is what the pack's shaders did before (a clean screen).
+			{
+				auto* constants = g_pGamePersistent->m_pGShaderConstants;
+				constants->m_actor_params.set(0.f, conditions().health(), 0.f, 0.f);
+				constants->m_affects.set(0.f, 0.f, 0.f, 0.f);
+
+				// _TIME_ID is milliseconds of in-game time; a day is 86400000 ms.
+				const double dayMs = 86400000.0;
+				double ms = g_pGameLevel ? double(Level().GetGameTime() % (ALife::_TIME_ID)dayMs) : 0.0;
+				const double hours = ms / 3600000.0;
+				const int hh = int(hours);
+				const int mm = int((hours - hh) * 60.0);
+				const int ss = int(((hours - hh) * 60.0 - mm) * 60.0);
+				constants->m_digiclock.set(float(hh), float(mm), float(ss), float(ms / dayMs));
+				constants->m_timearrow.set(float(fmod(hours / 24.0 + 0.5, 1.0)), float(fmod(hours / 24.0 * 12.0 + 0.5, 1.0)), 0.f, 0.f);
+				constants->m_timearrow2.set(float(fmod(ms / 60000.0 + 0.5, 1.0)), 0.f, 0.f, 0.f);
+			}
 		}
 	}
 #ifdef STATIONARYMGUN_NEW
