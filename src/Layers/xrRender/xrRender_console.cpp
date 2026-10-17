@@ -1487,7 +1487,7 @@ namespace compat
 		CMD4(CCC_Integer, "scope_lense_head_nvg_active", &scope_lense_head_nvg_active, 0, 1);
 		CMD4(CCC_Integer, "scope_lense_head_thermal_active", &scope_lense_head_thermal_active, 0, 1);
 
-		CMD4(CCC_Integer, "r__menu_framelimit", &r__menu_framelimit, 0, 2000000000);
+		CMD4(CCC_Integer, "r__menu_framelimit", &r__menu_framelimit, 0, 1000);
 		CMD4(CCC_Float, "r__npc_torch_dynamic_distance", &r__npc_torch_dynamic_distance, 0.0f, 10000.0f);
 
 		CMD4(CCC_Integer, "session_start", &session_start, 0, 2000000000);

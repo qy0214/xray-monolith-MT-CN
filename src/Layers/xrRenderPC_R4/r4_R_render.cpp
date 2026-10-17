@@ -123,6 +123,10 @@ void CRender::Render()
 
 	compat::Tick();	// refresh engine-owned MOD-compat values (scope_lense_ads_is_pip)
 
+	// Menu frame limiting (see r__menu_framelimit): mark the frame start so the
+	// menu path can add the remaining slice of its target frame time.
+	const u64 menuPaceStart = CPU::QPC();
+
 	// pipdlss reads these two flags in the upscaler's SvpPassBound(); this engine
 	// refreshes them once per frame from its own SecondVP state (see device.h).
 	Device.true_pip_on = Device.m_SecondViewport.IsSVPActive();
@@ -144,6 +148,18 @@ void CRender::Render()
 	{
 		dlss::EndScene(true);
 		Target->u_setrt(RenderScreenWidth(), RenderScreenHeight(), HW.pBaseRT,NULL,NULL, Target->u_SceneDepth());
+
+		// Optional menu frame cap (0 = unlimited, the default). The menu keeps a 3D
+		// scene rendering, so capping it saves power and heat; gameplay is untouched
+		// because this branch only runs while the main menu is up. Loading screens
+		// take the other path and are never paced.
+		if (bMenu && compat::r__menu_framelimit > 0)
+		{
+			const float targetMs = 1000.0f / float(compat::r__menu_framelimit);
+			const float restMs = targetMs - render_stats::MsSince(menuPaceStart);
+			if (restMs > 1.0f)
+				Sleep(DWORD(restMs));
+		}
 		return;
 	}
 

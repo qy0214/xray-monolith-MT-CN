@@ -119,6 +119,9 @@ CStats::CStats()
 {
 	fFPS = 30.f;
 	fRFPS = 30.f;
+	SchedQueued = SchedBatch = SchedProcessed = 0;
+	SchedTargetMs = 0.f;
+	SchedStop = 0;
 	fTPS = 0;
 	pFont = 0;
 	fMem_calls = 0;
@@ -306,6 +309,9 @@ void CStats::Show()
 		          PPP(UpdateClient.result), UpdateClient_crows, UpdateClient_active, UpdateClient_total);
 		F.OutNext("uSheduler:   %2.2fms, %2.1f%%", Sheduler.result, PPP(Sheduler.result));
 		F.OutNext("uSheduler_L: %2.2fms", fShedulerLoad);
+		F.OutNext("  queue:     Q[%u] batch[%u] done[%u] target[%.1fms] stop[%s]", SchedQueued, SchedBatch,
+		          SchedProcessed, SchedTargetMs,
+		          SchedStop == 1 ? "batch-full" : (SchedStop == 2 ? "out-of-time" : "drained"));
 		F.OutNext("uParticles:  Qstart[%d] Qactive[%d] Qdestroy[%d]", Particles_starting, Particles_active,
 		          Particles_destroy);
 		F.OutNext("spInsert:    o[%.2fms, %2.1f%%], p[%.2fms, %2.1f%%]", g_SpatialSpace->stat_insert.result,

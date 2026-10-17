@@ -33,6 +33,13 @@ public:
 	u32 dwMem_calls;
 	u32 dwSND_Played, dwSND_Allocated; // Play/Alloc
 	float fShedulerLoad;
+	// Scheduler queue state of the last frame (filled by xrSheduler.cpp): shows what
+	// the batch size and the adaptive time budget actually did this frame.
+	u32 SchedQueued;
+	u32 SchedBatch;
+	u32 SchedProcessed;
+	float SchedTargetMs;
+	u32 SchedStop;			// 0 drained, 1 batch full, 2 out of time
 
 	CStatTimer EngineTOTAL; //
 	CStatTimer Sheduler; //

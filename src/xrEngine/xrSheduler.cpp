@@ -342,6 +342,7 @@ void CSheduler::ProcessStep()
 
     u32 batchSize = g_pGameLevel && g_pGameLevel->schedulerFlush ? 65536 : SchedulerBatchSize;
 
+	u32 stopReason = 0;
 	{
 		xrSRWLockGuard g(ItemsLock);
 		while (!Items.empty() && Top().dwTimeForExecute < dwTime && ItemsBatch.size() < batchSize)
@@ -361,10 +362,21 @@ void CSheduler::ProcessStep()
 		}
 	}
 
+	if (ItemsBatch.size() >= batchSize)
+		stopReason = 1;	// the batch size, not the queue, ended the collection
+
 	if (ItemsBatch.empty())
 	{
 		// always try to decrease target
 		psShedulerTarget -= psShedulerReaction;
+		if (Device.Statistic)
+		{
+			Device.Statistic->SchedQueued = ItemsCount;
+			Device.Statistic->SchedBatch = 0;
+			Device.Statistic->SchedProcessed = 0;
+			Device.Statistic->SchedTargetMs = psShedulerTarget;
+			Device.Statistic->SchedStop = 0;
+		}
 		return;
 	}
 
@@ -382,6 +394,7 @@ void CSheduler::ProcessStep()
 			if ((i % 8) == 0 && Device.dwPrecacheFrame == 0 && CPU::QPC() > cycles_limit)
 			{
 				psShedulerTarget += (psShedulerReaction * 3);
+				stopReason = 2;	// ran out of the adaptive time budget
 				break;
 			}
 
@@ -425,6 +438,15 @@ void CSheduler::ProcessStep()
 			ItemsCount,
 			ItemsBatch.size(),
 			i);
+
+	if (Device.Statistic)
+	{
+		Device.Statistic->SchedQueued = ItemsCount;
+		Device.Statistic->SchedBatch = (u32)ItemsBatch.size();
+		Device.Statistic->SchedProcessed = (u32)i;
+		Device.Statistic->SchedTargetMs = psShedulerTarget;
+		Device.Statistic->SchedStop = stopReason;
+	}
 	
 	// Reinsertion
 	{
