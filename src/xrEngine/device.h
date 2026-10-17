@@ -176,18 +176,25 @@ public:
 		// from both sides.
 
 		// Active optic lens FOV in degrees (0 = unknown), published by the game together
-		// with the optic facts below.
+		// with the optic facts below. This is the FOV the lens camera must render with.
 		float svp_lens_fov = 0.f;
+
+		// The game's base (unzoomed) view FOV, g_fov. The packs document the lens
+		// magnification as g_fov / scope_lense_fov, so the renderer needs the base FOV as
+		// the reference; using the current main view FOV instead made the magnification
+		// drift with the main view's smoothing and left the lens short of stock.
+		float svp_base_fov = 0.f;
 
 		// Optic facts published by the game each frame. The renderer turns them into the
 		// evaluated state below and is the only writer of isActive (through SetSVPActive),
 		// so the pack's lens shaders and the renderer cannot disagree - that disagreement
 		// is what turned the scope black with no magnification.
 		bool svp_optic_magnifies = false;
-		IC void SetSVPInputs(bool magnifies, float lensFov)
+		IC void SetSVPInputs(bool magnifies, float lensFov, float baseFov)
 		{
 			svp_optic_magnifies = magnifies;
 			svp_lens_fov = lensFov;
+			svp_base_fov = baseFov;
 		}
 
 		// Pack PiP module detected once at startup; everything PiP side stays off when

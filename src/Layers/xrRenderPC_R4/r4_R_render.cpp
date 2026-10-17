@@ -142,6 +142,10 @@ namespace svpcam
 	// Logged with the lens probe so a wrong lens image can be attributed to the camera
 	// derivation instead of being guessed at.
 	float s_lastMag = 0.f;
+	// Smoothed magnification and its target (see DeriveZoom): the lens follows a change of
+	// sight power with the same 0.12 s feel the stock camera has.
+	float s_magSmooth = 0.f;
+	float s_lastMagTarget = 0.f;
 
 	void Capture(View& v)
 	{
@@ -184,12 +188,24 @@ namespace svpcam
 
 		// Preferred: the optic's own lens FOV, published by the game (Weapon.cpp). The
 		// modpack tunes those values for the default g_fov of 65 and states the
-		// magnification as 65 / scope_lens_fov, i.e. the ratio of the current FOV to
-		// the lens FOV. This is exact, unlike the shader factors below.
+		// magnification as g_fov / scope_lens_fov, so the reference for the ratio is the
+		// game's BASE fov, not the current main view fov: the main view is deliberately
+		// kept wide while the lens is up, and using its smoothed value left the lens short
+		// of the sight's real power. The ratio is smoothed here because the stock camera
+		// smooths its fov as well, and the main view no longer does that for the lens.
 		const float lensFov = Device.m_SecondViewport.svp_lens_fov;
-		if (lensFov > 1.0f && lensFov < 89.0f && Device.fFOV > 1.0f)
+		const float baseFov = Device.m_SecondViewport.svp_base_fov > 1.0f
+			? Device.m_SecondViewport.svp_base_fov : Device.fFOV;
+		if (lensFov > 1.0f && lensFov < 89.0f && baseFov > 1.0f)
 		{
-			const float mag = Device.fFOV / lensFov;
+			const float target = baseFov / lensFov;
+			if (s_lastMagTarget <= 0.0f)
+				s_lastMagTarget = target;
+			// ~0.12 s time constant, i.e. the same feel as the stock zoom animation.
+			const float k = 1.0f - expf(-Device.fTimeDelta / 0.12f);
+			s_lastMagTarget = target;
+			s_magSmooth += (target - s_magSmooth) * k;
+			const float mag = s_magSmooth;
 			if (mag > 1.001f)
 			{
 				z.mProject._11 *= mag;
@@ -792,15 +808,15 @@ void CRender::Render()
 		// here explains a pass that draws into something other than this set's targets.
 		if (lensPass || viewCount > 1)
 		{
-			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u set=%ux%u calls=+%u verts=+%u",
+			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u set=%ux%u mag=%.2f heat=%.0f nvg=%.0f",
 				view, lensPass ? (publish ? "(lens,publish)" : "(lens,dry)") : "(main)",
-				(lensPass && view != 0) ? "lens" : "main",
+				publish ? "lens" : "main",
 				(RImplementation.Target == (lensPass ? (CRenderTarget*)TargetSVP : (CRenderTarget*)TargetMain)) ? "this" : "OTHER",
 				Device.dwWidth, Device.dwHeight, dlss::Configured() ? 1 : 0,
 				dlss::RenderWidth(), dlss::RenderHeight(),
 				lensPass ? (TargetSVP ? TargetSVP->Width : 0) : (TargetMain ? TargetMain->Width : 0),
 				lensPass ? (TargetSVP ? TargetSVP->Height : 0) : (TargetMain ? TargetMain->Height : 0),
-				RCache.stat.calls - rcCalls0, RCache.stat.verts - rcVerts0);
+				svpcam::s_lastMag, ps_r2_heatvision, ps_r2_nightvision);
 		}
 
 		if (lensPass && TargetSVP && TargetSVP->rt_Generic_0)

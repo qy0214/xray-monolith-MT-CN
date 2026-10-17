@@ -3375,13 +3375,18 @@ void CWeapon::UpdateSecondVP()
 		&& (pActor->cam_Active() == pActor->cam_FirstEye())
 		&& (m_zoom_params.m_fZoomRotationFactor > 0.05f);
 
-	// The optic's lens FOV lives on the section that matches the mounted scope: the packs
-	// use CHILD sections (wpn_ak50_1p69, ...), which is what cNameSect() reports once a
-	// scope is attached; the scope item's own section is the fallback. Null safe, because
-	// CInifile::section_exist/line_exist crash on an empty name and integrated-scope
-	// weapons have no separate scope item.
+	// PiP: the lens camera must render with the sight's own lens FOV, and it must track the
+	// sight instead of sitting at one value. scope_lense_fov is that FOV in degrees for a
+	// fixed power sight (the packs state the magnification as g_fov / scope_lense_fov), and
+	// for sights with a dynamic zoom the engine's runtime zoom factor gives the FOV at the
+	// power the player actually selected - deriving from scope_lense_fov alone pinned every
+	// variable power sight at its maximum magnification.
 	float lensFov = 0.0f;
-	if (IsScopeAttached() || m_zoomtype == 0)
+	if (m_zoom_params.m_bUseDynamicZoom && IsSecondVPZoomPresent() && m_fRTZoomFactor > 0.0f)
+	{
+		lensFov = (m_fRTZoomFactor / 100.0f) * g_fov;
+	}
+	else if (IsScopeAttached() || m_zoomtype == 0)
 	{
 		shared_str sect = cNameSect();
 		if (sect.size() && pSettings->section_exist(*sect) && pSettings->line_exist(*sect, "scope_lense_fov"))
@@ -3395,7 +3400,7 @@ void CWeapon::UpdateSecondVP()
 		}
 	}
 
-	Device.m_SecondViewport.SetSVPInputs(magnifies, lensFov);
+	Device.m_SecondViewport.SetSVPInputs(magnifies, lensFov, float(g_fov));
 
 	// Edge triggered diagnostic (section or facts changed), no per-frame cost on the hot path.
 	{
@@ -3404,8 +3409,9 @@ void CWeapon::UpdateSecondVP()
 		static bool diagLastMag = false;
 		if (diagLastSect != cNameSect() || !fsimilar(diagLastFov, lensFov) || diagLastMag != magnifies)
 		{
-			Msg("* [PIP/scope] section='%s' magnifies=%d lensFov=%.4f attached=%d zoomtype=%d",
+			Msg("* [PIP/scope] section='%s' magnifies=%d lensFov=%.4f dyn=%d rtZoom=%.1f attached=%d zoomtype=%d",
 				cNameSect().size() ? *cNameSect() : "(none)", magnifies ? 1 : 0, lensFov,
+				m_zoom_params.m_bUseDynamicZoom ? 1 : 0, m_fRTZoomFactor,
 				IsScopeAttached() ? 1 : 0, m_zoomtype);
 			diagLastSect = cNameSect();
 			diagLastFov = lensFov;
