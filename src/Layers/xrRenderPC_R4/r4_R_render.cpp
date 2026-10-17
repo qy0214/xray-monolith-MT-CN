@@ -498,6 +498,7 @@ void CRender::Render()
 	{
 		const bool lensPass = (view < lensRuns);
 		const bool publish = lensPass && (view == lensRuns - 1);
+		const u32 rcCalls0 = RCache.stat.calls, rcVerts0 = RCache.stat.verts;
 
 		if (viewCount > 1)
 		{
@@ -577,6 +578,23 @@ void CRender::Render()
 		GMBase.r_dsgraph_render_static(0);
 		GMBase.r_dsgraph_render_dynamic(0);
 		Target->disable_aniso();
+
+		// Mid pass probe: did the geometry of this pass land in THIS set's targets at the
+		// moment it was submitted? An empty reading here means the pass drew nothing;
+		// content here that is gone by the end of the pass means a later phase wiped it.
+		{
+			static u32 s_midProbe_at = 0;
+			if (pipOn && Device.dwFrame >= s_midProbe_at)
+			{
+				if (view == 0)
+					s_midProbe_at = Device.dwFrame + 240;
+				Msg("* [PIP] mid view=%d set=%s calls=+%u verts=+%u",
+					view, lensPass ? "svp" : "main",
+					RCache.stat.calls - rcCalls0, RCache.stat.verts - rcVerts0);
+				svp_probe_rt(view == 0 ? "mid dry albedo" : (lensPass ? "mid pub albedo" : "mid main albedo"), Target->rt_Color);
+				svp_probe_rt(view == 0 ? "mid dry position" : (lensPass ? "mid pub position" : "mid main position"), Target->rt_Position);
+			}
+		}
 	}
 
 	//  Redotix99: for 3D Shader Based Scopes 	
@@ -777,14 +795,15 @@ void CRender::Render()
 		// here explains a pass that draws into something other than this set's targets.
 		if (lensPass || viewCount > 1)
 		{
-			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u set=%ux%u",
+			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u set=%ux%u calls=+%u verts=+%u",
 				view, lensPass ? (publish ? "(lens,publish)" : "(lens,dry)") : "(main)",
-				(view == 0) ? "main" : "lens",
+				(lensPass && view != 0) ? "lens" : "main",
 				(RImplementation.Target == (lensPass ? (CRenderTarget*)TargetSVP : (CRenderTarget*)TargetMain)) ? "this" : "OTHER",
 				Device.dwWidth, Device.dwHeight, dlss::Configured() ? 1 : 0,
 				dlss::RenderWidth(), dlss::RenderHeight(),
 				lensPass ? (TargetSVP ? TargetSVP->Width : 0) : (TargetMain ? TargetMain->Width : 0),
-				lensPass ? (TargetSVP ? TargetSVP->Height : 0) : (TargetMain ? TargetMain->Height : 0));
+				lensPass ? (TargetSVP ? TargetSVP->Height : 0) : (TargetMain ? TargetMain->Height : 0),
+				RCache.stat.calls - rcCalls0, RCache.stat.verts - rcVerts0);
 		}
 
 		if (lensPass && TargetSVP && TargetSVP->rt_Generic_0)
