@@ -59,7 +59,14 @@ bool StableOverlaysActive()
     // of the world inside its lens: reprojecting that stale image with the scene
     // motion vectors is what leaves the heavy trailing while panning.
     if (Device.m_SecondViewport.IsSVPActive()) return true;
-    return false;
+    // Any optic lens is screen locked: the magnified/reticle image does not follow
+    // the scene motion vectors, so the upscaler smears it while the camera moves.
+    // Covered whenever the player is actually aiming through a magnifying optic
+    // (the zoom rotate factor is the weapon ADS progress, the scope factor is the
+    // optic's magnification; both are zero without a weapon).
+    if (!g_pGamePersistent) return false;
+    const auto* constants = g_pGamePersistent->m_pGShaderConstants;
+    return constants->hud_params.x > 0.05f && constants->hud_fov_params.x > 1.25f;
 }
 bool reportedStableOverlays = false;
 }
@@ -255,11 +262,21 @@ void BeginScene()
     {
         reportedStableOverlays = stableOverlay;
         if (!stableOverlay)
-            Msg("[Upscaler] device view off: temporal history and jitter restored");
+        {
+            Msg("[Upscaler] optic/device view off: temporal history, jitter and mip bias restored");
+        }
         else if (Device.m_SecondViewport.IsSVPActive())
+        {
             Msg("[Upscaler] second viewport active: temporal history and jitter disabled (the lens shows a frame-delayed copy)");
-        else
+        }
+        else if (ps_r2_heatvision > 0 || ps_r2_nightvision > 0)
+        {
             Msg("[Upscaler] device view on (heat/night vision): temporal history and jitter disabled while it is active");
+        }
+        else
+        {
+            Msg("[Upscaler] aiming through an optic: temporal history and jitter disabled (the lens is screen locked)");
+        }
     }
     if (Active())
     {
@@ -276,7 +293,9 @@ void BeginScene()
         lastDirection = Device.vCameraDirection;
         lastFov = Device.fFOV;
         haveCamera = true;
-        SSManager.SetMipLODBias(ps_r__tf_Mipbias + log2f(float(RenderWidth()) / Device.dwWidth));
+        // Match the reference build: two times log2 of the render scale (0.5 -> -2.0),
+        // which keeps texture detail at the resolution the upscaler reconstructs to.
+        SSManager.SetMipLODBias(ps_r__tf_Mipbias + 2.0f * log2f(float(RenderWidth()) / Device.dwWidth));
     }
     // Single gate for the whole jitter chain (binders, NGX/FSR3 jitterOffset).
     // A device view also drops the jitter: without history it would only shimmer.
