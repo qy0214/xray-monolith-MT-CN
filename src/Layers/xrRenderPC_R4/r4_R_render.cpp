@@ -484,16 +484,30 @@ void CRender::Render()
 
 	dlss::BeginScene();
 
-	const int viewCount = pipOn ? 2 : 1;
+	// Diagnostic configuration: the lens pass runs twice, the first one discarded. If the
+	// second run produces content where the first produced none, the fault is a
+	// once-per-frame "first pass of the frame" mechanism in the engine (visibility,
+	// lighting or target setup) rather than anything in the lens camera or the blit.
+	// The main pass keeps its usual place last, so a wrong answer cannot leave the player
+	// looking at a broken main view.
+	static const bool SVP_DRY_LENS_PASS = true;
+	const int lensRuns = pipOn ? (SVP_DRY_LENS_PASS ? 2 : 1) : 0;
+	const int viewCount = lensRuns + 1;
+
 	for (int view = 0; view < viewCount; ++view)
 	{
 		// Per pass submission baseline (see the "pass ... submitted" line below).
 		const u32 stats_l0 = RImplementation.stats.l_total;
 		const u32 stats_q0 = RImplementation.stats.o_queries;
+		const u32 stats_c0 = RImplementation.stats.o_culled;
+		const u32 stats_i0 = RImplementation.stats.ic_total;
+		const u32 stats_s0 = (u32)RImplementation.stats.s_used;
 
-		if (viewCount == 2)
+		const bool lensPass = (view < lensRuns);
+		const bool publish = lensPass && (view == lensRuns - 1);
+
+		if (viewCount > 1)
 		{
-			const bool lensPass = (view == 0);
 			CRenderTarget* passTarget = lensPass ? TargetSVP : TargetMain;
 			if (passTarget)
 				passTarget->SetActive();
@@ -760,18 +774,27 @@ void CRender::Render()
 		Details->details_clear();
 
 	render_stats::Add(render_stats::Combine, render_stats::MsSince(statsMark));
-		if (viewCount == 2 && view == 0 && TargetSVP && TargetSVP->rt_Generic_0)
+
+		// Submission evidence per pass: a pass that submitted nothing and rendered
+		// nothing is a different problem from one that submitted content which then
+		// landed in the wrong target. The deltas matter, not the absolute values.
+		Msg("* [PIP] pass view=%d%s submitted ic=+%u culled=+%u queries=+%u lights=%u/%u s_used=+%d",
+			view, lensPass ? (publish ? "(lens,publish)" : "(lens,dry)") : "(main)",
+			RImplementation.stats.ic_total - stats_i0, RImplementation.stats.o_culled - stats_c0,
+			RImplementation.stats.o_queries - stats_q0,
+			RImplementation.stats.l_visible, RImplementation.stats.l_total,
+			(int)RImplementation.stats.s_used - (int)stats_s0);
+
+		if (publish && TargetSVP && TargetSVP->rt_Generic_0)
 		{
-			// Publish the lens pass's scene result where the lens material really samples			// it. Two facts fix the naming here (r4_rendertarget.cpp):
+			// Publish the lens pass's scene result where the lens material really samples
+			// it. Two facts fix the naming here (r4_rendertarget.cpp):
 			//  - createUnique() suffixes every second set RT with the set name, so
 			//    TargetSVP->rt_secondVP is "$user$viewport2$<set>" - a texture no shader
-			//    reads, writing into it is what kept the lens black;
+			//    reads;
 			//  - the lens material resolves the un-suffixed "$user$viewport2", which is
 			//    the MAIN set's rt_secondVP - exactly the surface the legacy
 			//    RenderToTarget(rtSVP) fills (see the switch below).
-			// The source is this set's rt_Generic_0: phase_combine clears and fills it,
-			// and the MSAA path resolves into it as well. Both are A8R8G8B8 (non HDR10)
-			// and both are display sized, so the copy is a valid 1:1 blit.
 			CRenderTarget* lensDst = TargetMain ? TargetMain : Target;
 			if (lensDst && lensDst->rt_secondVP && TargetSVP->rt_Generic_0->pSurface)
 			{
@@ -809,16 +832,6 @@ void CRender::Render()
 						svp_probe_rt("main rt_Generic_0(scene)", TargetMain->rt_Generic_0);
 					}
 				}
-
-				// Submission evidence for this pass: how much geometry and how many
-				// lights the pass actually put through the pipeline. A black lens with
-				// zero submissions here means the pass never got any content to draw,
-				// which is a different problem from drawing nothing due to culling.
-				Msg("* [PIP] pass %s submitted lights=%u/%u|+%u queries=%u|+%u culled=%u",
-					"lens", RImplementation.stats.l_visible, RImplementation.stats.l_total,
-					RImplementation.stats.l_total - stats_l0,
-					RImplementation.stats.o_queries, RImplementation.stats.o_queries - stats_q0,
-					RImplementation.stats.o_culled);
 			}
 		}
 	}	// end of the per-view loop
@@ -829,7 +842,7 @@ void CRender::Render()
 	// this with the lens still active would mean the frame ended on the second set and
 	// every display-sized consumer would have seen the lens extent - that is a state
 	// leak, so say so instead of silently restoring (the main pass is always last).
-	if (viewCount == 2 && TargetMain && Target != TargetMain)
+	if (viewCount > 1 && TargetMain && Target != TargetMain)
 	{
 		TargetMain->SetActive(true);
 		Msg("! [PIP] frame ended on the lens target set; main set restored (state leak)");
