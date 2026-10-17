@@ -280,16 +280,26 @@ static void svp_probe_rt(LPCSTR tag, ref_rt& rt)
 		const u32 bpp = (d.Format == DXGI_FORMAT_R16G16B16A16_FLOAT) ? 8u : 4u;
 		const u32 cx = d.Width / 2, cy = d.Height / 2;
 		u64 sum[4] = { 0, 0, 0, 0 };
-		u32 n = 0;
+		u8 mx[4] = { 0, 0, 0, 0 };
+		u32 nz = 0, n = 0;
 		for (u32 y = cy - 8; y < cy + 8; ++y)
 			for (u32 x = cx - 8; x < cx + 8; ++x)
 			{
 				const u8* p = (const u8*)m.pData + size_t(y) * m.RowPitch + size_t(x) * bpp;
-				for (int i = 0; i < 4; ++i) sum[i] += p[i];
+				bool any = false;
+				for (int i = 0; i < 4; ++i)
+				{
+					sum[i] += p[i];
+					if (p[i] > mx[i]) mx[i] = p[i];
+					if (p[i]) any = true;
+				}
+				if (any) ++nz;
 				++n;
 			}
-		Msg("* [PIP] probe %s: fmt=%u %ux%u centre b=%u g=%u r=%u a=%u", tag, d.Format, d.Width, d.Height,
-			u32(sum[0] / n), u32(sum[1] / n), u32(sum[2] / n), u32(sum[3] / n));
+		Msg("* [PIP] probe %s: fmt=%u %ux%u avg b=%u g=%u r=%u a=%u max b=%u g=%u r=%u a=%u nz=%u/%u",
+			tag, d.Format, d.Width, d.Height,
+			u32(sum[0] / n), u32(sum[1] / n), u32(sum[2] / n), u32(sum[3] / n),
+			mx[0], mx[1], mx[2], mx[3], nz, n);
 		HW.pContext->Unmap(stg, 0);
 	}
 	else
@@ -764,6 +774,19 @@ void CRender::Render()
 							(TargetSVP->rt_Generic_0->pSurface == lensDst->rt_secondVP->pSurface) ? 1 : 0);
 						svp_probe_rt("src(2ndView generic0)", TargetSVP->rt_Generic_0);
 						svp_probe_rt("dst($user$viewport2)", lensDst->rt_secondVP);
+						// Where the second view lost its content: the G-buffer geometry
+						// and the lighting accumulation of the lens set, versus the same
+						// targets of the main set (which holds last frame's finished
+						// image and therefore acts as the control).
+						svp_probe_rt("svp rt_Color(albedo)", TargetSVP->rt_Color);
+						svp_probe_rt("svp rt_Position(gbuf)", TargetSVP->rt_Position);
+						svp_probe_rt("svp rt_Accumulator(light)", TargetSVP->rt_Accumulator);
+						if (TargetMain)
+						{
+							svp_probe_rt("main rt_Color(albedo)", TargetMain->rt_Color);
+							svp_probe_rt("main rt_Accumulator(light)", TargetMain->rt_Accumulator);
+							svp_probe_rt("main rt_Generic_0(scene)", TargetMain->rt_Generic_0);
+						}
 					}
 				}
 			}
