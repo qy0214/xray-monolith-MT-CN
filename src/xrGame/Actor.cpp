@@ -1239,7 +1239,16 @@ void CActor::UpdateCL()
 
 			// Apply Weapon Data in Shaders
 			g_pGamePersistent->m_pGShaderConstants->hud_params.x = pWeapon->GetZRotatingFactor();
-			g_pGamePersistent->m_pGShaderConstants->hud_params.y = pWeapon->GetSecondVPZoomFactor();
+			// PiP (T3 #6): the lens shaders derive their magnification as
+			// ogse_c_screen.x / m_hud_params.y, i.e. the screen FOV over this value, and use
+			// the result for the reticle scale and the image mapping. Feeding them the
+			// weapon's initialisation time value (GetSecondVPZoomFactor, the base section's
+			// scope_lense_fov, typically g_fov = "no magnification") made the shader believe
+			// a 24x sight had no magnification, so its reticle and mapping were wrong no
+			// matter what the renderer drew. Publish the same resolved optic FOV the
+			// renderer uses (UpdateSecondVP above), so shader and renderer cannot disagree.
+			g_pGamePersistent->m_pGShaderConstants->hud_params.y =
+				Device.m_SecondViewport.svp_lens_fov;
 			g_pGamePersistent->m_pGShaderConstants->hud_params.z = pWeapon->GetHudFov();
 			// PiP (T3 #6): this is the lens shader's flag for "the image sampled from
 			// $user$viewport2 is the engine's own second view this frame". It has to be the
