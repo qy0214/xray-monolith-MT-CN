@@ -3375,16 +3375,20 @@ void CWeapon::UpdateSecondVP()
 		&& (pActor->cam_Active() == pActor->cam_FirstEye())
 		&& (m_zoom_params.m_fZoomRotationFactor > 0.05f);
 
-	// PiP: the lens camera must render with the sight's own lens FOV, and it must track the
-	// sight instead of sitting at one value. scope_lense_fov is that FOV in degrees for a
-	// fixed power sight (the packs state the magnification as g_fov / scope_lense_fov), and
-	// for sights with a dynamic zoom the engine's runtime zoom factor gives the FOV at the
-	// power the player actually selected - deriving from scope_lense_fov alone pinned every
-	// variable power sight at its maximum magnification.
+	// PiP: the lens camera renders with the sight's own lens FOV at the power the player
+	// actually selected. The pack stores that FOV for the sight's HIGHEST power, and the
+	// engine's zoom factor is FOV-like: it sits at m_fScopeZoomFactor for the highest power
+	// (the lower bound of its clamp) and grows towards min_zoom_factor as the player zooms
+	// out, so multiplying the configured FOV by that ratio gives the current power. The
+	// previous version fed the raw runtime zoom in as a fraction of 100, which produced a 46
+	// degree lens for a 24x sight - less magnification than the naked eye, a washed out and
+	// dark lens with the sight's vignetting rings across it.
 	float lensFov = 0.0f;
-	if (m_zoom_params.m_bUseDynamicZoom && IsSecondVPZoomPresent() && m_fRTZoomFactor > 0.0f)
+	const float configLensFov = GetSecondVPZoomFactor();
+	if (m_zoom_params.m_bUseDynamicZoom && IsSecondVPZoomPresent()
+		&& m_zoom_params.m_fScopeZoomFactor > 0.01f && GetZoomFactor() > 0.01f)
 	{
-		lensFov = (m_fRTZoomFactor / 100.0f) * g_fov;
+		lensFov = configLensFov * (GetZoomFactor() / m_zoom_params.m_fScopeZoomFactor);
 	}
 	else if (IsScopeAttached() || m_zoomtype == 0)
 	{
@@ -3399,6 +3403,11 @@ void CWeapon::UpdateSecondVP()
 				lensFov = pSettings->r_float(*scope, "scope_lense_fov");
 		}
 	}
+
+	// A ratio blown up by a bad zoom state must not reach the camera: fall back to the
+	// configured (highest power) FOV, which is always a sane lens.
+	if (!(lensFov > 0.5f && lensFov < 120.0f))
+		lensFov = configLensFov;
 
 	Device.m_SecondViewport.SetSVPInputs(magnifies, lensFov, float(g_fov));
 

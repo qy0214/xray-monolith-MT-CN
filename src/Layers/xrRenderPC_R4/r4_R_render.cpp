@@ -199,9 +199,15 @@ namespace svpcam
 		if (lensFov > 1.0f && lensFov < 89.0f && baseFov > 1.0f)
 		{
 			const float target = baseFov / lensFov;
-			if (s_lastMagTarget <= 0.0f)
-				s_lastMagTarget = target;
-			// ~0.12 s time constant, i.e. the same feel as the stock zoom animation.
+			// ~0.12 s time constant, i.e. the same feel as the stock zoom animation. The
+			// smoothing must start from the target when the lens was not rendering just
+			// before: ramping from zero made the first frames of every aim LESS magnified
+			// than the naked eye (mag below 1), which is visibly wrong.
+			static u32 s_lastMagFrame = 0;
+			if (Device.dwFrame > s_lastMagFrame + 2)
+				s_magSmooth = target;
+			s_lastMagFrame = Device.dwFrame;
+
 			const float k = 1.0f - expf(-Device.fTimeDelta / 0.12f);
 			s_lastMagTarget = target;
 			s_magSmooth += (target - s_magSmooth) * k;
