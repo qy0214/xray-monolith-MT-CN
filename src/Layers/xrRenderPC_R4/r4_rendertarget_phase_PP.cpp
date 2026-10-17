@@ -198,20 +198,34 @@ void CRenderTarget::phase_dlss_postprocess()
 	const bool renderCamUi = g_hud && g_hud->RenderCamAttachedUIQuery();
 	if (renderHudUi || renderCamUi || !RImplementation.GMBase.RGraph.mapHUDNativeUi.empty())
 	{
-		// Reproject the render-sized scene depth into the native depth buffer so
-		// hands and casing still hide the handheld screen. u_setrt() substitutes
-		// the upscaler scene depth for HW.pBaseZB, so bind the native depth
-		// buffer explicitly - the reprojection must target the display-sized one.
-		u_setrt(rt_dlss_post_source, nullptr, nullptr, nullptr);
-		RCache.set_ZB(HW.pBaseZB);
-		RCache.set_Element(s_dlss_ui_depth->E[0]);
-		RCache.set_c("dlss_ui_depth_params", float(dlss::RenderWidth()) / w,
-			float(dlss::RenderHeight()) / h, sceneJitter.x, sceneJitter.y);
-		RCache.set_ZFunc(D3DCMP_ALWAYS);
-		RCache.set_ColorWriteEnable(0);
-		RCache.Render(D3DPT_TRIANGLELIST, offset, 0, 4, 0, 2);
-		RCache.set_ColorWriteEnable();
-		RCache.set_CullMode(CULL_CCW);
+		// The depth reprojection is only needed by the held-back geometry (the PDA and
+		// wearable screens) so hands and casing can still hide it. The item and camera
+		// UI widgets are drawn with the near HUD projection and need no scene depth, so
+		// skip the full-screen depth pass on frames without deferred geometry.
+		if (!RImplementation.GMBase.RGraph.mapHUDNativeUi.empty())
+		{
+			// Reproject the render-sized scene depth into the native depth buffer so
+			// hands and casing still hide the handheld screen. u_setrt() substitutes
+			// the upscaler scene depth for HW.pBaseZB, so bind the native depth
+			// buffer explicitly - the reprojection must target the display-sized one.
+			u_setrt(rt_dlss_post_source, nullptr, nullptr, nullptr);
+			RCache.set_ZB(HW.pBaseZB);
+			RCache.set_Element(s_dlss_ui_depth->E[0]);
+			RCache.set_c("dlss_ui_depth_params", float(dlss::RenderWidth()) / w,
+				float(dlss::RenderHeight()) / h, sceneJitter.x, sceneJitter.y);
+			RCache.set_ZFunc(D3DCMP_ALWAYS);
+			RCache.set_ColorWriteEnable(0);
+			RCache.Render(D3DPT_TRIANGLELIST, offset, 0, 4, 0, 2);
+			RCache.set_ColorWriteEnable();
+			RCache.set_CullMode(CULL_CCW);
+		}
+		else
+		{
+			// Same render state the depth pass would have left behind for the widgets.
+			RCache.set_ZFunc(D3DCMP_ALWAYS);
+			RCache.set_ColorWriteEnable();
+			RCache.set_CullMode(CULL_CCW);
+		}
 		RImplementation.GMBase.r_dsgraph_render_native_ui(renderHudUi, renderCamUi);
 	}
 

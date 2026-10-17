@@ -286,7 +286,7 @@ void xrLogger::RemoveLogCallback(LogCallback logCb)
 	theLogger->logCallbackList.remove(logCb);
 }
 
-namespace { void ArchiveLogFile(LPCSTR path); }	// defined below
+namespace { void ArchiveLogFile(LPCSTR path, bool move); }	// defined below
 
 void xrLogger::InternalCloseLog()
 {
@@ -302,10 +302,9 @@ void xrLogger::InternalCloseLog()
 	if (tempCopy != nullptr)
 		FS.w_close(tempCopy);
 
-	// Archive this session too, so the timestamped log is there right after a clean
-	// exit. A crash never reaches here, but the crash handlers flush the log and the
-	// next launch archives it, so that session is kept as well.
-	ArchiveLogFile(logFileName);
+	// Keep a dated copy of this session (the plain log stays for tools that read it;
+	// the next launch archives the plain one onto the same dated name).
+	ArchiveLogFile(logFileName, false);
 
 	UnpauseLogging();
 }
@@ -340,10 +339,11 @@ namespace
 		xr_sprintf(out, "%04u-%02u-%02u_%02u-%02u-%02u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 	}
 
-	// Moves a log file to "<name>_<timestamp>.log" so sessions never overwrite each
-	// other. The timestamp is the file's own last write time, i.e. the end of the
-	// session that produced it (crashed sessions included, archived on the next run).
-	void ArchiveLogFile(LPCSTR path)
+	// Moves or copies a log file to "<name>_<timestamp>.log" so sessions never
+	// overwrite each other. The timestamp is the file's own last write time, i.e.
+	// the end of the session that produced it (crashed sessions included, archived
+	// on the next run). With move = false the plain log stays for tools that read it.
+	void ArchiveLogFile(LPCSTR path, bool move)
 	{
 		if (path == nullptr || path[0] == 0)
 			return;
@@ -363,7 +363,10 @@ namespace
 			base.erase(dot);
 
 		xr_string archive = base + "_" + stamp + ".log";
-		::MoveFileExA(path, archive.c_str(), MOVEFILE_REPLACE_EXISTING);
+		if (move)
+			::MoveFileExA(path, archive.c_str(), MOVEFILE_REPLACE_EXISTING);
+		else
+			::CopyFileA(path, archive.c_str(), FALSE);
 	}
 }
 
@@ -388,7 +391,7 @@ void xrLogger::InternalOpenLogFile()
 	// Keep every session: archive the previous log under its own timestamp instead
 	// of the old single ".bkp" name, which was overwritten on every launch and,
 	// being relative to the working directory, usually did not match the log path.
-	ArchiveLogFile(logFileName);
+	ArchiveLogFile(logFileName, true);
 
 	logFile = FS.w_open(logFileName);
 	CHECK_OR_EXIT(logFile, "Can't create log file");
