@@ -199,15 +199,16 @@ void CRenderTarget::phase_dlss_postprocess()
 	// The PDA screens and wearable screen glass were held back from the scene
 	// (r_dsgraph_extract_native_ui) so they are drawn here, at display resolution,
 	// with the unjittered HUD projection instead of being upscaled with the scene.
-	const bool renderHudUi = RImplementation.GMBase.RGraph.hasNativeHudAttachments &&
-		g_hud && g_hud->RenderActiveItemUIQuery();
-	if (renderHudUi || !RImplementation.GMBase.RGraph.mapHUDNativeUi.empty())
+	const bool renderHudUi = g_hud && g_hud->RenderActiveItemUIQuery();
+	const bool renderCamUi = g_hud && g_hud->RenderCamAttachedUIQuery();
+	if (renderHudUi || renderCamUi || !RImplementation.GMBase.RGraph.mapHUDNativeUi.empty())
 	{
 		if (!reported_native_ui)
 		{
-			Msg("[Upscaler] HUD UI drawn after reconstruction: native=%ux%u, scene=%ux%u, meshes=%u, item_ui=%u",
+			Msg("[Upscaler] HUD UI drawn after reconstruction: native=%ux%u, scene=%ux%u, meshes=%u, item_ui=%u, cam_ui=%u",
 				Device.dwWidth, Device.dwHeight, dlss::RenderWidth(), dlss::RenderHeight(),
-				unsigned(RImplementation.GMBase.RGraph.mapHUDNativeUi.size()), unsigned(renderHudUi));
+				unsigned(RImplementation.GMBase.RGraph.mapHUDNativeUi.size()), unsigned(renderHudUi),
+				unsigned(renderCamUi));
 			reported_native_ui = true;
 		}
 		// Reproject the render-sized scene depth into the native depth buffer so
@@ -224,7 +225,7 @@ void CRenderTarget::phase_dlss_postprocess()
 		RCache.Render(D3DPT_TRIANGLELIST, offset, 0, 4, 0, 2);
 		RCache.set_ColorWriteEnable();
 		RCache.set_CullMode(CULL_CCW);
-		RImplementation.GMBase.r_dsgraph_render_native_ui(renderHudUi);
+		RImplementation.GMBase.r_dsgraph_render_native_ui(renderHudUi, renderCamUi);
 	}
 
 	// The screen-space overlays (gas mask, night vision, heat vision, fake scope)

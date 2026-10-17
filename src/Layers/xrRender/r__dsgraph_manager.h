@@ -98,7 +98,7 @@ public:
 	void r_dsgraph_render_hud_ui();
 	// DLSS: hold the PDA/wearable-screen HUD items for a display-resolution pass.
 	void r_dsgraph_extract_native_ui();
-	void r_dsgraph_render_native_ui(bool renderHudUi);
+	void r_dsgraph_render_native_ui(bool renderHudUi, bool renderCamUi);
 	void r_dsgraph_render_lods(bool _setup_zb, bool _clear);
 	void r_dsgraph_render_sorted(bool render_hud = true);
 	void r_dsgraph_render_sorted_hud();

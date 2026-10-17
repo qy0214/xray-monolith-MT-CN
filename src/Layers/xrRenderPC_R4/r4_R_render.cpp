@@ -389,9 +389,11 @@ void CRender::render_forward()
 		if (g_hud)
 		{
 			PROF_EVENT("render_hud");
-			if (!GMBase.RGraph.hasNativeHudAttachments && g_hud->RenderActiveItemUIQuery())
+			// With the upscaler on these widgets are drawn in the display-resolution
+			// pass instead, so the reconstruction does not magnify their pixels.
+			if (!dlss::Configured() && g_hud->RenderActiveItemUIQuery())
 				GMBase.r_dsgraph_render_hud_ui();
-			if (g_hud->RenderCamAttachedUIQuery())
+			if (!dlss::Configured() && g_hud->RenderCamAttachedUIQuery())
 				GMBase.r_dsgraph_render_cam_ui();
 		}
 

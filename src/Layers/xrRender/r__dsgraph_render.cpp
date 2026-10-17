@@ -272,12 +272,13 @@ void CDSGraphManager::r_dsgraph_extract_native_ui()
 	dlss::RemoveNativeUiDuplicates(RGraph.mapHUDSorted.Distort, RGraph.mapHUDNativeUi);
 }
 
-void CDSGraphManager::r_dsgraph_render_native_ui(bool renderHudUi)
+void CDSGraphManager::r_dsgraph_render_native_ui(bool renderHudUi, bool renderCamUi)
 {
 	PROF_EVENT("r_dsgraph_render_native_ui");
 	// Draw widgets once, at display resolution with the unjittered HUD projection,
 	// before the sorted PDA/glass meshes, preserving the forward-pass ordering.
 	if (renderHudUi) r_dsgraph_render_hud_ui();
+	if (renderCamUi) r_dsgraph_render_cam_ui();
 	CHudInitializer initializer(true);
 	RImplementation.rmNear();
 	r_dsgraph_render_graph_sorted(RGraph.mapHUDNativeUi, true);
