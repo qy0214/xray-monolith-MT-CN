@@ -175,9 +175,20 @@ public:
 		// frame and no torn value can be observed. Do not add fields that are mutated
 		// from both sides.
 
-		// Active optic lens FOV in degrees (0 = unknown), published by the game.
+		// Active optic lens FOV in degrees (0 = unknown), published by the game together
+		// with the optic facts below.
 		float svp_lens_fov = 0.f;
-		IC void SetSVPLensFov(float fov) { svp_lens_fov = fov; }
+
+		// Optic facts published by the game each frame. The renderer turns them into the
+		// evaluated state below and is the only writer of isActive (through SetSVPActive),
+		// so the pack's lens shaders and the renderer cannot disagree - that disagreement
+		// is what turned the scope black with no magnification.
+		bool svp_optic_magnifies = false;
+		IC void SetSVPInputs(bool magnifies, float lensFov)
+		{
+			svp_optic_magnifies = magnifies;
+			svp_lens_fov = lensFov;
+		}
 
 		// Pack PiP module detected once at startup; everything PiP side stays off when
 		// it is not installed, so plain 3DSS keeps its own look untouched.

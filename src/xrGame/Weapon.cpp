@@ -3366,12 +3366,52 @@ void CWeapon::UpdateSecondVP()
 
 	CActor* pActor = smart_cast<CActor*>(H_Parent());
 
-	// PiP (T3 #6): reverted to the baseline. Resolving the optic lens FOV here flipped
-	// IsSVPActive() to true for scoped weapons, and the pack's PiP lens shaders then took
-	// their second-viewport path even though this engine renders no lens for them: the
-	// scope went black and lost its own 3DSS magnification. The port will bring this back
-	// together with the lens rendering it needs.
-	Device.m_SecondViewport.SetSVPActive(m_zoomtype == 0 && pActor->cam_Active() == pActor->cam_FirstEye() && IsSecondVPZoomPresent() && m_zoom_params.m_fZoomRotationFactor > 0.05f);
+	// PiP (T3 #6): the game publishes only the optic FACTS. The renderer decides whether a
+	// lens is rendered and is the single writer of the second viewport state, so the pack's
+	// lens shaders (which read it) always agree with what the engine actually does. Doing
+	// the opposite - flipping the state here - made the shaders take their second viewport
+	// path while nothing rendered a lens, which is the black scope with no magnification.
+	const bool magnifies = (m_zoomtype == 0)
+		&& (pActor->cam_Active() == pActor->cam_FirstEye())
+		&& (m_zoom_params.m_fZoomRotationFactor > 0.05f);
+
+	// The optic's lens FOV lives on the section that matches the mounted scope: the packs
+	// use CHILD sections (wpn_ak50_1p69, ...), which is what cNameSect() reports once a
+	// scope is attached; the scope item's own section is the fallback. Null safe, because
+	// CInifile::section_exist/line_exist crash on an empty name and integrated-scope
+	// weapons have no separate scope item.
+	float lensFov = 0.0f;
+	if (IsScopeAttached() || m_zoomtype == 0)
+	{
+		shared_str sect = cNameSect();
+		if (sect.size() && pSettings->section_exist(*sect) && pSettings->line_exist(*sect, "scope_lense_fov"))
+			lensFov = pSettings->r_float(*sect, "scope_lense_fov");
+
+		if (lensFov <= 0.005f && IsScopeAttached())
+		{
+			shared_str scope = GetScopeName();
+			if (scope.size() && pSettings->section_exist(*scope) && pSettings->line_exist(*scope, "scope_lense_fov"))
+				lensFov = pSettings->r_float(*scope, "scope_lense_fov");
+		}
+	}
+
+	Device.m_SecondViewport.SetSVPInputs(magnifies, lensFov);
+
+	// Edge triggered diagnostic (section or facts changed), no per-frame cost on the hot path.
+	{
+		static shared_str diagLastSect;
+		static float diagLastFov = -1.0f;
+		static bool diagLastMag = false;
+		if (diagLastSect != cNameSect() || !fsimilar(diagLastFov, lensFov) || diagLastMag != magnifies)
+		{
+			Msg("* [PIP/scope] section='%s' magnifies=%d lensFov=%.4f attached=%d zoomtype=%d",
+				cNameSect().size() ? *cNameSect() : "(none)", magnifies ? 1 : 0, lensFov,
+				IsScopeAttached() ? 1 : 0, m_zoomtype);
+			diagLastSect = cNameSect();
+			diagLastFov = lensFov;
+			diagLastMag = magnifies;
+		}
+	}
 }
 
 Fmatrix CWeapon::RayTransform()

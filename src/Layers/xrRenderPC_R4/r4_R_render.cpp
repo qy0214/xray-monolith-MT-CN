@@ -217,7 +217,7 @@ namespace svpcam
 // camera keeps its ADS zoom and the mouse keeps its stock ratio. The pieces stay in the
 // tree for the eventual port, and are switched on again only once the lens content is
 // finished and verified without the player acting as the test rig.
-static const bool SVP_SAME_FRAME_READY = false;
+static const bool SVP_SAME_FRAME_READY = true;
 
 // Startup stamp helper (see CRender::create): lets the log state which engine build is
 // actually running and whether the same-frame PiP path is live, so a stale exe in the
@@ -322,11 +322,16 @@ void CRender::Render()
 	// the frame would race with the game thread, which publishes them once per frame.
 	{
 		const float lensFov = Device.m_SecondViewport.svp_lens_fov;
-		const bool svpActive = Device.m_SecondViewport.IsSVPActive();
 		const SvpScopeInputs svpIn = svp_make_inputs(Device.m_SecondViewport.pip_lens_shaders,
-			compat::r__svp_same_frame != 0, svpActive, lensFov > 1.0f, TargetSVP != nullptr);
+			compat::r__svp_same_frame != 0, Device.m_SecondViewport.svp_optic_magnifies,
+			lensFov > 1.0f, TargetSVP != nullptr);
 		Device.m_SecondViewport.svp_scope = svp_evaluate_scope(svpIn);
 	}
+
+	// Single writer of the second viewport state: the pack's lens shaders (scope_svp and
+	// m_blender_mode.z, both set here) read exactly what this frame renders, so "shaders
+	// take the SVP path" and "engine renders a lens" can never disagree again.
+	Device.m_SecondViewport.SetSVPActive(Device.m_SecondViewport.svp_scope.lens_rendered);
 
 	Device.true_pip_on = Device.m_SecondViewport.svp_scope.lens_rendered;
 	Device.m_SecondViewport.true_pip_rendering = Device.m_SecondViewport.svp_scope.lens_rendered;
