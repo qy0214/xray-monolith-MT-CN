@@ -45,6 +45,13 @@ void ActivationFailed(const char* reason, const char* recovery)
 }
 const char* BackendReason(const char* fallback) { return backendError[0] ? backendError : fallback; }
 void ResetHistory() { backend.ResetHistory(); fsrBackend.ResetHistory(); }
+// Device views (heat vision, night vision) rebuild the image every frame from an
+// animated noise field plus screen-locked lens math, which the temporal upscaler
+// cannot align - it would smear it and trail behind camera motion. While one of
+// them is active the jitter is dropped and the history is invalidated every
+// frame, so the upscale stays spatial and stable instead of ghosting.
+bool StableOverlaysActive() { return ps_r2_heatvision > 0 || ps_r2_nightvision > 0; }
+bool reportedStableOverlays = false;
 }
 
 // The upscaler render size belongs to the MAIN viewport only; during an SVP pass
@@ -227,8 +234,19 @@ void BeginScene()
     }
     // Scope frames must neither consume a jitter sample nor overwrite the history.
     mainView = !Device.m_SecondViewport.IsSVPFrame();
+    const bool stableOverlay = StableOverlaysActive();
+    if (stableOverlay != reportedStableOverlays)
+    {
+        reportedStableOverlays = stableOverlay;
+        Msg("[Upscaler] device view %s: temporal history and jitter %s",
+            stableOverlay ? "on (heat/night vision)" : "off",
+            stableOverlay ? "disabled while it is active" : "restored");
+    }
     if (Active())
     {
+        // A device view changes the whole image every frame without matching the
+        // motion vectors; accumulating it would smear it and trail the camera.
+        if (stableOverlay) ResetHistory();
         if (haveCamera && (lastPosition.distance_to_sqr(Device.vCameraPosition) > 64.0f * 64.0f ||
             lastDirection.dotproduct(Device.vCameraDirection) < 0.25f || _abs(lastFov - Device.fFOV) > 10.0f))
         {
@@ -242,7 +260,8 @@ void BeginScene()
         SSManager.SetMipLODBias(ps_r__tf_Mipbias + log2f(float(RenderWidth()) / Device.dwWidth));
     }
     // Single gate for the whole jitter chain (binders, NGX/FSR3 jitterOffset).
-    rasterJitter = (Active() && ps_r_upscaler_jitter != 0)
+    // A device view also drops the jitter: without history it would only shimmer.
+    rasterJitter = (Active() && ps_r_upscaler_jitter != 0 && !stableOverlay)
         ? Jitter(jitterIndex++, renderSize, {Device.dwWidth, Device.dwHeight}) : Offset{};
 }
 
