@@ -227,15 +227,8 @@ namespace svpcam
 //                               destination is not the surface the shader resolves
 //   both good                -> the content path is fine and the disagreement is on the
 //                               shader side (scope_svp, motion, sampling)
-static void svp_probe_rt(LPCSTR tag, ref_rt& rt)
+static void svp_probe_resource(LPCSTR tag, ID3D11Resource* res)
 {
-	if (!rt || !rt->pTexture)
-	{
-		Msg("* [PIP] probe %s: no texture", tag);
-		return;
-	}
-
-	ID3D11Resource* res = rt->pTexture->surface_get();
 	if (!res)
 	{
 		Msg("* [PIP] probe %s: no surface", tag);
@@ -246,7 +239,6 @@ static void svp_probe_rt(LPCSTR tag, ref_rt& rt)
 	if (FAILED(res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex)) || !tex)
 	{
 		Msg("* [PIP] probe %s: not a 2D texture", tag);
-		_RELEASE(res);
 		return;
 	}
 
@@ -268,7 +260,6 @@ static void svp_probe_rt(LPCSTR tag, ref_rt& rt)
 	{
 		Msg("* [PIP] probe %s: staging failed fmt=%u %ux%u", tag, d.Format, d.Width, d.Height);
 		_RELEASE(tex);
-		_RELEASE(res);
 		return;
 	}
 
@@ -309,7 +300,33 @@ static void svp_probe_rt(LPCSTR tag, ref_rt& rt)
 
 	_RELEASE(stg);
 	_RELEASE(tex);
-	_RELEASE(res);
+}
+
+// The render targets of a set must be read through CRT::pSurface, never through
+// pTexture->surface_get(): pTexture is a name keyed texture object that SetActive()
+// re-points to whichever set is active, so probing "the main set's rt_Generic_0" while
+// the second set is bound silently returns the SECOND set's texture. The identical
+// values the two probes reported for the main and second set are what exposed this.
+static void svp_probe_rt(LPCSTR tag, ref_rt& rt)
+{
+	if (!rt || !rt->pSurface)
+	{
+		Msg("* [PIP] probe %s: no texture", tag);
+		return;
+	}
+	svp_probe_resource(tag, rt->pSurface);
+}
+
+static void svp_probe_composite()
+{
+	if (!HW.m_pSwapChain)
+		return;
+	ID3D11Texture2D* bb = nullptr;
+	if (SUCCEEDED(HW.m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&bb)) && bb)
+	{
+		svp_probe_resource("control(backbuffer)", bb);
+		_RELEASE(bb);
+	}
 }
 
 // PiP (T3 #6): parked at file scope so the early second-viewport allocation gate can see
@@ -470,6 +487,10 @@ void CRender::Render()
 	const int viewCount = pipOn ? 2 : 1;
 	for (int view = 0; view < viewCount; ++view)
 	{
+		// Per pass submission baseline (see the "pass ... submitted" line below).
+		const u32 stats_l0 = RImplementation.stats.l_total;
+		const u32 stats_q0 = RImplementation.stats.o_queries;
+
 		if (viewCount == 2)
 		{
 			const bool lensPass = (view == 0);
@@ -752,43 +773,52 @@ void CRender::Render()
 			// and the MSAA path resolves into it as well. Both are A8R8G8B8 (non HDR10)
 			// and both are display sized, so the copy is a valid 1:1 blit.
 			CRenderTarget* lensDst = TargetMain ? TargetMain : Target;
-			if (lensDst && lensDst->rt_secondVP && TargetSVP->rt_Generic_0->pTexture)
+			if (lensDst && lensDst->rt_secondVP && TargetSVP->rt_Generic_0->pSurface)
 			{
-				ID3D11Resource* lensSrc = TargetSVP->rt_Generic_0->pTexture->surface_get();
-				if (lensSrc)
-				{
-					HW.pContext->CopyResource(lensDst->rt_secondVP->pSurface, lensSrc);
-					_RELEASE(lensSrc);
-					svp_lens_rendered = true;
+				// pSurface, not pTexture->surface_get(): the latter is a name keyed object
+				// that SetActive() re-points at the active set, so it is not a reliable way
+				// to name one specific set's texture.
+				HW.pContext->CopyResource(lensDst->rt_secondVP->pSurface, TargetSVP->rt_Generic_0->pSurface);
+				svp_lens_rendered = true;
 
-					// Throttled content probe (see svp_probe_rt): one readback tells us
-					// whether the second view rendered anything and whether the blit
-					// landed in the texture the lens material resolves.
-					static u32 s_lensProbe_at = 0;
-					if (Device.dwFrame >= s_lensProbe_at)
+				// Throttled content probe (see svp_probe_rt): one readback tells us
+				// whether the second view rendered anything and whether the blit
+				// landed in the texture the lens material resolves.
+				static u32 s_lensProbe_at = 0;
+				if (Device.dwFrame >= s_lensProbe_at)
+				{
+					s_lensProbe_at = Device.dwFrame + 240;
+					Msg("* [PIP] lens mag=%.3f fFOV=%.3f lensFov=%.3f hdr10=%d sameSurface=%d",
+						svpcam::s_lastMag, Device.fFOV, Device.m_SecondViewport.svp_lens_fov,
+						RImplementation.o.dx11_hdr10 ? 1 : 0,
+						(TargetSVP->rt_Generic_0->pSurface == lensDst->rt_secondVP->pSurface) ? 1 : 0);
+					// Control first: the backbuffer is never black, so if this reads black
+					// the readback path itself is at fault and nothing else is evidence.
+					svp_probe_composite();
+					svp_probe_rt("src(2ndView generic0)", TargetSVP->rt_Generic_0);
+					svp_probe_rt("dst($user$viewport2)", lensDst->rt_secondVP);
+					svp_probe_rt("svp rt_Color(albedo)", TargetSVP->rt_Color);
+					svp_probe_rt("svp rt_Position(gbuf)", TargetSVP->rt_Position);
+					svp_probe_rt("svp rt_Accumulator(light)", TargetSVP->rt_Accumulator);
+					// Now read through pSurface these are trustworthy controls: the main
+					// set still holds the previous frame's finished content.
+					if (TargetMain)
 					{
-						s_lensProbe_at = Device.dwFrame + 240;
-						Msg("* [PIP] lens mag=%.3f fFOV=%.3f lensFov=%.3f hdr10=%d sameSurface=%d",
-							svpcam::s_lastMag, Device.fFOV, Device.m_SecondViewport.svp_lens_fov,
-							RImplementation.o.dx11_hdr10 ? 1 : 0,
-							(TargetSVP->rt_Generic_0->pSurface == lensDst->rt_secondVP->pSurface) ? 1 : 0);
-						svp_probe_rt("src(2ndView generic0)", TargetSVP->rt_Generic_0);
-						svp_probe_rt("dst($user$viewport2)", lensDst->rt_secondVP);
-						// Where the second view lost its content: the G-buffer geometry
-						// and the lighting accumulation of the lens set, versus the same
-						// targets of the main set (which holds last frame's finished
-						// image and therefore acts as the control).
-						svp_probe_rt("svp rt_Color(albedo)", TargetSVP->rt_Color);
-						svp_probe_rt("svp rt_Position(gbuf)", TargetSVP->rt_Position);
-						svp_probe_rt("svp rt_Accumulator(light)", TargetSVP->rt_Accumulator);
-						if (TargetMain)
-						{
-							svp_probe_rt("main rt_Color(albedo)", TargetMain->rt_Color);
-							svp_probe_rt("main rt_Accumulator(light)", TargetMain->rt_Accumulator);
-							svp_probe_rt("main rt_Generic_0(scene)", TargetMain->rt_Generic_0);
-						}
+						svp_probe_rt("main rt_Color(albedo)", TargetMain->rt_Color);
+						svp_probe_rt("main rt_Accumulator(light)", TargetMain->rt_Accumulator);
+						svp_probe_rt("main rt_Generic_0(scene)", TargetMain->rt_Generic_0);
 					}
 				}
+
+				// Submission evidence for this pass: how much geometry and how many
+				// lights the pass actually put through the pipeline. A black lens with
+				// zero submissions here means the pass never got any content to draw,
+				// which is a different problem from drawing nothing due to culling.
+				Msg("* [PIP] pass %s submitted lights=%u/%u|+%u queries=%u|+%u culled=%u",
+					"lens", RImplementation.stats.l_visible, RImplementation.stats.l_total,
+					RImplementation.stats.l_total - stats_l0,
+					RImplementation.stats.o_queries, RImplementation.stats.o_queries - stats_q0,
+					RImplementation.stats.o_culled);
 			}
 		}
 	}	// end of the per-view loop
