@@ -82,9 +82,23 @@ Reference implementation on this machine:
 Also `xrEngine/device.{h,cpp}` for `CSecondVPParams`.
 
 Stages (each one committable, none required to land the next):
+0. **Order matters — do not create the second target set before the naming is
+   resolved.** Our targets live in a global name registry (`ref_rt::create(name)`
+   resolves to the shared `CTexture` for that name), so a second `CRenderTarget`
+   built with the same literal names would *replace the main set's surfaces* with
+   display-sized ones even without switching, i.e. it would break the main path
+   immediately. Two viable routes:
+   - prefix route: a creation-time prefix honoured by the RT creation path, so set
+     B registers `$user$svp_generic0` etc. The hook has to be in the `CTexture`
+     create path (`Layers/xrRenderDX10/dx10SH_Texture.cpp`) or in a thin wrapper,
+     because the ctor's ~80 calls pass literal names;
+   - explicit route: build only the ~20 RTs the scene pipeline actually needs, with
+     prefixed names, from an explicit table (verbose but contained and reviewable).
+   Pick the explicit route if a shared-path hook looks risky; correctness first.
 1. `CRenderTarget(bool mainSet)` — second instance sized to the display (or the
    optic extent), created lazily on the first magnifying ADS, kept for the
-   session. Nothing switches yet.
+   session. Nothing switches yet; verify the main path is untouched (compare
+   `rs_stats`, the PDA/scope behaviour and the shader cache hit rate).
 2. Re-point the registered `$user$*` names to the other set's surfaces on switch
    (`Resources->_CreateTexture(name)->surface_set(other->pSurface)`), so all
    blenders that bind by name follow the active set.
