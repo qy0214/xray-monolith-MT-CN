@@ -1,20 +1,15 @@
-diag(pip): Read the main set with the same probes as the lens, in the same frames
+diag(pip): Read the G-buffer albedo at the combine, for both sets
 
-The lens image improved from about 8/255 to 34/255 with the exposure fix and its sky now matches
-the main view, so the remaining darkness is not an exposure problem. Three candidates have been
-ruled out with evidence rather than by argument:
+The same frame probes settle the lighting question: the lens accumulator and the main accumulator
+agree (123/12/128 against 116/9/112, i.e. the lighting is the same) while the combined images
+differ by 2.2x (41/40/34 against 18/18/13). Of the combine's inputs only the albedo can explain
+that, and the existing "mid albedo" line cannot measure it: this engine runs albedo_wo, where the
+G-buffer writes the albedo into rt_Accumulator and phase_scene_end transfers it into rt_Color, so a
+probe taken at the end of the geometry pass reads the PREVIOUS content - which is exactly the
+34/29/19 against 18/18/13 disagreement seen earlier, and why that looked like an overwrite.
 
- - the lens shader's own grade: scope_lense_brightness/contrast/saturation/gamma are all 1.0 in the
-   player's user.ltx, so grade_second_vp is skipped entirely;
- - the name keyed remap: every G-buffer target of the second set is created through createUnique
-   (r4_rendertarget.cpp), so $user$albedo, $user$accum and friends do resolve to the lens set;
- - the accumulator contents: the lens accumulator probes bright (134/2/127) while the lens combined
-   image is dark, so the lighting ran.
-
-What is left needs one comparison the current probes cannot make, because they only read the lens
-set: the same numbers for the MAIN set, in the same frame. A lens render whose rt_Accum is weaker
-than the main's points at the lighting or the combine; one whose rt_Accum matches and whose
-generic0 does not points at the post process tail, which the lens never runs while the reference
-build did (its SVP frame ran phase_pp and only skipped blur, bloom, SSR and water, and its lens
-texture was copied from the swapchain - i.e. the post processed frame). Both possibilities are
-named in the code and the probe throttle is now shared by the two passes so the numbers line up.
+The new probe reads rt_Color at the start of phase_combine, after that transfer and before the pass
+writes anything, with the lens pass running first - so the two lines are the same stage of the two
+sets in the same frame. If the lens albedo really is about half, the fault is in the lens G-buffer
+render (and the albedo_wo transfer is the first thing to inspect); if the two match, it is the
+combine/post process side. svp_probe_rt became non static for this, which is diagnostic only.

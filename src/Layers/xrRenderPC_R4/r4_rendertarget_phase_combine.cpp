@@ -42,6 +42,9 @@ void CRenderTarget::phase_combine()
 {
 	PIX_EVENT_C(phase_combine, dx10_marker_combine);
     PROF_EVENT("phase_combine");
+	// Defined in r4_R_render.cpp; reads a render target back and logs its statistics (PiP
+	// diagnostics only, see the albedo probe below).
+	extern void svp_probe_rt(LPCSTR tag, ref_rt& rt);
 	
 	bool ssfx_PrevPos_Requiered = false;
 
@@ -78,6 +81,20 @@ void CRenderTarget::phase_combine()
 		lumSource = RImplementation.TargetMain;
 	t_LUM_src->surface_set(rt_LUM_pool[0]->pSurface);
 	t_LUM_dest->surface_set(lumSource->rt_LUM_pool[1]->pSurface);
+
+	// PiP diagnostic: the G-buffer albedo exactly as this combine is about to read it. With
+	// albedo_wo enabled the G-buffer writes the albedo into rt_Accumulator and phase_scene_end
+	// transfers it into rt_Color - so a probe taken at the end of the geometry pass reads the
+	// PREVIOUS content, which is why the "mid albedo" line and the post-combine one disagreed
+	// (34/29/19 against 18/18/13). Here the value is after that transfer and before any of this
+	// pass's own writes, i.e. the same stage for the lens set and the main set, and both lines
+	// are printed in the same frame (the lens pass runs first), so the two albedos are directly
+	// comparable - which is the number that decides whether a lens render that reads dark is a
+	// G-buffer problem or a combine/post process one. The accumulator probe already matched
+	// (123/12/128 against 116/9/112) with the combined images differing by 2.2x, so the albedo
+	// is the remaining input that can explain it.
+	if (Device.true_pip_on && (Device.dwFrame % 600) == 0)
+		svp_probe_rt(m_is_main_target ? "in(main) rt_Color(albedo)" : "in(lens) rt_Color(albedo)", rt_Color);
 
 	if (RImplementation.o.ssao_hdao && RImplementation.o.ssao_ultra)
 	{

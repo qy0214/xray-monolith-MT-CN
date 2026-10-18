@@ -486,7 +486,10 @@ static void svp_probe_resource(LPCSTR tag, ID3D11Resource* res)
 // re-points to whichever set is active, so probing "the main set's rt_Generic_0" while
 // the second set is bound silently returns the SECOND set's texture. The identical
 // values the two probes reported for the main and second set are what exposed this.
-static void svp_probe_rt(LPCSTR tag, ref_rt& rt)
+// Not static: the combine phase reads the lens and main G-buffer albedo at its own start
+// (the only point where the two are the same stage), and that lives in another translation
+// unit. Diagnostic only, and gated on the debug switch at every call site.
+void svp_probe_rt(LPCSTR tag, ref_rt& rt)
 {
 	if (!rt || !rt->pSurface)
 	{
