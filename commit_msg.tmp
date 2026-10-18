@@ -1,27 +1,19 @@
-fix(pip): Give the scope's TAA skip mask somewhere to land
+perf(pip): Finish the log audit: the upscaler and reset lines were repeating once per aim
 
-Turning DLSS off changed nothing, and that is the clue that closes this: with the upscaler off the
-SSS TAA takes over (phase_ssfx_taa is gated on !dlss::Configured()), so both temporal filters were
-doing the same thing to the sight's pixels all along - reprojecting a screen locked image with the
-scene's motion vectors and dragging the previous frame across it while panning.
+A full sweep for log writes on our paths, beyond the probes already switched off, found the last
+repeaters: the upscaler re-initialises every time the scope resolution override toggles, which is
+once per aim, and each re-init wrote its own lines.
 
-The pack's shader already writes what is needed. At the end of models_scope_reticle.ps:
+ - "[DLSS] Initialized; awaiting first scene evaluation" (or the FSR3 equivalent) is now written once
+   per session, not on every rebuild. The first line carries all of it.
+ - "- [DLSS] ACTIVE - first scene evaluation succeeded" likewise, once per session.
+ - the "STOPPED - using spatial upscale" error was written every frame while a failure lasted; it is
+   now reported once per failure episode (the error state for the UI is still updated every frame).
+ - "* [RESET/RENDER TARGET] ..." is written on the first reset and then only at r__svp_debug 1, since
+   later resets are the override toggling once per aim rather than anything the player needs to see.
 
-    // z keeps the existing HUD classification; w is the SSFX TAA skip mask.
-    // The PiP image is already spatially antialiased in its own viewport and
-    // must not be accumulated again through the main camera's temporal history.
-    result.taa_mask = float4(0, 0, 0, 1);
-
-and ssfx_taa.ps reads that mask from the motion vector target's alpha:
-
-    float vel_acc = s_motion_vectors.SampleLevel(smp_point, I.tc0.xy, 0).a;
-
-The pass that draws the optic bound only two targets (rt_Generic_0, rt_Position), so SV_Target2 had
-nowhere to go: the mask was written into nothing and the sight's pixels kept the world's motion
-vectors. Binding the motion vector target as the third slot lands both halves of the fix at once -
-the mask in the alpha, which tells the filter to keep the current frame, and zero in the RGB, which
-is the correct velocity for something that does not move with the scene.
-
-This applies to the pass render_Reticle() runs in, which with r__3Dfakescope on (the pack's default
-here) is where the sight's screen is drawn. The same binding for the non fake scope path is a
-separate, smaller exercise; it is named here rather than guessed at.
+What the audit leaves in a normal session: the per session lines (build stamp, pack policy, target
+set created, the upscaler's first lines), one line per aim (the aim summary, the thermal optic line,
+and the state line when it changes) and the five minute heartbeats. Everything else we added - the
+content probes, the readbacks, the image dumps, the per pass lines - is behind r__svp_debug and off
+by default. render_stats::Publish writes nothing to the log at all; it only feeds the stats overlay.

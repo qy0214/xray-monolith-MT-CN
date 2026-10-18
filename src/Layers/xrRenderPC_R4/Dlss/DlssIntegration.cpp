@@ -243,12 +243,20 @@ void InitializeTargets()
     }
     renderSize = size;
     configured = true;
-    if (useFsr)
-        Msg("[FSR3] Initialized; awaiting first scene evaluation: quality=%u scene=%ux%u display=%ux%u",
-            ps_r_fsr3_quality, size.width, size.height, display.width, display.height);
-    else
-        Msg("[DLSS] Initialized; awaiting first scene evaluation: quality=%u requested preset=%u scene=%ux%u display=%ux%u",
-            ps_r_dlss_quality, ps_r_dlss_preset, size.width, size.height, display.width, display.height);
+    // Once per session: this runs again every time the scope resolution override toggles, which is
+    // once per aim (the override raises the internal resolution while an optic is up), so the same
+    // two lines were being written on every aim. The first one carries all the information.
+    static bool reportedInit = false;
+    if (!reportedInit)
+    {
+        if (useFsr)
+            Msg("[FSR3] Initialized; awaiting first scene evaluation: quality=%u scene=%ux%u display=%ux%u",
+                ps_r_fsr3_quality, size.width, size.height, display.width, display.height);
+        else
+            Msg("[DLSS] Initialized; awaiting first scene evaluation: quality=%u requested preset=%u scene=%ux%u display=%ux%u",
+                ps_r_dlss_quality, ps_r_dlss_preset, size.width, size.height, display.width, display.height);
+        reportedInit = true;
+    }
 }
 
 void ReleaseTargets()
@@ -357,12 +365,22 @@ bool Evaluate(ID3D11Texture2D* color, ID3D11Texture2D* motion)
     frame.cameraFar = -Device.mProject._43 / (Device.mProject._33 - 1.0f);
     frame.verticalFov = 2.0f * atanf(1.0f / Device.mProject._22);
     const bool success = useFsr ? fsrBackend.Evaluate(frame) : backend.Evaluate(frame);
+    // Both of these repeat once per aim: the evaluation flag is reset when the targets are rebuilt
+    // for the scope resolution override, and a failure repeats every frame while it lasts. The log
+    // gets the first occurrence of each.
+    static bool reportedActiveOnce = false;
+    static bool reportedFailureOnce = false;
     if (success && !reportedEvaluation)
     {
         SetRendererError(nullptr);
-        Msg("- [%s] ACTIVE - first scene evaluation succeeded: frame=%u, scene=%ux%u, jitter=(%.4f,%.4f), MV scale=(-%u,-%u)",
-            Method(), Device.dwFrame, RenderWidth(), RenderHeight(), rasterJitter.x, rasterJitter.y, RenderWidth(), RenderHeight());
+        if (!reportedActiveOnce)
+        {
+            Msg("- [%s] ACTIVE - first scene evaluation succeeded: frame=%u, scene=%ux%u, jitter=(%.4f,%.4f), MV scale=(-%u,-%u)",
+                Method(), Device.dwFrame, RenderWidth(), RenderHeight(), rasterJitter.x, rasterJitter.y, RenderWidth(), RenderHeight());
+            reportedActiveOnce = true;
+        }
         reportedEvaluation = true;
+        reportedFailureOnce = false;
     }
     else if (!success)
     {
@@ -370,7 +388,11 @@ bool Evaluate(ID3D11Texture2D* color, ID3D11Texture2D* motion)
         xr_sprintf(summary, "[%s] STOPPED - using spatial upscale without temporal reconstruction", Method());
         const char* reason = BackendReason("Scene evaluation failed.");
         const char* recovery = "Check the console/log. Reapply Upscaling (vid_restart) or switch it Off in Video settings.";
-        Msg("! %s: %s", summary, reason);
+        if (!reportedFailureOnce)
+        {
+            Msg("! %s: %s", summary, reason);
+            reportedFailureOnce = true;
+        }
         Msg("! [%s] %s", Method(), recovery);
         SetRendererError(summary, reason, recovery);
     }

@@ -706,6 +706,9 @@ void CRender::reset_begin()
 	HWOCC.occq_destroy();
 }
 
+// The PiP diagnostic level (r4_R_render.cpp): gates the repeated reset line and, below, the probes.
+namespace svpcam { extern int s_svpDebug; }
+
 void CRender::reset_end()
 {
 	HWOCC.occq_create(occq_size);
@@ -713,9 +716,16 @@ void CRender::reset_end()
 	const u64 rtCreateStart = CPU::QPC();
 	Target = xr_new<CRenderTarget>();
 	TargetMain = Target;
-	Msg("* [RESET/RENDER TARGET] mode=serial total=%.0f ms (scene %ux%u display %ux%u)",
-		float(double(CPU::QPC() - rtCreateStart) * 1000.0 / double(CPU::qpc_freq)),
-		dlss::RenderWidth(), dlss::RenderHeight(), Device.dwWidth, Device.dwHeight);
+	// The first reset (startup, or a resolution change) is worth a line; every later one happens
+	// whenever the scope resolution override toggles - once per aim - so those are diagnostic only.
+	static bool reportedReset = false;
+	if (!reportedReset || svpcam::s_svpDebug > 0)
+	{
+		Msg("* [RESET/RENDER TARGET] mode=serial total=%.0f ms (scene %ux%u display %ux%u)",
+			float(double(CPU::QPC() - rtCreateStart) * 1000.0 / double(CPU::qpc_freq)),
+			dlss::RenderWidth(), dlss::RenderHeight(), Device.dwWidth, Device.dwHeight);
+		reportedReset = true;
+	}
 
 	//AVO: let's reload details while changed details options on vid_restart
 	if (b_loaded && ((dm_current_size != dm_size) || (ps_r__Detail_density != ps_current_detail_density) || (
