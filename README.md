@@ -1,9 +1,10 @@
----
-
 # MT-CN 分支：面向 **Anomaly 1.5.3「Anthology 2.1 剧情整合包」** 的引擎适配
 
-> 本分支 = 上游 **X-Ray Monolith (MT)** 引擎 + **本仓库自己的适配层**。
-> 目标：让整合包（剧情 / 武器 / 画面类 MOD）在该引擎上**全部可用**，并在其上提供 **DLSS / FSR3 原生上采样** 与 **同帧 PiP 3D 镜内视图**。
+**本分支 = 上游 X-Ray Monolith (MT) 引擎 + 本仓库自己的适配层。**
+
+**目标**：让整合包（剧情 / 武器 / 画面类 MOD）在该引擎上**全部可用**，并在其上提供 **DLSS / FSR3 原生上采样** 与 **同帧 PiP 3D 镜内视图**。
+
+**部署方式**：仅写入整合包的 `MODS\MT-CN\`（由 MO2 覆盖）；**不写入整合包自带 `bin\`，不修改任何 MOD 文件**。
 
 ## 一、新增功能（简要）
 
@@ -22,7 +23,7 @@
 | **DLSS** | **NVIDIA DLSS Super Resolution（NGX SDK）**：经 `NVSDK_NGX_D3D11_Init_with_ProjectID` / `NVSDK_NGX_*` 接入；头文件为仓库内 vendored 的 NVIDIA NGX SDK（`sdk/DLSS/include/nvsdk_ngx*.h`，许可证见 `sdk/DLSS/LICENSE.txt`）；**运行时**为游戏目录中的 `bin\nvngx_dlss.dll` | `src\Layers\xrRenderPC_R4\Dlss\` |
 | **FSR3** | **AMD FidelityFX FSR 3.1.2 Upscaler（MIT）+ 社区 D3D11 backend**：`sdk/FSR3/`（含 `LICENSE.txt`、`Third_party_notices.txt`；其 `README.txt` 注明 vendored 自 OGSR 依赖 `8adb7cf1…`，**非** AMD 官方 DX12/Vulkan backend）；**运行时**为 `bin\ffx_fsr3upscaler_x64.dll`、`bin\ffx_backend_dx11_x64.dll` | `src\Layers\xrRenderPC_R4\Dlss\` |
 
-> 两者**均为可选**：未启用或加载失败时自动回退原生分辨率（原因在控制台与画面设置中可见）。
+两者**均为可选**：未启用或加载失败时自动回退原生分辨率（原因在控制台与画面设置中可见）。
 
 ## 三、整合包各 MOD「对引擎的需求」及本分支的处置（简要）
 
@@ -63,8 +64,6 @@
 | **`bin\ffx_*.dll`**（未归档）| **AMD FidelityFX FSR 3.1.2** 运行时，由游戏安装提供；SDK 与许可证见仓库 `sdk/FSR3/` |
 | **`bin\AnomalyDX11AVX.exe`**（未归档）| 由本仓库源码构建产出 |
 | **`scheduler_batch_size = 512`（必须）**| 需同时满足两处：`appdata\user.ltx` 的 `scheduler_batch_size 512`，与 `gamedata\configs\axr_options.ltx` 的 `modded_exes/optimizations/scheduler_batch_size = 512`（整合包基座中亦已是 512）。本快照两份均为 **512**。 |
-
----
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/themrdemonized/xray-monolith)
 
