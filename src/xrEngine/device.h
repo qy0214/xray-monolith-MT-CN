@@ -180,10 +180,11 @@ public:
 		// with the optic facts below. This is the FOV the lens camera must render with.
 		float svp_lens_fov = 0.f;
 
-		// The game's base (unzoomed) view FOV, g_fov. The packs document the lens
-		// magnification as g_fov / scope_lense_fov, so the renderer needs the base FOV as
-		// the reference; using the current main view FOV instead made the magnification
-		// drift with the main view's smoothing and left the lens short of stock.
+		// The game's base (unzoomed) view FOV, g_fov. Published for reference: the lens camera
+		// is now built from the optic's authored lens FOV in degrees (DeriveZoom), so nothing
+		// scales a ratio against this any more - the earlier g_fov / lensFov ratio both missed
+		// the authored angle (the projection is built from tan(fov/2)) and drifted with the
+		// main view's ADS smoothing.
 		float svp_base_fov = 0.f;
 
 		// Optic facts published by the game each frame. The renderer turns them into the

@@ -51,16 +51,33 @@ void CRenderTarget::phase_combine()
 	u32 Offset = 0;
 	Fvector2 p0, p1;
 
-	// PiP: bind the luminance textures to THIS set's pool on every pass, without the
-	// "already bound" comparison the stock code used. The comparison compares against
-	// t_LUM_src->pTexture, but those texture objects are name keyed and shared between the
-	// two target sets, so after the active set changes it is stale: the lens pass then tone
-	// maps its image with the main set's exposure. That is the dark lens the image dumps
-	// show - the same scene, correctly exposed in the main view and about 2.5x darker inside
-	// the sight - and it is why the legacy code had an if/else here with two identical
-	// branches, an attempt at exactly this split that was never written out.
+	// PiP: bind the luminance textures on every pass, without the "already bound"
+	// comparison the stock code used. That comparison is against t_LUM_src->pTexture, and
+	// those texture objects are name keyed and shared between the two target sets, so after
+	// the active set changes it is stale.
+	//
+	// The LENS pass is the case that matters, and it is the dark lens the image dumps show
+	// (lens rt_Generic_0 averaging about 8/255 against 40/255 in the main view of the same
+	// scene, while the lens accumulator is bright). Which binding carries the exposure is
+	// easy to get wrong, so: r2_types.h names $user$tonemap_src / $user$tonemap, the
+	// luminance shader reads the _src one, and blender_combine binds the combine shader's
+	// s_tonemap to r2_RT_luminance_cur = $user$tonemap = t_LUM_DEST. The exposure the combine
+	// actually multiplies by is therefore t_LUM_dest, i.e. rt_LUM_pool[1].
+	//
+	// The lens set's pool is created cleared to zero and the post process chain that fills it
+	// (phase_luminance, called from phase_pp) never runs for the lens pass: phase_combine
+	// returns for the lens before that chain, deliberately, because the display sized stages
+	// and the temporal upscaler belong to the main pass. So the lens combine multiplied an
+	// otherwise correct lens image by zero. It is the same eye and the same scene, so the lens
+	// uses the exposure the main view is using: the main pool's current value, which is exactly
+	// the surface the main pass binds a few moments later in this same frame.
+	// "this != TargetMain" is the precise test for the lens pass; the per pass flag is set by
+	// SetActive and this deliberately does not depend on it having run.
+	CRenderTarget* lumSource = this;
+	if (RImplementation.TargetMain && RImplementation.TargetMain != this)
+		lumSource = RImplementation.TargetMain;
 	t_LUM_src->surface_set(rt_LUM_pool[0]->pSurface);
-	t_LUM_dest->surface_set(rt_LUM_pool[1]->pSurface);
+	t_LUM_dest->surface_set(lumSource->rt_LUM_pool[1]->pSurface);
 
 	if (RImplementation.o.ssao_hdao && RImplementation.o.ssao_ultra)
 	{
@@ -578,12 +595,12 @@ void CRenderTarget::phase_combine()
 	}
 	
 	// PiP (T3 #6): this pass produces the lens image that the optic's own shader
-	// samples ($user$viewport2), so it must keep the device overlays the optic
-	// depends on - night vision and thermal. Skipping them here is exactly why the
-	// thermal sights lost their image. Everything from here on (the fake-scope quad,
+	// samples ($user$viewport2). Everything from here on (the fake-scope quad,
 	// bloom, DOF, SMAA/TAA, the post-process chain and the temporal upscaler) belongs
 	// to the main pass; running it twice per frame is what left the upscaler state
-	// invalid ("unable to swap until render target reset", NGX E_INVALIDARG).
+	// invalid ("unable to swap until render target reset", NGX E_INVALIDARG). The one
+	// thing the lens does take from the main pass is the exposure the post process chain
+	// computes - see the luminance binding at the top of this function.
 
 	const bool svpLensPass = Device.true_pip_on && Device.m_SecondViewport.m_render_pass_is_svp;
 
@@ -591,16 +608,18 @@ void CRenderTarget::phase_combine()
 		phase_nightvision();
 
 	//--DSR-- HeatVision_start
-	// PiP: the lens pass renders its image hot when the optic is a thermal one, and it does not
-	// need the player's heat vision switch for that. The heat vision shader derives the thermal
-	// look from the position buffer and the combined image, both of which the lens set has its
-	// own copy of, so running this pass here makes the lens image thermal without touching
-	// ps_r2_heatvision - which is a frame level switch with frame wide consequences (upscaler
-	// bypass, flare path, a different shader element) and is what turned the whole screen into a
-	// black heat vision frame when it was driven from the optic instead.
-	const bool svpLensWantsThermal = svpLensPass
-		&& (Device.m_SecondViewport.svp_optic_thermal || Device.m_SecondViewport.svp_optic_image_type >= 2);
-	if (ps_r2_heatvision > 0 || svpLensWantsThermal)
+	// PiP: a thermal OPTIC (the pack's s3ds_image_type >= 2, or scope_lense_thermal) needs a hot
+	// lens image, and this is NOT the way to produce it. The heat vision shader is a device
+	// effect: its compute_lens_mask() only accepts a 1/2/4 tube layout and returns 0 everywhere
+	// else, so with the tube count left at its default (no worn device published one) the pass
+	// returns a black frame - which is exactly what the thermal optic was showing. Turning the
+	// pass on for the lens was tried and could only ever produce black.
+	//
+	// What a thermal optic needs is the full frame GBuffer thermal image the pack's own scope
+	// shader builds for its 3DSS branch (infrared() over gbuffer_load_data, models_scope_reticle
+	// .ps), which the engine has no shader for yet. Until that exists a thermal optic shows the
+	// ordinary (correctly exposed) lens image rather than a black one.
+	if (ps_r2_heatvision > 0)
 		phase_heatvision();
 	//--DSR-- HeatVision_end
 

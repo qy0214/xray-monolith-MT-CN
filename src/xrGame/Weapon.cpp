@@ -3400,6 +3400,13 @@ void CWeapon::UpdateSecondVP()
 	float lensFovMax = 0.0f;      // pack value at the sight's HIGHEST power
 	float lensFovBase = 0.0f;     // pack value at its LOWEST power (dynamic sights)
 	int imageType = 0;            // 0 none, 1 NVG, 2 thermal, 3 thermal colour
+	// Power tracking evidence, logged below: which of the pack's declared ends was used, what
+	// the engine's own ADS FOV said, and whether the clamp had to rescue a degenerate value.
+	// Without these the "the magnification is wrong" report cannot be told apart from "the
+	// sight is not variable" and the next change is a guess.
+	float adsFovDbg = 0.0f;
+	int zoomSteps = 0;
+	int lensFovEnd = 0;           // 0 = unauthoritative fallback, 1 = low end, 2 = high end
 
 	// The packs write the lens FOV as either scope_lens_fov or scope_lense_fov, and for a
 	// dynamic zoom sight they also give the two ends: ..._base at the lowest power and the
@@ -3432,6 +3439,8 @@ void CWeapon::UpdateSecondVP()
 			readBase("scope_lens_fov_base");
 			if (pSettings->line_exist(*section, "scope_dynamic_zoom"))
 				dynamic = dynamic || pSettings->r_bool(*section, "scope_dynamic_zoom");
+			if (zoomSteps == 0 && pSettings->line_exist(*section, "zoom_step_count"))
+				zoomSteps = pSettings->r_s32(*section, "zoom_step_count");
 		}
 		if (!thermal && pSettings->line_exist(*section, "scope_lense_thermal"))
 			thermal = pSettings->r_bool(*section, "scope_lense_thermal");
@@ -3477,13 +3486,20 @@ void CWeapon::UpdateSecondVP()
 		// ADS FOV is the lens FOV. It is clamped into the declared range so a degenerate
 		// zoom state can never put the lens outside what the optic authors allowed.
 		const float adsFov = GetZoomFactor() * 0.75f;
+		adsFovDbg = adsFov;
 		if (adsFov > 0.005f)
 		{
 			const float lo = (lensFovMax < lensFovBase) ? lensFovMax : lensFovBase;
 			const float hi = (lensFovMax < lensFovBase) ? lensFovBase : lensFovMax;
 			lensFov = adsFov;
-			if (lensFov < lo) lensFov = lo;
-			if (lensFov > hi) lensFov = hi;
+			// Which end the ADS FOV asked for, and which one it got. When adsFov sits outside
+			// the declared window the clamp pins the lens to that end, which is how a weapon
+			// whose own zoom factor is degenerate (the engine read 96 degrees for one) ends up
+			// rendering every power at its widest setting - the "the magnification is wrong"
+			// report that a plain clamped value cannot be told apart from.
+			if (lensFov < lo) { lensFov = lo; lensFovEnd = (lo == lensFovMax) ? 2 : 1; }
+			else if (lensFov > hi) { lensFov = hi; lensFovEnd = (hi == lensFovMax) ? 2 : 1; }
+			else lensFovEnd = (fabsf(adsFov - lensFovMax) < fabsf(adsFov - lensFovBase)) ? 2 : 1;
 		}
 	}
 	if (lensFov <= 0.005f)
@@ -3504,18 +3520,28 @@ void CWeapon::UpdateSecondVP()
 		static shared_str diagLastSect;
 		static float diagLastFov = -1.0f;
 		static bool diagLastMag = false;
-		if (diagLastSect != cNameSect() || !fsimilar(diagLastFov, lensFov) || diagLastMag != magnifies)
+		static int diagLastEnd = -1;
+		if (diagLastSect != cNameSect() || !fsimilar(diagLastFov, lensFov) || diagLastMag != magnifies
+			|| diagLastEnd != lensFovEnd)
 		{
-			Msg("* [PIP/scope] weapon='%s' scope='%s' magnifies=%d lensFov=%.4f dyn=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d",
+			// mag= is what the pack's formula promises for the value the engine picked
+			// (65 / lensFov), so a sight that renders at the wrong power shows up as a mag that
+			// never moves across the zoom steps while lensFovMax/lensFovBase say it should, and
+			// ads= (the engine's own ADS FOV) says whether the power signal itself was usable.
+			Msg("* [PIP/scope] weapon='%s' scope='%s' magnifies=%d lensFov=%.4f mag=%.2f dyn=%d steps=%d fovMax=%.4f fovBase=%.4f ads=%.3f end=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d",
 				cNameSect().size() ? *cNameSect() : "(none)",
 				GetScopeName().size() ? *GetScopeName() : "(none)",
 				magnifies ? 1 : 0, lensFov,
+				(lensFov > 0.005f && g_fov > 0.005f) ? (g_fov / lensFov) : 0.0f,
+				dynamic ? 1 : 0, zoomSteps, lensFovMax, lensFovBase, adsFovDbg,
+				lensFovEnd,
 				m_zoom_params.m_bUseDynamicZoom ? 1 : 0, m_fRTZoomFactor,
 				IsScopeAttached() ? 1 : 0, m_zoomtype,
 				imageType, thermal ? 1 : 0, thermalMode);
 			diagLastSect = cNameSect();
 			diagLastFov = lensFov;
 			diagLastMag = magnifies;
+			diagLastEnd = lensFovEnd;
 		}
 	}
 }

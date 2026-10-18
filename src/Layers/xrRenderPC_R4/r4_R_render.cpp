@@ -144,9 +144,10 @@ namespace svpcam
 	// Logged with the lens probe so a wrong lens image can be attributed to the camera
 	// derivation instead of being guessed at.
 	float s_lastMag = 0.f;
-	// Smoothed magnification and its target (see DeriveZoom): the lens follows a change of
-	// sight power with the same 0.12 s feel the stock camera has.
-	float s_magSmooth = 0.f;
+	// Smoothed lens FOV in degrees (see DeriveZoom): the lens follows a change of sight power
+	// with the same 0.12 s feel the stock camera has. It is the FOV that is smoothed, not a
+	// ratio, because the projection is rebuilt from the optic's authored angle.
+	float s_fovSmooth = 0.f;
 
 	// Live tuning of the lens magnification in percent of the optic's authored value.
 	// Some packs leave a sight's zoom range undefined (the engine then reports g_fov as its
@@ -199,46 +200,50 @@ namespace svpcam
 		RCache.set_xform_project(Device.mProject);
 	}
 
-	// The lens camera: the same eye and HUD projection as the main view, with the
-	// projection magnified by the optic's zoom factor (hud_params.y is the second
-	// viewport zoom, hud_params.x the ADS zoom). The reference derives a full optics
-	// camera here; this covers the visible part of it.
+	// The lens camera: the same eye and view as the main view, with the projection rebuilt
+	// around the optic's own lens FOV. The reference derives a full optics camera here; this
+	// covers the visible part of it.
 	void DeriveZoom(View& z, const View& m)
 	{
 		z = m;
 
-		// Preferred: the optic's own lens FOV, published by the game (Weapon.cpp). The
-		// modpack tunes those values for the default g_fov of 65 and states the
-		// magnification as g_fov / scope_lens_fov, so the reference for the ratio is the
-		// game's BASE fov, not the current main view fov: the main view is deliberately
-		// kept wide while the lens is up, and using its smoothed value left the lens short
-		// of the sight's real power. The ratio is smoothed here because the stock camera
-		// smooths its fov as well, and the main view no longer does that for the lens.
+		// The packs state the sight's lens FOV in degrees in scope_lens_fov and state the power
+		// as g_fov / scope_lens_fov, so the lens camera must be exactly that many degrees wide.
+		// It used to be the main projection scaled by the ratio (g_fov / lensFov), and that is
+		// not the same thing: build_projection() is built from tan(fov/2), so a 21.667 degree
+		// sight was rendered at 24.0 degrees, i.e. about 10 percent less magnification than the
+		// pack authors - the magnification the last round reported as wrong. The ratio also
+		// inherited whatever FOV the main view happened to have, and the ADS animation moves it.
+		// Rebuilding from the angle makes the camera, the pack's formula and this engine's own
+		// scope_lense_main_view binder (which uses fFOV / lensFov) agree exactly.
 		const float lensFov = Device.m_SecondViewport.svp_lens_fov;
-		const float baseFov = Device.m_SecondViewport.svp_base_fov > 1.0f
-			? Device.m_SecondViewport.svp_base_fov : Device.fFOV;
-		if (lensFov > 1.0f && lensFov < 89.0f && baseFov > 1.0f)
+		if (lensFov > 1.0f && lensFov < 89.0f)
 		{
-			const float target = baseFov / lensFov * (float(s_lensPowerPct) * 0.01f);
+			// r__svp_lens_power scales the AUTHORED angle, so 200 percent is half the FOV and
+			// therefore twice the power.
+			const float target = clampr(lensFov * (100.0f / float(s_lensPowerPct)), 1.0f, 120.0f);
 			// ~0.12 s time constant, i.e. the same feel as the stock zoom animation. The
 			// smoothing must start from the target when the lens was not rendering just
-			// before: ramping from zero made the first frames of every aim LESS magnified
-			// than the naked eye (mag below 1), which is visibly wrong.
-			static u32 s_lastMagFrame = 0;
-			if (Device.dwFrame > s_lastMagFrame + 2)
-				s_magSmooth = target;
-			s_lastMagFrame = Device.dwFrame;
+			// before: ramping from zero opened every aim wider than the naked eye.
+			static u32 s_lastLensFrame = 0;
+			if (Device.dwFrame > s_lastLensFrame + 2)
+				s_fovSmooth = target;
+			s_lastLensFrame = Device.dwFrame;
 
 			const float k = 1.0f - expf(-Device.fTimeDelta / 0.12f);
-					s_magSmooth += (target - s_magSmooth) * k;
-			const float mag = s_magSmooth;
-			if (mag > 1.001f)
-			{
-				z.mProject._11 *= mag;
-				z.mProject._22 *= mag;
-				z.mFullTransform.mul(z.mView, z.mProject);
-			}
-			s_lastMag = mag;
+			s_fovSmooth += (target - s_fovSmooth) * k;
+
+			// Mirror build_projection(): _22 = cot(fov/2), _11 = aspect * that, with the aspect
+			// taken from the main projection itself so no convention has to be assumed.
+			const float cot = 1.0f / tanf(deg2rad(s_fovSmooth) * 0.5f);
+			const float aspect = (m.mProject._22 > 1e-6f) ? (m.mProject._11 / m.mProject._22) : 1.0f;
+			z.mProject._11 = aspect * cot;
+			z.mProject._22 = cot;
+			z.mFullTransform.mul(z.mView, z.mProject);
+			// Reported as the power the player actually sees: the main view's own FOV over the
+			// lens FOV, which is exactly what the lens shaders compute as current_zoom. It is
+			// for the log and the probes; the published sampling mapping is the identity.
+			s_lastMag = (Device.fFOV > 1.0f) ? (Device.fFOV / s_fovSmooth) : 1.0f;
 			z.valid = true;
 			return;
 		}
@@ -653,23 +658,22 @@ void CRender::Render()
 
 	// PiP: the lens shaders decide on ps_r2_heatvision / ps_r2_nightvision, and in the PiP
 	// branch they no longer produce the imaging look themselves (the stock path calls
-	// infrared() on the G-buffer, which the second-view branch skips), so a thermal optic does
-	// need the engine to render the lens image hot.
+	// infrared() on the G-buffer, which the second-view branch skips).
 	//
-	// Driving that through the console variables is the WRONG mechanism and was reverted after
-	// a real session: ps_r2_heatvision is a global switch with frame wide consequences (it
-	// bypasses the upscaler, disables the flare path, selects a heat vision shader element and
-	// expects the heat mask the device path fills), so forcing it for one optic turned the
-	// whole screen into a black heat vision frame instead of making the lens hot. The optic's
-	// imaging identity is still read and logged (img= in the per optic line, from the pack's
-	// s3ds_image_type key), and the remaining work is to render the heat look into the LENS
-	// target only, per pass, rather than flipping the frame level switch.
+	// Driving ps_r2_heatvision from the optic is the WRONG mechanism and was reverted after a
+	// real session: it is a global switch with frame wide consequences (upscaler bypass, flare
+	// path, a different shader element) and it expects the heat mask a worn device fills.
+	// Rendering the heat pass into the LENS target per pass was tried too and can only produce
+	// black - the heat vision shader is a mask based device effect (see phase_combine). The
+	// optic's imaging identity is still read and logged (img= in the per optic line, from the
+	// pack's s3ds_image_type key); a thermal optic needs the pack's own full frame GBuffer
+	// thermal image, which is the documented next step (docs/pip-3dss-mod-contract.md).
 	{
 		const bool lensUp = Device.m_SecondViewport.svp_scope.lens_rendered;
 		const bool opticWantsThermal = Device.m_SecondViewport.svp_optic_thermal
 			|| Device.m_SecondViewport.svp_optic_image_type >= 2;
 		if (lensUp && opticWantsThermal && (Device.dwFrame % 300) == 0)
-			Msg("* [PIP] imaging: optic wants thermal (img=%d thermal=%d mode=%d, device thermal=%d) - per lens rendering not implemented yet, lens stays unheated",
+			Msg("* [PIP] imaging: optic wants thermal (img=%d thermal=%d mode=%d, device thermal=%d) - lens shows the ordinary image; the full frame GBuffer thermal pass is still to be written",
 				Device.m_SecondViewport.svp_optic_image_type,
 				Device.m_SecondViewport.svp_optic_thermal ? 1 : 0,
 				Device.m_SecondViewport.svp_optic_thermal_mode,
@@ -722,15 +726,24 @@ void CRender::Render()
 
 		// PiP: publish the mapping the lens shader uses to sample the second view.
 		//
-		// IDENTITY, deliberately. The lens texture already holds the magnified view of the optic
-		// (this engine renders it with the optics camera), and the shader pastes the sampled patch
-		// across the whole aperture, so the safe mapping is the one that shows the texture as it
-		// is. The corrected mapping is aperture relative - the patch that lines up with the disc
-		// depends on how much of the screen the optic's aperture covers - and the engine has no
-		// source for that yet, while every attempt to derive it from the camera matrices produced
-		// a degenerate mapping (measured spans of 1.5, 0.62 and 0.0 where the aperture is
-		// neither): a lens that is black and does not change with direction. Identity cannot be
-		// degenerate, so the lens is visible and the remaining refinement is the aperture scale.
+		// The contract is in the pack's anthology_pip_temporal.h: pip_project_capture() maps a
+		// MAIN view NDC point through this matrix and samples the lens texture there -
+		//     clip = mul(scope_lense_reproject, float4(main_ndc, 1, 1))
+		// - and pip_capture_color() reads s_second_vp at the result, so the aperture shows
+		// exactly what the mapping selects.
+		//
+		// IDENTITY, and the derivation is exact now that the lens camera is built at the
+		// authored angle (DeriveZoom). Looking through the aperture of power mag, the eye at
+		// apparent direction t sees the world direction t / mag, so the aperture pixel at
+		// screen NDC n shows the world direction n * (fFOV / 2) / mag. The lens camera, whose
+		// FOV is lensFov = fFOV / mag by construction, puts that same direction at
+		//     NDC = [n * (fFOV / 2) / mag] / (lensFov / 2) = n * (fFOV / lensFov) / mag = n
+		// i.e. at the aperture's own NDC, so the sample is the pixel's own uv. Scaling by mag
+		// here instead pastes the naked eye view over the aperture (no magnification at all),
+		// and a fully derived matrix was measured degenerate (sampled spans of 1.5, 0.62 and
+		// 0 - the last one pinned a single texel over the aperture, black and direction
+		// independent). The reference only needs a real matrix because it captures a cropped
+		// sub rect of the display sized texture, which this engine does not do.
 		if (publish && svpcam::Ready())
 		{
 			svp_vp_lens.identity();
@@ -1125,25 +1138,26 @@ void CRender::Render()
 							outU = c.x * inv * 0.5f + 0.5f;
 							outV = 0.5f - c.y * inv * 0.5f;
 						};
+						// Acceptance: the published mapping must be the identity, i.e. the
+						// aperture pixel at screen uv samples the lens texture at the same uv.
+						// Probe the centre and a half-NDC offset; identity answers (0.5,0.5)
+						// and (0.75,0.5) in both row and column reading, so this line also
+						// catches a matrix that is a scale or that is transposed.
 						float au, av, bu, bv;
 						mapNdc(0.f, 0.f, false, au, av);
 						mapNdc(0.5f, 0.f, false, bu, bv);
-						Msg("* [PIP] reproject row-convention centre=(%.3f,%.3f) right=(%.3f,%.3f) span=%.3f [want ~1/mag=%.3f]",
-							au, av, bu, bv, (bu - au), (svpcam::s_lastMag > 0.01f) ? (1.f / svpcam::s_lastMag) : 0.f);
-						mapNdc(0.f, 0.f, true, au, av);
-						mapNdc(0.5f, 0.f, true, bu, bv);
-						mapNdc(0.f, 0.5f, true, bu, bv);
-						Msg("* [PIP] reproject col-convention centre=(%.3f,%.3f) top=(%.3f,%.3f)",
-							au, av, bu, bv);
+						Msg("* [PIP] reproject centre=(%.3f,%.3f) ndc(0.5)=(%.3f,%.3f) [want (0.500,0.500) and (0.750,0.500) = identity, mag=%.3f]",
+							au, av, bu, bv, svpcam::s_lastMag);
 					}
 				}
 				// Publish the lens pass's COMBINED image, before any post processing, exactly
 				// as the 3DSS path publishes $user$generic_temp. The lens shader grades it
 				// itself (models_scope_reticle.ps applies grade_second_vp unless the pack's
-				// imaging flags are on), so running the engine's post process here double
-				// processed the image and, because that pass draws with source alpha blending
-				// into an empty target, darkened it by roughly 2.5x - that is the dark lens
-				// the dumps show while the main view of the same scene is properly exposed.
+				// imaging flags are on). The engine's post process chain stays with the main
+				// pass: it is display sized, it ends in the temporal upscaler, and running it
+				// twice per frame is what left the upscaler state invalid. The exposure the
+				// lens combine needs is taken from the main set instead (phase_combine), since
+				// that chain is also what computes it.
 				HW.pContext->CopyResource(lensDst->rt_secondVP->pSurface, TargetSVP->rt_Generic_0->pSurface);
 				svp_lens_rendered = true;
 
