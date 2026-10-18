@@ -596,8 +596,12 @@ void CRender::create()
 	Device.ModelDefferClear = xr_make_delegate(Models, &CModelPool::DeleteQueuedDeffer);
 }
 
-// PiP (T3 #6): allocate the second target set on the first SVP pass. While the lens
-// is inactive this is never called, so the extra RT chain costs nothing then.
+// PiP (T3 #6): allocate the second target set on the first SVP pass. While the lens is
+// inactive this is never called, so the extra RT chain is not created at all in a session that
+// never aims. Note the other half of that tradeoff, which the earlier wording hid: once an
+// optic has been aimed the set STAYS resident (it is only released on an extent change or at
+// shutdown), which is deliberate - evicting it while idle would make the next aim reallocate
+// the whole scene chain and hitch, and the cost is a lens-sized set, not a display-sized one.
 void CRender::EnsureTargetSVP()
 {
 	// PiP: the extent keeps the DISPLAY size and aspect. A height capped extent (1200x750 on a

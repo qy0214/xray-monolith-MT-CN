@@ -1471,7 +1471,8 @@ void CActor::RPC_UpdateFaction()
 			LPCSTR faction_name = real_faction();
 			discord_gameinfo.faction = faction_name;
 			char buffer[128];
-			sprintf(buffer, "st_faction_%s", faction_name);
+			// review P3: the name comes from Lua, so the splice must be bounded
+			snprintf(buffer, sizeof(buffer), "st_faction_%s", faction_name);
 			snprintf(discord_gameinfo.faction_name, 128, xr_ToUTF8(*CStringTable().translate(buffer)));
 		}
 	}
@@ -1487,7 +1488,8 @@ void CActor::RPC_UpdateRank()
 		{
 			LPCSTR rank = actor_rank();
 			char rank_name[100];
-			sprintf(rank_name, "st_rank_%s", rank);
+			// review P3: the name comes from Lua, so the splice must be bounded
+			snprintf(rank_name, sizeof(rank_name), "st_rank_%s", rank);
 			snprintf(discord_gameinfo.rank_name, 128, xr_ToUTF8(*CStringTable().translate(rank_name)));
 		}
 	}

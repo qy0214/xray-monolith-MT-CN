@@ -1399,10 +1399,17 @@ static class scope_lense_reproject : public R_constant_setup
     void setup(R_constant* C) override
     {
         Fmatrix reproject;
+        // Row vector algebra: a main view NDC point maps to the lens view by
+        // p * inv(vp_main) * vp_lens, so the product order is inv(vp_main) first. The previous
+        // order (vp_lens * inv(vp_main)) is what the temporal upscaler binder uses for a
+        // different question, and it measured wrong: the publish diagnostic reported sampled
+        // spans of 0.6 and 1.5 where the applied magnification asks for 0.33, i.e. the lens
+        // sampled far more of the texture than it should and clamped at the border (the
+        // rectangular, unmagnified, dark lens).
         if (svp_vp_lens_valid)
-            reproject.mul(svp_vp_lens, Device.mInvFullTransform);
+            reproject.mul(Device.mInvFullTransform, svp_vp_lens);
         else
-            reproject.mul(RCache.xforms.m_vp_prev, Device.mInvFullTransform);
+            reproject.mul(Device.mInvFullTransform, RCache.xforms.m_vp_prev);
 
         // The pack's lens shaders consume this as mul(scope_lense_reproject, float4(ndc,1,1)),
         // i.e. the HLSL column vector convention, while this engine uploads matrices in its own

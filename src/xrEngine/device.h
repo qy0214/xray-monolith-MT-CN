@@ -230,6 +230,12 @@ public:
 
 		// Single evaluated state for this frame (see xrCore/svp_scope_state.h). The
 		// renderer writes it; the game side reads the previous frame's value.
+		//
+		// Review P4 (tearing, advisory): the renderer assigns the whole struct while the game
+		// reads it. In practice exactly one field crosses the boundary - lens_rendered, read by
+		// Actor.cpp - and every other field is used render side only, so no reader can observe a
+		// half written combination. Keep it that way: if a game side reader is ever added for
+		// zoom_known / optic_magnifies, publish it as its own scalar first.
 		SvpScopeState svp_scope;
 
 		// C2 pilot: extent of the pass currently being rendered. SetActive publishes it

@@ -1,0 +1,33 @@
+fix: Verified review findings, fixed projection order, reverted the global heat vision forcing
+
+Review findings, verified against the code before acting:
+
+  P2 xrGame/Level_start.cpp:211/213 - real. string64 CDKey (64 bytes) written by
+     sscanf(start, "%[^/]") with no width, input from the command line: any key longer than 63
+     characters overflows the stack. Fixed with sscanf_s and %63. The sibling four lines above
+     had the same defect (else xr_strcpy(PasswordStr, PSW) unbounded) and was fixed too.
+  P3 xrGame/Actor.cpp:1474/1490 - real but latent. char buffer[128] / char rank_name[100] filled
+     with sprintf from a Lua returned faction/rank name: unbounded. Both now snprintf with sizeof.
+  P3 r4_R_render imaging restore - real. The value captured when the lens engaged was restored on
+     release, so a console change made while aiming was overwritten and lost. The block now
+     remembers what it last wrote and adopts any other value as the new one to restore.
+  P4 device.h SvpScopeState - theoretical, not reachable. Checked every reader: the game side
+     reads exactly one field (lens_rendered in Actor.cpp), everything else is render side only,
+     so no half written combination can be observed. Documented with the rule to keep it that way.
+  TargetSVP residency - real, and the comment hid half of it. The set is created on first aim,
+     never evicted while idle (only on an extent change or shutdown); that is deliberate, since
+     evicting would reallocate the scene chain and hitch on the next aim. Comment corrected.
+
+Projection order: the publish diagnostic measured sampled spans of 0.6 and 1.5 where the applied
+magnification asks for 0.33, and the rectangular, unmagnified, dark lens follows from sampling
+past the texture border. In row vector algebra a main view NDC maps by p * inv(vp_main) * vp_lens,
+so the product must be inv(vp_main) * vp_lens; the previous order was the temporal upscaler's and
+answers a different question. Transposing on upload stays, since the pack's shader uses mul(M, v).
+
+Heat vision forcing reverted: the same session showed that driving ps_r2_heatvision from the optic
+turned the whole screen into a black heat vision frame (the console variable bypasses the upscaler,
+disables the flare path, selects a heat vision shader element and expects the heat mask the device
+path fills). The optic's imaging identity is still read and logged - and the read works, the log
+shows img=3 thermal=1 for wpn_rsass_echo1, resolved from [echo1] through the token suffix walk -
+but rendering the heat look into the lens target only is left as the remaining piece rather than
+flipping a frame level switch.

@@ -198,7 +198,7 @@ bool CLevel::net_start3()
 			if (strchr(PSW, '/'))
 				strncpy_s(PasswordStr, PSW, strchr(PSW, '/') - PSW);
 			else
-				xr_strcpy(PasswordStr, PSW);
+				strncpy_s(PasswordStr, PSW, _TRUNCATE);	// review P2 sibling: was xr_strcpy, unbounded like the cdkey read below
 
 			string4096 tmp;
 			xr_sprintf(tmp, "%s/psw=%s", m_caClientOptions.c_str(), PasswordStr);
@@ -210,7 +210,7 @@ bool CLevel::net_start3()
 	{
 		string64 CDKey;
 		const char* start = strstr(m_caClientOptions.c_str(), "/cdkey=") + xr_strlen("/cdkey=");
-		sscanf(start, "%[^/]", CDKey);
+		sscanf_s(start, "%63[^/]", CDKey, (unsigned)_countof(CDKey));	// review P2: was sscanf with an unbounded %[^/] into a 64 byte buffer
 		string128 cmd;
 		xr_sprintf(cmd, "cdkey %s", _strupr(CDKey));
 		Console->Execute(cmd);
