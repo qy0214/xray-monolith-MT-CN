@@ -707,8 +707,19 @@ void CRender::Render()
 	// Msg						("sstatic: %s, sun: %s",o.sunstatic?;"true":"false", bSUN?"true":"false");
 
 	// HOM
-	ViewBase.CreateFromMatrix(Device.mFullTransform, FRUSTUM_P_LRTB + FRUSTUM_P_FAR);
-    HOM.MT_RENDER();
+	// PiP: the lens pass renders with a very narrow projection (a 24x optic is about 2.5
+	// degrees), and building the visibility frustum from it made the sector/portal traversal
+	// and the occlusion culling reject the world - the lens pass then drew only the sky and
+	// the fog, which is the uniform grey image that kept coming back while the main view was
+	// fine. Build the frustum from the MAIN camera for the lens pass: it is a superset of the
+	// lens view, so nothing that belongs in the lens can be culled, and the narrow projection
+	// still decides which pixels are drawn. The HOM is left to the main pass, whose result the
+	// rest of the frame uses.
+	const bool svpWideFrustum = pipOn && view == 0 && svpcam::s_main.valid;
+	Fmatrix& svpVisMatrix = svpWideFrustum ? svpcam::s_main.mFullTransform : Device.mFullTransform;
+	ViewBase.CreateFromMatrix(svpVisMatrix, FRUSTUM_P_LRTB + FRUSTUM_P_FAR);
+	if (!svpWideFrustum)
+		HOM.MT_RENDER();
 
 	Target->phase_scene_prepare();
 
@@ -729,7 +740,7 @@ void CRender::Render()
 		HW.pContext->ClearDepthStencilView(HW.pBaseZB, D3D_CLEAR_DEPTH, 1.0f, 0);
 	}*/
 
-    GMBase.traverse(RImplementation.pLastSector, ViewBase, Device.vCameraPosition, Device.mFullTransform);
+    GMBase.traverse(RImplementation.pLastSector, ViewBase, Device.vCameraPosition, svpVisMatrix);
     GMBase.r_dsgraph_capture_static();
     GMBase.r_dsgraph_capture_dynamic();
 
