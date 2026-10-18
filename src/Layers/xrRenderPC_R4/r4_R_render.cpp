@@ -1099,27 +1099,39 @@ void CRender::Render()
 					{
 						Fmatrix m;
 						m.mul(svp_vp_lens, Device.mInvFullTransform);
-						auto mapNdc = [&](float x, float y, float& outU, float& outV) {
+						// Two readings, because whether this engine's set_c() uploads an Fmatrix
+						// as is or transposed decides which one the pack's mul(M, v) sees. The
+						// correct reading is the one whose spans are about 1/mag, so the log
+						// answers the question instead of a guess deciding it.
+						auto mapNdc = [&](float x, float y, bool transposed, float& outU, float& outV) {
 							Fvector4 v, c;
 							v.set(x, y, 1.f, 1.f);
-							c.x = m._11 * v.x + m._21 * v.y + m._31 * v.z + m._41 * v.w;
-							c.y = m._12 * v.x + m._22 * v.y + m._32 * v.z + m._42 * v.w;
-							c.w = m._14 * v.x + m._24 * v.y + m._34 * v.z + m._44 * v.w;
+							if (transposed)
+							{
+								c.x = m._11 * v.x + m._12 * v.y + m._13 * v.z + m._14 * v.w;
+								c.y = m._21 * v.x + m._22 * v.y + m._23 * v.z + m._24 * v.w;
+								c.w = m._41 * v.x + m._42 * v.y + m._43 * v.z + m._44 * v.w;
+							}
+							else
+							{
+								c.x = m._11 * v.x + m._21 * v.y + m._31 * v.z + m._41 * v.w;
+								c.y = m._12 * v.x + m._22 * v.y + m._32 * v.z + m._42 * v.w;
+								c.w = m._14 * v.x + m._24 * v.y + m._34 * v.z + m._44 * v.w;
+							}
 							const float inv = (c.w > 1e-6f) ? 1.f / c.w : 0.f;
 							outU = c.x * inv * 0.5f + 0.5f;
 							outV = 0.5f - c.y * inv * 0.5f;
 						};
-						float cu, cv, lu, lv, ru, rv, tu, tv, bu, bv;
-						mapNdc(0.f, 0.f, cu, cv);
-						mapNdc(-0.5f, 0.f, lu, lv);
-						mapNdc(0.5f, 0.f, ru, rv);
-						// Vertical samples too: the player saw a lens that was half black and
-						// half bright when aiming at the sky, i.e. an offset along y, and the
-						// horizontal pair alone cannot see that.
-						mapNdc(0.f, 0.5f, tu, tv);
-						mapNdc(0.f, -0.5f, bu, bv);
-						Msg("* [PIP] reproject uv centre=(%.3f,%.3f) left=(%.3f,%.3f) right=(%.3f,%.3f) top=(%.3f,%.3f) bottom=(%.3f,%.3f) [expect centre 0.5,0.5 and spans ~1/mag]",
-							cu, cv, lu, lv, ru, rv, tu, tv, bu, bv);
+						float au, av, bu, bv;
+						mapNdc(0.f, 0.f, false, au, av);
+						mapNdc(0.5f, 0.f, false, bu, bv);
+						Msg("* [PIP] reproject row-convention centre=(%.3f,%.3f) right=(%.3f,%.3f) span=%.3f [want ~1/mag=%.3f]",
+							au, av, bu, bv, (bu - au), (svpcam::s_lastMag > 0.01f) ? (1.f / svpcam::s_lastMag) : 0.f);
+						mapNdc(0.f, 0.f, true, au, av);
+						mapNdc(0.5f, 0.f, true, bu, bv);
+						mapNdc(0.f, 0.5f, true, bu, bv);
+						Msg("* [PIP] reproject col-convention centre=(%.3f,%.3f) top=(%.3f,%.3f)",
+							au, av, bu, bv);
 					}
 				}
 				// Publish the lens pass's COMBINED image, before any post processing, exactly

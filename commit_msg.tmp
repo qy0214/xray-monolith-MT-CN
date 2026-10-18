@@ -1,0 +1,29 @@
+diag(pip): Let the projection diagnostic settle the upload convention itself
+
+The publish diagnostic now prints both readings of the composed matrix - the one a row vector
+convention would produce and the one a column vector convention would - together with the target
+span 1/mag. Whether this engine's set_c(Fmatrix) uploads a matrix as is or transposed decides
+which reading the pack's mul(M, v) actually sees, and that is exactly the question the earlier
+logs could not answer: sampled spans of 1.5 and 0.62 for magnifications of 24 and 3 came out the
+same whichever way the product was ordered. The log now names the convention whose span matches
+1/mag instead of leaving it to another guess.
+
+Also re-verified this round, for the requirement that the 3DSS configuration must be untouched
+when the PiP module is absent:
+
+  * svp_evaluate_scope derives lens_rendered from pack_pip_module && optic_magnifies &&
+    optic_policy_allows && target_set_ready, and pack_pip_module folds in the module detection
+    and the kill switch, so without the module the state is false and nothing else follows.
+  * pipOn therefore stays false: one pass, no second target set, no extra VRAM.
+  * main_view_wide and aim_sensitivity_lens are false: the main view FOV and the mouse ratio are
+    stock, which is the zero regression guarantee for 3DSS.
+  * The only writers of the state are the renderer and an explicit false in Actor.cpp.
+  * u_SceneDepth, the u_setrt depth substitution and phase_dlss_postprocess all test
+    m_is_main_target, which is true for the only set, so they behave exactly as stock.
+  * phase_combine s lens pass early return is not taken, so the full post process tail runs, and
+    Weapon::need_renderable falls through to the stock expression, so the optic is drawn.
+
+  One documented difference remains: the legacy alternating SVP frame no longer fires, because
+  the state is only ever set by the PiP path. That is invisible for 3DSS, which reads
+  $user$generic_temp rather than a second viewport, and it is recorded as a caveat for setups
+  that still rely on the old SVP frame (2DSS style texture scopes).
