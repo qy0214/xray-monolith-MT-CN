@@ -667,7 +667,7 @@ void CRender::Render()
 		const bool wantThermal = lensUp && compat::scope_lense_allow_thermal != 0
 			&& (Device.m_SecondViewport.svp_optic_thermal || compat::scope_lense_head_thermal_active != 0);
 		const bool wantNvg = lensUp && compat::scope_lense_allow_nvg != 0
-			&& compat::scope_lense_head_nvg_active != 0;
+			&& (Device.m_SecondViewport.svp_optic_nvg || compat::scope_lense_head_nvg_active != 0);
 
 		if (wantThermal)
 		{

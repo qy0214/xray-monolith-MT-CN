@@ -3399,6 +3399,7 @@ void CWeapon::UpdateSecondVP()
 	bool dynamic = false;
 	float lensFovMax = 0.0f;      // pack value at the sight's HIGHEST power
 	float lensFovBase = 0.0f;     // pack value at its LOWEST power (dynamic sights)
+	int imageType = 0;            // 0 none, 1 NVG, 2 thermal, 3 thermal colour
 
 	// The packs write the lens FOV as either scope_lens_fov or scope_lense_fov, and for a
 	// dynamic zoom sight they also give the two ends: ..._base at the lowest power and the
@@ -3406,7 +3407,12 @@ void CWeapon::UpdateSecondVP()
 	// sections that can carry them (the mounted optic's own section or the weapon's child
 	// section for it), because the packs generate one from the other and either may be the
 	// one present on a given weapon.
-	auto readOpticFacts = [&](shared_str const& section) {
+	// fovFromSection=false restricts a read to the optic identity keys (thermal / imaging).
+	// The token suffix walk below can land on sections that are weapons rather than optics
+	// (wpn_a545_gauss also has the suffix a545_gauss), and taking their lens FOV would be
+	// wrong, so the optics geometry only ever comes from the weapon's own child section or the
+	// mounted scope's section.
+	auto readOpticFacts = [&](shared_str const& section, bool allowGeometry = true) {
 		if (!section.size() || !pSettings->section_exist(*section)) return;
 
 		auto readFloat = [&](LPCSTR key, float& dst) {
@@ -3418,23 +3424,49 @@ void CWeapon::UpdateSecondVP()
 				lensFovBase = pSettings->r_float(*section, key);
 		};
 
-		readFloat("scope_lense_fov", lensFovMax);
-		readFloat("scope_lens_fov", lensFovMax);
-		readBase("scope_lense_fov_base");
-		readBase("scope_lens_fov_base");
-		if (pSettings->line_exist(*section, "scope_dynamic_zoom"))
-			dynamic = dynamic || pSettings->r_bool(*section, "scope_dynamic_zoom");
+		if (allowGeometry)
+		{
+			readFloat("scope_lense_fov", lensFovMax);
+			readFloat("scope_lens_fov", lensFovMax);
+			readBase("scope_lense_fov_base");
+			readBase("scope_lens_fov_base");
+			if (pSettings->line_exist(*section, "scope_dynamic_zoom"))
+				dynamic = dynamic || pSettings->r_bool(*section, "scope_dynamic_zoom");
+		}
 		if (!thermal && pSettings->line_exist(*section, "scope_lense_thermal"))
 			thermal = pSettings->r_bool(*section, "scope_lense_thermal");
 		if (thermalMode == 0 && pSettings->line_exist(*section, "scope_lense_thermal_mode"))
 			thermalMode = pSettings->r_s32(*section, "scope_lense_thermal_mode");
+		// The pack's own imaging declaration, using the same enumeration the lens shaders
+		// compile in (IT_NONE 0, IT_NV 1, IT_THERMAL 2, IT_THERMAL_COLOR 3).
+		if (imageType == 0 && pSettings->line_exist(*section, "s3ds_image_type"))
+			imageType = pSettings->r_s32(*section, "s3ds_image_type");
 	};
 
 	if (IsScopeAttached() || m_zoomtype == 0)
 	{
 		readOpticFacts(cNameSect());
 		readOpticFacts(GetScopeName());
+
+		// Variant weapons bake the optic into the weapon: the section is wpn_<weapon>_<token>
+		// and the optic's own keys stay on the <token> section (the pack's PiP module patches
+		// those sections directly, e.g. ![echo1]), which the weapon cannot reach through
+		// GetScopeName() because there is no scope slot. Section inheritance is not readable
+		// here, so resolve the token by trying the suffixes after each underscore and using the
+		// first that names a real section. This is what makes the SIG Sauer Echo1 (image type 3
+		// on [echo1], reachable only as wpn_rsass_echo1 here) come out thermal.
+		if (shared_str const& child = cNameSect(); child.size())
+		{
+			for (LPCSTR p = *child; *p; ++p)
+			{
+				if (*p == '_' && p[1] && pSettings->section_exist(p + 1))
+					readOpticFacts(shared_str(p + 1), false);
+			}
+		}
 	}
+
+	if (imageType >= 2)
+		thermal = true;
 
 	if (dynamic && lensFovMax > 0.005f && lensFovBase > 0.005f)
 	{
@@ -3461,7 +3493,11 @@ void CWeapon::UpdateSecondVP()
 	if (!(lensFov > 0.5f && lensFov < 120.0f))
 		lensFov = GetSecondVPZoomFactor();
 
-	Device.m_SecondViewport.SetSVPInputs(magnifies, lensFov, float(g_fov), thermal, thermalMode);
+	Device.m_SecondViewport.SetSVPInputs(magnifies, lensFov, float(g_fov),
+		thermal, thermalMode, imageType == 1);
+	// The imaging type is the pack's own declaration (s3ds_image_type), kept for the log and
+	// for anything that needs to distinguish thermal from thermal colour later.
+	Device.m_SecondViewport.svp_optic_image_type = imageType;
 
 	// Edge triggered diagnostic (section or facts changed), no per-frame cost on the hot path.
 	{
@@ -3470,13 +3506,13 @@ void CWeapon::UpdateSecondVP()
 		static bool diagLastMag = false;
 		if (diagLastSect != cNameSect() || !fsimilar(diagLastFov, lensFov) || diagLastMag != magnifies)
 		{
-			Msg("* [PIP/scope] weapon='%s' scope='%s' magnifies=%d lensFov=%.4f dyn=%d rtZoom=%.1f attached=%d zoomtype=%d thermal=%d mode=%d",
+			Msg("* [PIP/scope] weapon='%s' scope='%s' magnifies=%d lensFov=%.4f dyn=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d",
 				cNameSect().size() ? *cNameSect() : "(none)",
 				GetScopeName().size() ? *GetScopeName() : "(none)",
 				magnifies ? 1 : 0, lensFov,
 				m_zoom_params.m_bUseDynamicZoom ? 1 : 0, m_fRTZoomFactor,
 				IsScopeAttached() ? 1 : 0, m_zoomtype,
-				thermal ? 1 : 0, thermalMode);
+				imageType, thermal ? 1 : 0, thermalMode);
 			diagLastSect = cNameSect();
 			diagLastFov = lensFov;
 			diagLastMag = magnifies;

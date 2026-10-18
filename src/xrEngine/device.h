@@ -192,13 +192,14 @@ public:
 		// is what turned the scope black with no magnification.
 		bool svp_optic_magnifies = false;
 		IC void SetSVPInputs(bool magnifies, float lensFov, float baseFov,
-			bool thermal = false, int thermalMode = 0)
+			bool thermal = false, int thermalMode = 0, bool nvg = false)
 		{
 			svp_optic_magnifies = magnifies;
 			svp_lens_fov = lensFov;
 			svp_base_fov = baseFov;
 			svp_optic_thermal = thermal;
 			svp_optic_thermal_mode = thermalMode;
+			svp_optic_nvg = nvg;
 		}
 
 		// Thermal optic facts, read from the pack's own per sight config: scope_lense_thermal
@@ -209,6 +210,14 @@ public:
 		// where the pack drove the effect itself, showed heat.
 		bool svp_optic_thermal = false;
 		int svp_optic_thermal_mode = 0;
+
+		// Imaging type of the optic, as the pack declares it with s3ds_image_type on the optic's
+		// own section (0 none, 1 night vision, 2 thermal, 3 thermal colour - the same enumeration
+		// the lens shaders use for IMAGE_TYPE, so the engine and the shader agree on what the
+		// optic is). It is the pack's authoritative imaging fact and covers sights the thermal
+		// marker does not, e.g. the SIG Sauer Echo1 whose section carries s3ds_image_type = 3.
+		bool svp_optic_nvg = false;
+		int svp_optic_image_type = 0;
 
 		// Pack PiP module detected once at startup; everything PiP side stays off when
 		// it is not installed, so plain 3DSS keeps its own look untouched.

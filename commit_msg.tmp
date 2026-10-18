@@ -1,20 +1,22 @@
-fix(pip): Transpose the lens projection matrix and measure it in the log
+fix(pip): Read the optic imaging type from the pack's own s3ds_image_type key
 
-Hard numbers first: the lens texture and its source both average 11.84 of 255 while the main
-view of the same frame averages 47.9. Identical values for the texture and its source prove the
-publish and the post process are not the cause; the lens pass renders a much darker image.
+The thermal fact for the optice the player actually uses had no engine reachable source: the
+PiP module marks only the gauss family with scope_lense_thermal, and the SIG Sauer Echo1 has no
+thermal key at all. It is not missing though - the 3DSS module declares the imaging type of
+every optic with s3ds_image_type on the optic's own section, using the same enumeration the lens
+shaders use (0 none, 1 night vision, 2 thermal, 3 thermal colour). [echo1] carries 3, and
+[t12] carries 3, while a plain sight like [tac30] has no such key.
 
-That fits one mistake that explains all three symptoms at once. If the projection maps the whole
-texture into the optic instead of the magnified patch, the lens shows a rectangular image (the
-shader fades the sampled region out at the texture border), looks unmagnified (it is the whole
-wide view) and is dark (a wide view of a dusk scene averages far lower than the optic's patch).
+The weapon now reads it from the weapon's own child section, from the mounted scope section when
+there is one, and - because a variant weapon's section is wpn_<weapon>_<token> while the optic's
+keys stay on the <token> section - by walking the suffixes after each underscore and taking any
+that names a real section. That last step is what reaches [echo1] from wpn_rsass_echo1, whose
+scope slot is empty because this pack mounts optics as addons rather than through m_scopes.
 
-The candidate is the matrix convention: every engine shader consumes these matrices as row
-vectors (mul(v, m), which is why the engine uploads them as they are), while the pack's lens
-shaders write mul(scope_lense_reproject, float4(...)) - the column vector form. The matrix is now
-transposed on upload so the pack's expression computes the mapping it was written for.
+A suffix can land on a section that is another weapon (wpn_a545_gauss also has a545_gauss), so
+the suffix walk reads only the optic identity keys and never the optics geometry: lens FOV and
+the dynamic zoom flag keep coming from the weapon's child section or the mounted scope.
 
-The publish diagnostic now also maps three main view NDC points through the same matrix and
-prints the UVs they land on, so the next log states whether the lens samples a small centred
-patch (centre near 0.5, the half offsets a small delta) or the whole texture (near 0 and 1)
-instead of leaving it to judgement by eye.
+imageType >= 2 drives ps_r2_heatvision for the lens frames, imageType == 1 drives
+ps_r2_nightvision, and both are logged (img= in the per optic line) so the mapping can be
+checked from a log rather than by eye.
