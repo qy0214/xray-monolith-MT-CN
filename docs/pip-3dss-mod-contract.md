@@ -60,7 +60,8 @@ PiP : s_prev_frame = $user$generic_temp
 |---|---|---|
 | `$user$viewport2` | **引擎渲染的镜内视图**（显示尺寸的一整张图）| `CRender::Render()` 镜头 pass → `phase_lens_postprocess()` 写入主套 `rt_secondVP` |
 | `scope_svp = 1` | 告诉着色器"这张就是引擎给的镜内图" | `binder_scope_svp_state`：`IsSVPActive()`（**帧级**，非遍级）|
-| `scope_lense_reproject` | 主视角 UV → 第二视角 UV 的投影矩阵 | 同帧实现必须用**当前帧**镜头 VP：`vp_lens × inv(vp_main)` |
+| `scope_lense_reproject` | 主视角 NDC → **采样 `$user$viewport2` 的 UV** 的矩阵（见 `anthology_pip_temporal.h` 的 `pip_project_capture()`）| **整帧捕获时就是恒等**（本引擎即如此）：过圆盘看出去，视在角 `t` 处看到世界方向 `t/mag`，而镜头相机 FOV = `fFOV/mag` ⇒ 同一方向在镜头里的 NDC 仍等于该屏幕点的 NDC ⇒ 采样自己的 uv。参考实现需要真矩阵，只是因为它把镜内渲染成**裁剪子矩形**再贴进显示尺寸纹理 |
+| `scope_lense_main_view` | 镜头 uv ↔ 主画面 uv：`0.5 + (uv-0.5)/mag`，`mag = fFOV/lensFov`（引擎绑定器自算）| 与"镜头相机 FOV = 授权角度"精确吻合（本提交）|
 | `scope_lense_motion` | 重投影开关（`.x`）| 本引擎**每帧渲染镜头** ⇒ `x = 0`（走直接投影 ✓）|
 
 ### 2.3 pack 配置里的权威数据（引擎必须按它工作）
@@ -96,8 +97,17 @@ const float thermal = (ps_r2_heatvision > 0 && compat::scope_lense_allow_thermal
 ```
 
 ⇒ 镜片着色器是否出热成像，取决于 **`ps_r2_heatvision`**；而**引擎里没有任何代码会为装备的瞄具设置它**
-（它只是控制台变量 `r__heatvision`）⇒ 3DSS 时代由 pack 自己驱动，PiP 下必须由引擎补上。
-本工程按 pack 的 `scope_lense_thermal` 事实驱动（举热成像镜时打开、退出后恢复玩家原设置）。
+（它只是控制台变量 `r__heatvision`）⇒ 3DSS 时代由 pack 自己驱动。
+
+**PiP 下不能用它**（实测结论，已回退）：`heatvision.ps` 是**佩戴设备**的全屏效应 ——
+`compute_lens_mask()` 只接受 1/2/4 管的小圆遮罩，其它一律 `return 0`（**全黑**），而
+`num_tubes = frac(heat_vision_args_1.x)*10`，**没有佩戴设备时是 0** ⇒ 整帧全黑。
+这也解释了历史上"强开 `r__heatvision` = 黑屏"。遮罩几何（`flip_down` 同时缩放 y、`params2.x` 同时是
+模糊采样数）**无法**安全铺满整帧。
+
+⇒ **热成像瞄具（`s3ds_image_type ≥ 2`）需要的是一张全帧 GBuffer 热成像图**，也就是 pack 着色器在
+**3DSS 分支**里自己做的那条路：`infrared(gbuffer_load_data(...))`。引擎目前**没有这样的 shader**
+⇒ 在补上之前，热成像瞄具显示**普通（曝光正确）镜头画面**，而不是黑屏（见第四节）。
 
 ### 2.5 政策文件（`mod_system_pip_scope_policy.ltx`）
 
@@ -119,15 +129,16 @@ const float thermal = (ps_r2_heatvision > 0 && compat::scope_lense_allow_thermal
 | 契约要求 | 实现位置 | 状态 |
 |---|---|---|
 | 帧级 `scope_svp`（只读 `.x`）| `binder_scope_svp_state` = `IsSVPActive()` | ✓ |
-| `$user$viewport2` = 引擎镜内图 | 镜头 pass 渲染 → `phase_lens_postprocess()` 写主套 `rt_secondVP` | ✓ |
-| 同帧投影矩阵 | `svp_vp_lens`（当前帧镜头 VP）| ✓ |
+| `$user$viewport2` = 引擎镜内图 | 镜头 pass 渲染 → `CRender::Render` 拷进主套 `rt_secondVP` | ✓ |
+| 采样映射 = 恒等（整帧捕获）| `svp_vp_lens`（`r__svp_debug` 探针直接验证 `ndc(0.5)→uv(0.75)`）| ✓（本提交）|
 | 镜内只画世界（不含武器/瞄具）| 镜头 pass 跳过 `render_hud` 等 | ✓ |
 | 镜头可见性用宽视锥 | 镜头 pass 用主相机 `mFullMatrix` 建 `ViewBase` | ✓ |
-| 镜内目标按圆盘定尺寸（省帧）| `EnsureTargetSVP()` 以显示高度封顶（1200×750）| ✓ |
-| 镜头色调映射（否则近黑）| `phase_lens_postprocess()` | 待验证（post 探针）|
-| 热成像由 pack 事实驱动 | `svp_optic_thermal` → `ps_r2_heatvision` | 待验证（`heat=` 探针）|
-| 变倍镜当前 FOV | `clamp(ADS_FOV, base, max)` | ✓（本提交）|
-| 两种 fov 拼写 | `readOpticFacts()` 两者都读 | ✓（本提交）|
+| 镜内目标尺寸保持显示尺寸/比例 | `EnsureTargetSVP()`（曾试过高度封顶，会变矩形裁剪，已回退）| ✓ |
+| 镜头曝光（否则近黑）| 组合阶段 `t_LUM_dest`（= `$user$tonemap` = `rt_LUM_pool[1]`）改用**主套**的值：镜头 pass 不跑 `phase_pp`（曝光在那里算）| ✓（本提交）|
+| 镜头相机 FOV = pack 授权角度 | `DeriveZoom()` 直接按角度重建投影（`_22=1/tan(fov/2)`、`_11=aspect·_22`），不再用比值缩放 | ✓（本提交）|
+| 热成像瞄具 | —（需要全帧 GBuffer 热成像 pass，见 2.4）| **缺口** |
+| 变倍镜当前 FOV | `clamp(ADS_FOV, 两端)`，并记录 `ads=`/`end=` 供判定 | ✓（本提交）|
+| 两种 fov 拼写 | `readOpticFacts()` 两者都读 | ✓ |
 | 政策 `scope_lense_enabled` | — | **缺口** |
 
 ---
@@ -135,7 +146,14 @@ const float thermal = (ps_r2_heatvision > 0 && compat::scope_lense_allow_thermal
 ## 四、已知缺口 / 待决
 
 1. **政策文件未解析**（2.5）：折叠放大镜类可能被 PiP 接管；需要 token 解析规则（pack 未在配置里显式给出 token → 段名映射）。
-2. **镜头后处理是否生效**：`pip_*.bmp` 与 `pre/post postprocess` 探针可判定；若未生效需查 `s_postprocess` 的 `s_image` 绑定与参数。
-3. **热成像是否触发**：看 `publish thermal=1` 与 `heat=1`。
-4. **可变倍**：`clamp(ADS_FOV, 两端)` 依赖引擎 ADS FOV 对这些瞄具有效（M82 等个别瞄具 ADS 状态退化 ⇒ 会被夹到 pack 两端之一，属预期）。
-5. 92+ 个提交尚未推送；需要 `git bundle` 或网络恢复。
+2. **热成像瞄具**（2.4）：需要一张全帧 GBuffer 热成像 pass（pack 的 `infrared()` 那条路）。
+   方案：在**本工程自己的** `MODS\MT-CN\gamedata\shaders\r4\` 放一个新 shader + 引擎端新 blender/phase，
+   `gbuffer_load_data` + `infrared()` 写成全屏 quad，镜头 pass 末尾对镜头套执行。约 100 行，需与 pack 的
+   `thermal_utils.h`/`infrared.h` include 链相容（运行时从 VFS 解析，可行）。
+3. **变倍判定**：`clamp(ADS_FOV, 两端)` 依赖引擎 ADS FOV 对这些瞄具有效。M82 等个别瞄具
+   `m_fRTZoomFactor` 会读到退化值（曾读到 96°）⇒ 被夹到 pack 较宽一端。日志现给出
+   `fovMax/fovBase/ads/end` ⇒ 下一次实测可判定"是瞄具本身不可变"还是"被夹错端"。
+4. **推送**：108 个提交未推送；需要 `git bundle` 或网络恢复。
+5. **部署链路**：`bin\AnomalyDX11AVX.exe` 曾被替换成 MT 构建（见报告），
+   需要确认玩家启动方式（MO2 覆盖 vs 拷进 bin），否则测试可能跑的不是最新构建 ——
+   **判定方法**：日志启动戳的 `exeTime=/exeSize=` 必须与部署载荷一致。
