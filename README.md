@@ -1,3 +1,62 @@
+---
+
+# MT-CN 分支：面向 **Anomaly 1.5.3「Anthology 2.1 剧情整合包」** 的引擎适配
+
+> 本分支 = 上游 **X-Ray Monolith (MT)** 引擎 + **本仓库自己的适配层**。
+> 目标：让整合包（剧情 / 武器 / 画面类 MOD）在该引擎上**全部可用**，并在其上提供 **DLSS / FSR3 原生上采样** 与 **同帧 PiP 3D 镜内视图**。
+> 部署方式：仅写入整合包的 `MODS\MT-CN\`（由 MO2 覆盖）；**不写入整合包自带 `bin\`，不修改任何 MOD 文件**。
+
+## 一、新增功能（简要）
+
+| 功能 | 说明 |
+|---|---|
+| **原生 DLSS / FSR3 上采样** | 引擎内直接接入（NGX / FidelityFX FSR3）：抖动(jitter)、运动矢量、历史失效，以及"双渲染目标 + 镜内视图"下的正确降级 |
+| **同帧 PiP 3D 镜内视图（3DSS / PiP 3DSS）** | 镜内与主画面**同一帧**渲染（第二套渲染目标），镜内永远是最新画面；镜头相机 FOV、曝光归属、后处理归属均有明确契约 |
+| **整合包兼容层（compat）** | 读取并驱动 MOD 自己约定的 cvar：`scope_lense_*`、`r__svp_*`、`r4_upscaler_*`、`s3ds_*` 等（整合包 MCM 可直接调整） |
+| **渲染统计面板** | 分阶段 CPU 耗时 + 上采样器实际输入/输出尺寸（含"举镜提升内部分辨率"状态） |
+| **诊断开关** | `r__svp_debug 0/1/2`（默认 0 = 零开销）、`r__svp_lens_power` 等；日志写率已按"长时间游玩"治理 |
+
+## 二、DLSS / FSR3 出处（引用）
+
+| | 出处 | 位置 |
+|---|---|---|
+| **DLSS** | **NVIDIA DLSS Super Resolution（NGX SDK）**：经 `NVSDK_NGX_D3D11_Init_with_ProjectID` / `NVSDK_NGX_*` 接入；头文件为仓库内 vendored 的 NVIDIA NGX SDK（`sdk/DLSS/include/nvsdk_ngx*.h`，许可证见 `sdk/DLSS/LICENSE.txt`）；**运行时**为游戏目录中的 `bin\nvngx_dlss.dll` | `src\Layers\xrRenderPC_R4\Dlss\` |
+| **FSR3** | **AMD FidelityFX FSR 3.1.2 Upscaler（MIT）+ 社区 D3D11 backend**：`sdk/FSR3/`（含 `LICENSE.txt`、`Third_party_notices.txt`；其 `README.txt` 注明 vendored 自 OGSR 依赖 `8adb7cf1…`，**非** AMD 官方 DX12/Vulkan backend）；**运行时**为 `bin\ffx_fsr3upscaler_x64.dll`、`bin\ffx_backend_dx11_x64.dll` | `src\Layers\xrRenderPC_R4\Dlss\` |
+
+> 两者**均为可选**：未启用或加载失败时自动回退原生分辨率（原因在控制台与画面设置中可见）。
+
+## 三、整合包各 MOD「对引擎的需求」及本分支的处置（简要）
+
+| 整合包 MOD | 它对引擎的需求 | 本分支的处置 |
+|---|---|---|
+| **R.A.K 武器包适配 3DSS / PiP 3DSS**（镜片着色器 + 镜内 FOV 数据 + 政策文件） | ① 材质契约：`scope_svp`（引擎是否提供第二视图）、`s_second_vp = $user$viewport2`、`scope_lense_reproject`；② `s_position` 绑到 **`$user$generic2` = GBuffer 位置**；③ 镜片着色器写入的 **TAA 跳过掩码**（`SV_Target2`）必须落到运动矢量目标的 alpha；④ 镜片 FOV 语义：`scope_lens_fov` 为**度数**、倍率 = `65 / fov`，变倍镜给出两端与级数 | ② 在假镜 / 热成像路径**发布 GBuffer 位置**到 `$user$generic2`；③ 把**运动矢量目标**绑为该遍第 3 个 MRT（掩码入 alpha、速度为 0）；①④ 按 pack 语义实现镜头相机与采样映射（见第四节） |
+| **热成像（Heat Vision）/ 夜视（Beef NVGs）** | 这两者是**佩戴设备**的全屏效应（管状遮罩，无设备时遮罩=0 ⇒ 整幅黑） | **不用 `r__heatvision` 驱动"瞄具"**（实测会整幅黑）；热成像瞄具改走 pack 自己的 **3DSS 分支 `infrared()`** ⇒ 引擎**撤回第二视图**让它运行；`scope_lense_allow_nvg/thermal` 与设备桥脚本照常生效 |
+| **屏幕空间着色器 23.5（SSS）** | `ssfx_fog / ao / il / bloom / taa / motionblur / water / rain` 均依赖**主相机**的深度、运动矢量与模糊链；`s_motion_vectors.a` 是 **TAA 掩码** | 第二视图（镜内）**跳过或清零**这些屏幕空间阶段（雾 / SSR / 水 / 雨 / 运动模糊 / 泛光 / AO / IL）；镜片掩码绑到 `s_motion_vectors` 的 alpha |
+| **R.A.K 武器包（含永久变体）** | 瞄具参数位于 `wpn_<weapon>_<token>` 子段（无瞄具槽位时也要能解析） | 引擎**按 token 后缀走查**解析镜片参数（`scope_*` / `s3ds_*`），并读取 `scope_lense_quality_percent` 等 |
+| **DLSS 适配 MOD（modxml_dlss_options）** | 通过 `user.ltx` 的 cvar 配置上采样 | 引擎提供并尊重 `r4_upscaler_*` / `r__upscaler_*` 等 cvar |
+| **通用（所有依赖屏幕空间的 MOD）** | 引擎的 `Device.fFOV` 必须与"**当前正在渲染的视图**"一致 | 镜头遍**发布本视图的 FOV**（否则屏幕空间重建、SSAO、光源可见性、雨体投影、光照 LOD 都会按主画面计算） |
+
+## 四、引擎侧契约与 BUG 修复（简要）
+
+- **镜内曝光**：镜头遍必须使用**主套**曝光（`t_LUM_dest` ⇒ `$user$tonemap`）；此前镜头套自己那份恒为零 ⇒ 镜内近黑；
+- **镜头相机 FOV**：改为按 pack 的**授权角度**精确重建投影（旧实现按倍率"比值"缩放，21.667° 的镜子被渲成 24.0°）；
+- **镜内采样映射**：确认为**恒等**（同帧整幅捕获 ⇒ 无裁剪），并给出几何推导与日志判据；
+- **`Device.fFOV` 随视图切换**：修好屏幕空间重建 / SSAO 噪声与半径 / 光源可见性锥 / 雨体投影 / 光照 LOD；
+- **第二套渲染目标**：SSFX **AO/IL 清零**、雾 / SSR / 水 / 雨 / 运动模糊 / 泛光**按遍守卫**、模糊链归属明确；
+- **名称重映射**：第二套目标全部经 `createUnique`，并把镜内图**发布到镜头材质真正采样的那张表面**；
+- **镜内目标尺寸/格式**：保持显示尺寸与比例；HDR10 下格式不匹配时**拒绝创建**（避免静默失败）；
+- **准星高倍尺度**：pack 声明的 FFP 在 PiP 下改用 SFP 分支，保持 3DSS 观感（准星贴图无逐倍率美术）；
+- **变倍镜**：跟踪当前倍率并给出可判定日志（`lensFov/mag/ads` 区间）；
+- **日志与性能**：探针默认关闭，按"变化时 + 5 分钟心跳"写入，长时间游玩不再产生海量日志。
+
+## 五、已知问题（诚实标注）
+
+1. **热成像镜快速转动时镜内出现一圈"光圈"**：**未解决**。已实测排除五条：镜片反射模型、上采样"屏幕锁定"判据、相机运动模糊、上采样器本身（关闭 DLSS 无效）、TAA 掩码路径。下一步建议：`r__svp_debug 2` 并在举镜扫视时抓取 `appdata\logs\pip_optics_screen.bmp`，按其形状定位。
+2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）尚未解析；目前以"瞄具是否真的放大 + PiP 模块是否存在"作为等价门槛。
+3. **部署方式**：整合包 `bin\AnomalyDX11AVX.exe` 的归属需玩家确认（MO2 覆盖 vs 拷入 `bin`）；可用日志启动戳的 `exeTime/exeSize` 判定实际运行的构建。
+
+---
+
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/themrdemonized/xray-monolith)
 
 # STALKER-Anomaly-modded-exes
