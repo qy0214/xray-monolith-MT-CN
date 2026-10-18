@@ -647,8 +647,31 @@ void CRender::Render()
 			svp_lens_rendered ? 1 : 0, TargetSVP ? 1 : 0,
 			compat::r__svp_same_frame, Device.m_SecondViewport.svp_lens_fov);
 
-	Device.true_pip_on = Device.m_SecondViewport.svp_scope.lens_rendered;
-	Device.m_SecondViewport.true_pip_rendering = Device.m_SecondViewport.svp_scope.lens_rendered;
+	// PiP: the lens shaders read ps_r2_heatvision to decide whether to apply heat vision, and
+	// the pack marks its thermal sights with scope_lense_thermal - but nothing in the engine
+	// ever sets that console variable for an equipped optic, which is why a thermal sight
+	// rendered a plain image inside the lens while the stock 3DSS path, where the pack drove
+	// the effect itself, showed heat. Enable it on the frames that render a thermal lens and
+	// restore the player's own setting afterwards, so a manually enabled heat vision survives.
+	{
+		static int s_svpHeatRestore = -1;
+		const bool wantHeat = Device.m_SecondViewport.svp_scope.lens_rendered
+			&& Device.m_SecondViewport.svp_optic_thermal;
+		if (wantHeat)
+		{
+			if (s_svpHeatRestore < 0)
+				s_svpHeatRestore = ps_r2_heatvision;
+			const int mode = Device.m_SecondViewport.svp_optic_thermal_mode;
+			ps_r2_heatvision = (mode > 0) ? mode : 1;
+		}
+		else if (s_svpHeatRestore >= 0)
+		{
+			ps_r2_heatvision = s_svpHeatRestore;
+			s_svpHeatRestore = -1;
+		}
+	}
+
+	Device.true_pip_on = Device.m_SecondViewport.svp_scope.lens_rendered;	Device.m_SecondViewport.true_pip_rendering = Device.m_SecondViewport.svp_scope.lens_rendered;
 	Device.m_SecondViewport.true_pip_same_frame = Device.m_SecondViewport.svp_scope.lens_rendered;
 
 	const bool pipOn = SVP_SAME_FRAME_READY && Device.m_SecondViewport.svp_scope.lens_rendered;
@@ -1049,10 +1072,12 @@ void CRender::Render()
 			CRenderTarget* lensDst = TargetMain ? TargetMain : Target;
 			if (lensDst && lensDst->rt_secondVP && TargetSVP->rt_Generic_0->pSurface)
 			{
-				// pSurface, not pTexture->surface_get(): the latter is a name keyed object
-				// that SetActive() re-points at the active set, so it is not a reliable way
-				// to name one specific set's texture.
-				HW.pContext->CopyResource(lensDst->rt_secondVP->pSurface, TargetSVP->rt_Generic_0->pSurface);
+				// Publish the lens pass's scene result where the lens material really
+				// samples it, through the tone map / gamma / colour grading the main view
+				// gets (phase_lens_postprocess): the lens pass returns from phase_combine
+				// before the post process tail, so a plain blit would publish a linear
+				// image that renders nearly black.
+				TargetSVP->phase_lens_postprocess(lensDst->rt_secondVP);
 				svp_lens_rendered = true;
 
 				// Diagnostic dump (r__svp_debug): write the images out as BMP so the lens can

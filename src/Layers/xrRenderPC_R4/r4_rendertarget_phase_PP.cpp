@@ -304,3 +304,60 @@ void CRenderTarget::phase_pp()
 	RCache.set_Geometry(g_postprocess);
 	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 }
+
+// PiP: run the post process on the lens pass's combined image and write the result straight
+// into the texture the optic samples.
+//
+// The lens pass returns from phase_combine before the tail that normally ends with phase_pp,
+// so without this step the lens texture holds an image that never went through the tone map,
+// gamma and colour grading - linear values in an 8 bit target. That is the near black lens
+// the image dumps show (average 5 of 255 with the geometry clearly present in the G-buffer),
+// and it is why the magnified world was invisible. This is phase_pp's quad with the same
+// shader and the same parameters, minus the upscale step: the upscaler, TAA and SMAA are main
+// only and running them twice per frame breaks their history, which is why the lens pass
+// returns early in the first place. The source is s_postprocess's s_image, bound by name to
+// r2_RT_generic0, so it resolves to the active (lens) set's own combined image.
+void CRenderTarget::phase_lens_postprocess(ref_rt& dst)
+{
+	if (!s_postprocess || !dst || !dst->pRT)
+		return;
+
+	u_setrt(dst, NULL, NULL, NULL);
+	set_viewport_size(HW.pContext, float(dst->dwWidth), float(dst->dwHeight));
+
+	const bool bCMap = u_need_CM();
+	RCache.set_Element(s_postprocess->E[bCMap ? 4 : 0]);
+
+	const int gblend = clampr(iFloor((1 - param_gray) * 255.f), 0, 255);
+	const int nblend = clampr(iFloor((1 - param_noise) * 255.f), 0, 255);
+	const u32 p_color = subst_alpha(param_color_base, nblend);
+	const u32 p_gray = subst_alpha(param_color_gray, gblend);
+	const Fvector p_brightness = param_color_add;
+
+	u32 Offset;
+	const float _w = float(dst->dwWidth);
+	const float _h = float(dst->dwHeight);
+
+	Fvector2 n0, n1, r0, r1, l0, l1;
+	u_calc_tc_duality_ss(r0, r1, l0, l1);
+	u_calc_tc_noise(n0, n1);
+
+	const float du = ps_r1_pps_u, dv = ps_r1_pps_v;
+	TL_2c3uv* pv = (TL_2c3uv*)RCache.Vertex.Lock(4, g_postprocess.stride(), Offset);
+	pv->set(du + 0, dv + float(_h), p_color, p_gray, r0.x, r1.y, l0.x, l1.y, n0.x, n1.y);
+	pv++;
+	pv->set(du + 0, dv + 0, p_color, p_gray, r0.x, r0.y, l0.x, l0.y, n0.x, n0.y);
+	pv++;
+	pv->set(du + float(_w), dv + float(_h), p_color, p_gray, r1.x, r1.y, l1.x, l1.y, n1.x, n1.y);
+	pv++;
+	pv->set(du + float(_w), dv + 0, p_color, p_gray, r1.x, r0.y, l1.x, l0.y, n1.x, n0.y);
+	pv++;
+	RCache.Vertex.Unlock(4, g_postprocess.stride());
+
+	static shared_str s_brightness = "c_brightness";
+	static shared_str s_colormap = "c_colormap";
+	RCache.set_c(s_brightness, p_brightness.x, p_brightness.y, p_brightness.z, 0);
+	RCache.set_c(s_colormap, param_color_map_influence, param_color_map_interpolate, 0, 0);
+	RCache.set_Geometry(g_postprocess);
+	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
+}

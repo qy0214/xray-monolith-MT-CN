@@ -190,12 +190,24 @@ public:
 		// so the pack's lens shaders and the renderer cannot disagree - that disagreement
 		// is what turned the scope black with no magnification.
 		bool svp_optic_magnifies = false;
-		IC void SetSVPInputs(bool magnifies, float lensFov, float baseFov)
+		IC void SetSVPInputs(bool magnifies, float lensFov, float baseFov,
+			bool thermal = false, int thermalMode = 0)
 		{
 			svp_optic_magnifies = magnifies;
 			svp_lens_fov = lensFov;
 			svp_base_fov = baseFov;
+			svp_optic_thermal = thermal;
+			svp_optic_thermal_mode = thermalMode;
 		}
+
+		// Thermal optic facts, read from the pack's own per sight config: scope_lense_thermal
+		// marks a sight as thermal and scope_lense_thermal_mode selects the heat vision shader
+		// element it wants. The engine has no other source for this - ps_r2_heatvision is a
+		// plain console variable that nothing in the code sets for an equipped optic - which is
+		// why thermal sights rendered a normal image inside the lens while the stock 3DSS path,
+		// where the pack drove the effect itself, showed heat.
+		bool svp_optic_thermal = false;
+		int svp_optic_thermal_mode = 0;
 
 		// Pack PiP module detected once at startup; everything PiP side stays off when
 		// it is not installed, so plain 3DSS keeps its own look untouched.

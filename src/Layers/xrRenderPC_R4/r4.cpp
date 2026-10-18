@@ -600,11 +600,21 @@ void CRender::create()
 // is inactive this is never called, so the extra RT chain costs nothing then.
 void CRender::EnsureTargetSVP()
 {
-	// The lens is a second view of the world, so its extent keeps the display aspect
-	// and only scales with the pack's quality knob. The reference build's qRT bank
-	// does the same (display size times 1.0 / 0.9 / 0.8 / 0.7); a square extent would
-	// break the lens shaders' texel math and the reprojection matrix.
-	const float scale = float(clampr(compat::scope_lense_quality_percent, 25, 100)) * 0.01f;
+	// The lens is a second view of the world, so its extent keeps the display aspect and
+	// only scales with the pack's quality knob. The reference build's qRT bank does the same
+	// (display size times 1.0 / 0.9 / 0.8 / 0.7); a square extent would break the lens
+	// shaders' texel math and the reprojection matrix.
+	//
+	// PiP: the extent is additionally capped at the display HEIGHT, the same choice the
+	// reference makes for its default gate. Only the disc inside the optic is ever shown - a
+	// few hundred pixels - so a full display sized second scene render roughly doubles the
+	// frame cost and is what caused the stutter this whole feature exists to remove, while
+	// gaining nothing: at this cap the disc is at or above 1:1 with the screen. The aspect
+	// stays display aspect, so the lens shaders' texel math and projection are unchanged.
+	const float quality = float(clampr(compat::scope_lense_quality_percent, 25, 100)) * 0.01f;
+	const float capRatio = (Device.dwWidth > 0) ? float(Device.dwHeight) / float(Device.dwWidth) : 1.0f;
+	const float cap = (capRatio < 1.0f) ? capRatio : 1.0f;
+	const float scale = quality * cap;
 	u32 w = u32(float(Device.dwWidth) * scale) & ~1u;
 	u32 h = u32(float(Device.dwHeight) * scale) & ~1u;
 	if (w < 64) w = 64;

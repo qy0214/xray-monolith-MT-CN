@@ -534,6 +534,9 @@ public:
 	void phase_combine();
 	void phase_combine_volumetric();
 	void phase_pp();
+	// PiP: the tone map / gamma / colour grading for the lens pass, writing the result into
+	// the texture the optic samples (see phase_PP.cpp).
+	void phase_lens_postprocess(ref_rt& dst);
 	// DLSS/FSR3 hooks (implemented in r4_rendertarget.cpp / phase_PP.cpp).
 	ID3DDepthStencilView* u_SceneDepth();
 	void phase_dlss_postprocess();

@@ -1405,6 +1405,14 @@ void CWeapon::EnableActorNVisnAfterZoom()
 
 bool CWeapon::need_renderable()
 {
+	// PiP (T3 #6): with the same frame lens the optic model belongs to the main pass of
+	// every frame. The legacy suppression below exists for the old alternate SVP frame, and
+	// keying it on IsSVPFrame() while the same frame path is live made the model flicker on
+	// alternate frames while aiming, because that predicate is true on every other frame
+	// whenever the lens is up. true_pip_same_frame is the renderer's frame level flag.
+	if (Device.m_SecondViewport.true_pip_same_frame)
+		return !(IsZoomed() && ZoomTexture() && !IsRotatingToZoom());
+
 	return !Device.m_SecondViewport.IsSVPFrame() && !(IsZoomed() && ZoomTexture() && !IsRotatingToZoom());
 }
 
@@ -3386,11 +3394,22 @@ void CWeapon::UpdateSecondVP()
 	// a view wider than the naked eye, which is what the last round reported. The optic's
 	// authored value is authoritative; variable power is the shader side's business.
 	float lensFov = 0.0f;
+	bool thermal = false;
+	int thermalMode = 0;
 	if (IsScopeAttached() || m_zoomtype == 0)
 	{
 		shared_str sect = cNameSect();
-		if (sect.size() && pSettings->section_exist(*sect) && pSettings->line_exist(*sect, "scope_lense_fov"))
-			lensFov = pSettings->r_float(*sect, "scope_lense_fov");
+		if (sect.size() && pSettings->section_exist(*sect))
+		{
+			if (pSettings->line_exist(*sect, "scope_lense_fov"))
+				lensFov = pSettings->r_float(*sect, "scope_lense_fov");
+			// The pack marks its thermal sights here; nothing else in the engine knows
+			// which optics want heat vision (ps_r2_heatvision is never set for an optic).
+			if (pSettings->line_exist(*sect, "scope_lense_thermal"))
+				thermal = pSettings->r_bool(*sect, "scope_lense_thermal");
+			if (pSettings->line_exist(*sect, "scope_lense_thermal_mode"))
+				thermalMode = pSettings->r_s32(*sect, "scope_lense_thermal_mode");
+		}
 
 		if (lensFov <= 0.005f && IsScopeAttached())
 		{
@@ -3404,7 +3423,7 @@ void CWeapon::UpdateSecondVP()
 	if (!(lensFov > 0.5f && lensFov < 120.0f))
 		lensFov = GetSecondVPZoomFactor();
 
-	Device.m_SecondViewport.SetSVPInputs(magnifies, lensFov, float(g_fov));
+	Device.m_SecondViewport.SetSVPInputs(magnifies, lensFov, float(g_fov), thermal, thermalMode);
 
 	// Edge triggered diagnostic (section or facts changed), no per-frame cost on the hot path.
 	{
