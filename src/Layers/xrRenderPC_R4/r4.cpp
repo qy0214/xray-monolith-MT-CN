@@ -627,15 +627,24 @@ void CRender::EnsureTargetSVP()
 
 	// CHK_DX is a no-op, so a VRAM-exhausted creation fails silently: never keep a
 	// half-built target (the whole PiP path keys off TargetSVP being valid, and a
-	// missing set simply falls back to the legacy behaviour and the scope override)
+	// missing set simply falls back to the legacy behaviour and the scope override).
+	// PiP also publishes the lens image with CopyResource into the main set's
+	// $user$viewport2, which Direct3D only performs when the two textures share a format:
+	// rt_Generic_0 is A16B16G16R16F with HDR10 on while rt_secondVP is A2R10G10B10, so under
+	// HDR10 the copy would fail silently and the lens would show a stale image. Rather than
+	// half working, the set is refused with a message.
 	const bool svp_rt_ok = TargetSVP->rt_secondVP && TargetSVP->rt_secondVP->pSurface
 		&& TargetSVP->rt_baseRT && TargetSVP->rt_baseRT->pRT
 		&& TargetSVP->rt_baseZB && TargetSVP->rt_baseZB->pZRT
 		&& TargetSVP->rt_Color && TargetSVP->rt_Color->pRT
-		&& TargetSVP->rt_Position && TargetSVP->rt_Position->pRT;
+		&& TargetSVP->rt_Position && TargetSVP->rt_Position->pRT
+		&& TargetSVP->rt_Generic_0 && TargetSVP->rt_Generic_0->pSurface
+		&& TargetSVP->rt_Generic_0->fmt == TargetSVP->rt_secondVP->fmt;
 	if (!svp_rt_ok)
 	{
-		Msg("! [PIP] second viewport target creation FAILED (out of VRAM?), lens pass disabled");
+		Msg("! [PIP] second viewport target creation FAILED (out of VRAM, or the HDR10 lens formats do not match: scene %u vs viewport2 %u), lens pass disabled",
+			TargetSVP->rt_Generic_0 ? u32(TargetSVP->rt_Generic_0->fmt) : 0u,
+			TargetSVP->rt_secondVP ? u32(TargetSVP->rt_secondVP->fmt) : 0u);
 		xr_delete(TargetSVP);
 		return;
 	}

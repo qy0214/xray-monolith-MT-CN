@@ -51,21 +51,16 @@ void CRenderTarget::phase_combine()
 	u32 Offset = 0;
 	Fvector2 p0, p1;
 
-	//*** exposure-pipeline
-	if (Device.m_SecondViewport.IsSVPActive())	//--#SM+#-- +SecondVP+ Fix for screen flickering
-	{
-		if (t_LUM_src != rt_LUM_pool[0]->pTexture)
-			t_LUM_src->surface_set(rt_LUM_pool[0]->pSurface);
-		if (t_LUM_dest != rt_LUM_pool[1]->pTexture)
-			t_LUM_dest->surface_set(rt_LUM_pool[1]->pSurface);
-	}
-	else
-	{
-		if (t_LUM_src != rt_LUM_pool[0]->pTexture)
-			t_LUM_src->surface_set(rt_LUM_pool[0]->pSurface);
-		if (t_LUM_dest != rt_LUM_pool[1]->pTexture)
-			t_LUM_dest->surface_set(rt_LUM_pool[1]->pSurface);
-	}
+	// PiP: bind the luminance textures to THIS set's pool on every pass, without the
+	// "already bound" comparison the stock code used. The comparison compares against
+	// t_LUM_src->pTexture, but those texture objects are name keyed and shared between the
+	// two target sets, so after the active set changes it is stale: the lens pass then tone
+	// maps its image with the main set's exposure. That is the dark lens the image dumps
+	// show - the same scene, correctly exposed in the main view and about 2.5x darker inside
+	// the sight - and it is why the legacy code had an if/else here with two identical
+	// branches, an attempt at exactly this split that was never written out.
+	t_LUM_src->surface_set(rt_LUM_pool[0]->pSurface);
+	t_LUM_dest->surface_set(rt_LUM_pool[1]->pSurface);
 
 	if (RImplementation.o.ssao_hdao && RImplementation.o.ssao_ultra)
 	{

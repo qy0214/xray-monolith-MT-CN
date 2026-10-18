@@ -1076,27 +1076,24 @@ void CRender::Render()
 			CRenderTarget* lensDst = TargetMain ? TargetMain : Target;
 			if (lensDst && lensDst->rt_secondVP && TargetSVP->rt_Generic_0->pSurface)
 			{
-				// Publish the lens pass's scene result where the lens material really
-				// samples it, through the tone map / gamma / colour grading the main view
-				// gets (phase_lens_postprocess): the lens pass returns from phase_combine
-				// before the post process tail, so a plain blit would publish a linear
-				// image that renders nearly black.
-				// Evidence for the step: the published texture before and after it, so a
-				// post process that does not run (or runs without effect) is visible instead
-				// of being assumed.
 				const bool probeNow = (svpcam::s_svpDebug > 0 && Device.dwFrame >= s_publishProbeAt);
 				if (probeNow)
 				{
 					s_publishProbeAt = Device.dwFrame + 600;
-					Msg("* [PIP] publish thermal=%d mode=%d",
+					Msg("* [PIP] publish thermal=%d mode=%d mag=%.2f lensFov=%.3f",
 						Device.m_SecondViewport.svp_optic_thermal ? 1 : 0,
-						Device.m_SecondViewport.svp_optic_thermal_mode);
-					svp_probe_rt("pre postprocess(viewport2)", lensDst->rt_secondVP);
+						Device.m_SecondViewport.svp_optic_thermal_mode,
+						svpcam::s_lastMag, Device.m_SecondViewport.svp_lens_fov);
 				}
-				TargetSVP->phase_lens_postprocess(lensDst->rt_secondVP);
+				// Publish the lens pass's COMBINED image, before any post processing, exactly
+				// as the 3DSS path publishes $user$generic_temp. The lens shader grades it
+				// itself (models_scope_reticle.ps applies grade_second_vp unless the pack's
+				// imaging flags are on), so running the engine's post process here double
+				// processed the image and, because that pass draws with source alpha blending
+				// into an empty target, darkened it by roughly 2.5x - that is the dark lens
+				// the dumps show while the main view of the same scene is properly exposed.
+				HW.pContext->CopyResource(lensDst->rt_secondVP->pSurface, TargetSVP->rt_Generic_0->pSurface);
 				svp_lens_rendered = true;
-				if (probeNow)
-					svp_probe_rt("post postprocess(viewport2)", lensDst->rt_secondVP);
 
 				// Diagnostic dump (r__svp_debug): write the images out as BMP so the lens can
 				// be looked at directly instead of inferred from numbers. The lens texture is
