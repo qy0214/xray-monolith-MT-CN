@@ -651,17 +651,25 @@ void CRender::Render()
 			svp_lens_rendered ? 1 : 0, TargetSVP ? 1 : 0,
 			compat::r__svp_same_frame, Device.m_SecondViewport.svp_lens_fov);
 
-	// PiP: the lens shaders read ps_r2_heatvision to decide whether to apply heat vision, and
-	// the pack marks its thermal sights with scope_lense_thermal - but nothing in the engine
-	// ever sets that console variable for an equipped optic, which is why a thermal sight
-	// rendered a plain image inside the lens while the stock 3DSS path, where the pack drove
-	// the effect itself, showed heat. Enable it on the frames that render a thermal lens and
-	// restore the player's own setting afterwards, so a manually enabled heat vision survives.
+	// PiP: the lens shaders decide on ps_r2_heatvision / ps_r2_nightvision, and in the PiP
+	// branch they no longer produce the imaging look themselves - the stock path calls
+	// infrared() on the G-buffer, which the second-view branch skips - so the engine has to
+	// render the lens image hot / in night vision. Three pack provided signals say an optic
+	// wants that: scope_lense_thermal on the optic's section (the mounted sights it marks),
+	// scope_lense_head_thermal_active / scope_lense_head_nvg_active, which the pack's device
+	// bridge script sets from the worn device, and the scope_lense_allow_* switches that let
+	// the player refuse the effect. Scope_lense_imaging is published from the same two
+	// booleans so the shader knows not to grade an image that already carries the effect.
 	{
 		static int s_svpHeatRestore = -1;
-		const bool wantHeat = Device.m_SecondViewport.svp_scope.lens_rendered
-			&& Device.m_SecondViewport.svp_optic_thermal;
-		if (wantHeat)
+		static int s_svpNvgRestore = -1;
+		const bool lensUp = Device.m_SecondViewport.svp_scope.lens_rendered;
+		const bool wantThermal = lensUp && compat::scope_lense_allow_thermal != 0
+			&& (Device.m_SecondViewport.svp_optic_thermal || compat::scope_lense_head_thermal_active != 0);
+		const bool wantNvg = lensUp && compat::scope_lense_allow_nvg != 0
+			&& compat::scope_lense_head_nvg_active != 0;
+
+		if (wantThermal)
 		{
 			if (s_svpHeatRestore < 0)
 				s_svpHeatRestore = ps_r2_heatvision;
@@ -672,6 +680,18 @@ void CRender::Render()
 		{
 			ps_r2_heatvision = s_svpHeatRestore;
 			s_svpHeatRestore = -1;
+		}
+
+		if (wantNvg)
+		{
+			if (s_svpNvgRestore < 0)
+				s_svpNvgRestore = ps_r2_nightvision;
+			ps_r2_nightvision = 1;
+		}
+		else if (s_svpNvgRestore >= 0)
+		{
+			ps_r2_nightvision = s_svpNvgRestore;
+			s_svpNvgRestore = -1;
 		}
 	}
 

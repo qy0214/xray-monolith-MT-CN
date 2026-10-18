@@ -1,25 +1,28 @@
-fix(pip): Bind the lens pass to its own exposure, and refuse HDR10 lens publishing
+fix(pip): Drive night vision for the lens as well, and record the optic facts in the log
 
-Found by auditing every resource the lens material binds instead of one symptom at a time.
+Auditing the imaging family after the thermal change - the review rule being that a fix has to
+be followed by a pass over everything related - showed the same gap on the night vision side:
 
-$user$tonemap is the luminance chain output and the lens shader multiplies the second view by
-it (models_scope_reticle.ps reads s_tonemap.Load(int3(0,0,0)).x twice). rt_LUM_pool is created
-per target set, but phase_combine bound t_LUM_src/t_LUM_dest through an "already bound"
-comparison against a name keyed texture object, which is stale as soon as the active set
-changes: the lens pass could tone map its image with the main set s exposure. That is the dark
-lens the dumps show, the same scene correctly exposed in the main view and about 2.5x darker
-inside the sight. The pool is now bound to this set on every pass, and the legacy code s
-if/else with two identical branches - an attempt at exactly this split that was never written
-out - is gone.
+  * ps_r2_nightvision, like ps_r2_heatvision, is never set by anything in the engine for an
+    equipped optic, while in the PiP branch the lens shader no longer produces the look itself
+    (the stock path calls infrared() on the G-buffer and the second-view branch skips it).
+  * The pack provides the fact through its device bridge script (scope_lense_head_nvg_active /
+    scope_lense_head_thermal_active) and lets the player refuse it (scope_lense_allow_nvg /
+    scope_lense_allow_thermal), so the renderer now honours all of them and restores the
+    player's own setting when the lens goes away.
 
-The audit also found that publishing the lens image uses CopyResource into $user$viewport2,
-which Direct3D only performs when both textures share a format: rt_Generic_0 is A16B16G16R16F
-under HDR10 while rt_secondVP is A2R10G10B10, so under HDR10 the copy would fail silently and
-the lens would hold a stale image. The second set is now refused with a message in that
-configuration instead of half working.
+scope_lense_imaging is derived by its binder from those two console variables, so publishing
+them is what makes the shader skip its own grade for an image that already carries the effect.
+An earlier attempt in this change added a device field for the same information; the audit
+showed it would have been redundant state next to the variable the binder already reads, so it
+was dropped rather than left to drift.
 
-Thermal audit: the pack marks thermal sights with scope_lense_thermal on the weapon child
-sections (wpn_*_gauss_sight) and on the token sections (gauss, gauss_sight); echo1 is not
-marked, so the sessions that reported no thermal effect never aimed a marked thermal optic -
-the log only ever shows wpn_m82 and wpn_rsass_echo1. ps_r2_heatvision is the variant index of
-s_heatvision and only E[1] is ever drawn, so mapping the pack s mode to 1 is correct.
+The per optic diagnostic now records the weapon section, the optic item section, the resolved
+magnification, the lens FOV, the dynamic zoom flag, and the thermal flags with their mode, so a
+log answers which optic was used instead of requiring the player to remember.
+
+Audit of the constant set this round (every scope_lense_* the lens material reads): values and
+sources match the contract, m_hud_fov_params.z is never written which is what selects the
+direct projection branch, and scope_lense_quality.yz correctly reports the sampled texture
+dimensions - the same extent the shader's texel math needs, an independent confirmation that
+reverting the capped lens extent was necessary.

@@ -3470,10 +3470,13 @@ void CWeapon::UpdateSecondVP()
 		static bool diagLastMag = false;
 		if (diagLastSect != cNameSect() || !fsimilar(diagLastFov, lensFov) || diagLastMag != magnifies)
 		{
-			Msg("* [PIP/scope] section='%s' magnifies=%d lensFov=%.4f dyn=%d rtZoom=%.1f attached=%d zoomtype=%d",
-				cNameSect().size() ? *cNameSect() : "(none)", magnifies ? 1 : 0, lensFov,
+			Msg("* [PIP/scope] weapon='%s' scope='%s' magnifies=%d lensFov=%.4f dyn=%d rtZoom=%.1f attached=%d zoomtype=%d thermal=%d mode=%d",
+				cNameSect().size() ? *cNameSect() : "(none)",
+				GetScopeName().size() ? *GetScopeName() : "(none)",
+				magnifies ? 1 : 0, lensFov,
 				m_zoom_params.m_bUseDynamicZoom ? 1 : 0, m_fRTZoomFactor,
-				IsScopeAttached() ? 1 : 0, m_zoomtype);
+				IsScopeAttached() ? 1 : 0, m_zoomtype,
+				thermal ? 1 : 0, thermalMode);
 			diagLastSect = cNameSect();
 			diagLastFov = lensFov;
 			diagLastMag = magnifies;
