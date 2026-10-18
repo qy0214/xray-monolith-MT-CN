@@ -720,21 +720,20 @@ void CRender::Render()
 			render_stats::SetSuppress(lensPass);
 		}
 
-		// PiP: publish the mapping between the main view and the lens view. The two passes share
-		// the same view matrix by construction (the lens camera is the game camera with a
-		// magnified projection), so the mapping between them is a PURE projection difference:
+		// PiP: publish the mapping the lens shader uses to sample the second view.
 		//
-		//     captured_ndc = P_lens * inv(P_main) * main_ndc
-		//
-		// Building it this way removes the view matrices, and with them the operand order and
-		// convention questions that made the composed matrix degenerate: the diagnostic measured
-		// a sampled span of 0 in both readings, i.e. the lens displayed a single texel stretched
-		// over the whole aperture, which is the black lens that does not change with direction.
+		// IDENTITY, deliberately. The lens texture already holds the magnified view of the optic
+		// (this engine renders it with the optics camera), and the shader pastes the sampled patch
+		// across the whole aperture, so the safe mapping is the one that shows the texture as it
+		// is. The corrected mapping is aperture relative - the patch that lines up with the disc
+		// depends on how much of the screen the optic's aperture covers - and the engine has no
+		// source for that yet, while every attempt to derive it from the camera matrices produced
+		// a degenerate mapping (measured spans of 1.5, 0.62 and 0.0 where the aperture is
+		// neither): a lens that is black and does not change with direction. Identity cannot be
+		// degenerate, so the lens is visible and the remaining refinement is the aperture scale.
 		if (publish && svpcam::Ready())
 		{
-			Fmatrix invMainProj;
-			invMainProj.invert(svpcam::s_main.mProject);
-			svp_vp_lens.mul(invMainProj, svpcam::s_zoom.mProject);
+			svp_vp_lens.identity();
 			svp_vp_lens_valid = true;
 		}
 	// Configure

@@ -1,25 +1,23 @@
-fix(pip): Map the lens as a pure projection difference, and fix the heat vision element index
+fix(pip): Make the lens sampling mapping identity so the lens cannot go black
 
-The self calibrating diagnostic settled the projection question with measurements instead of
-another guess: both readings of the composed matrix reported a sampled span of 0 for
-magnifications of 3 and 1.2, so the mapping was degenerate and the lens displayed a single texel
-stretched over the aperture - the fully black lens that does not change with direction.
+Review of the previous change, which is where this ends up: the corrected mapping was still a
+guess at an unknown quantity.
 
-The composition was the problem, not the convention. The lens camera is the game camera with a
-magnified projection, so the two passes share the view matrix by construction and the mapping
-between them is a pure projection difference: captured_ndc = P_lens * inv(P_main) * main_ndc. The
-view matrices cancel, and with them the operand order and upload convention questions that had
-been producing wrong spans (1.5 and 0.62 then 0.0). The published matrix is now exactly that
-difference and the binder uses it as is.
+What is known: the lens texture already holds the magnified view of the optic, and the shader
+pastes the sampled patch across the whole aperture. What is not known to the engine is how much
+of the screen the optic's aperture covers, which is what the patch has to line up with, and every
+attempt to derive the mapping from the camera matrices measured wrong - spans of 1.5 and 0.62
+first, then 0.0 in both conventions, the latter being a degenerate map that shows a single texel
+stretched over the aperture: a lens that is black whatever direction it points, which is what the
+player reported.
 
-Also found while digging into the thermal render: CBlender_heatvision compiles a SINGLE pass, so
-s_heatvision only has E[0], while phase_heatvision selected E[ps_r2_heatvision] - with the switch
-at 1 (any heat vision device, the pack's script included) that is an out of range element and a
-black screen. That is a pre existing engine bug, not a fork regression, and it is why forcing
-r__heatvision went black. The pass now selects E[0].
+Identity cannot be degenerate, so the published mapping is identity: the aperture shows the lens
+texture as it is, which is a magnified image and visible. The aperture relative scale is the
+remaining refinement and it needs an input the engine does not have yet - the reference computes
+it from the optic's geometry (svp_optics: 2 * ocular radius / eye distance, and the applied disc
+size), so that is the next piece of work rather than another camera matrix experiment.
 
-phase_combine also runs the heat pass for the lens pass when the optic is a thermal one
-(svp_optic_thermal or image type >= 2), which needs no console switch: the heat vision shader
-derives its image from the position buffer and the combined image, and the lens set has its own
-copies of both. That is the per lens thermal render the earlier attempt was trying to reach by
-flipping a frame level switch.
+Audit of the same class while here: checked every set_Element(...->E[x]) in the render layer for
+another out of range index. All the others are fixed indices into blenders that have those
+elements (the SSFX blur/SSR/SSS families); s_heatvision->E[ps_r2_heatvision] was the only one
+indexed by a console variable, and it is fixed now.
