@@ -1,15 +1,22 @@
-diag(pip): Dump the main view for optics that keep the 3DSS path
+fix(pip): Treat any optic as screen locked while aiming, not only magnifying ones
 
-r__svp_lcd_flat is wired correctly (same entity in UpscalerCompat.h and xrRender_console, registered
-in RegisterConsoleVars), so it does reach the shader - and that disproves the lens reflection as the
-cause of the halo, because the flat branch would have changed its shape: for RT_FLAT_SCREEN
-sample_reflections() switches to a flat normal and skips its vignette modulation, and the specular
-is zeroed. A ring that survives all three unchanged is not that layer.
+The ring inside the thermal sight only appears while the view is moving fast and settles when it
+stops, which is the signature of temporal ghosting rather than of anything drawn in the sight.
 
-The remaining candidates are drawn for every reticle type, the reticle texture being the first:
-mark_texture = s_base.Sample(...) is always blended in, so a circle that is part of the optic's own
-screen art would look identical under both types - exactly what was observed. The dump path cannot
-settle it either, because it only runs from the publish block, which a thermal optic never reaches
-(the engine withholds the lens for it). This adds the missing dump: with r__svp_debug 2 the main
-view's combined image is written out while any optic is up, as pip_optics_screen.bmp when the lens
-was withheld and pip_optics_lens.bmp when one was rendered.
+The engine already had the right idea in StableOverlaysActive(): a screen locked overlay - the sight's
+lens or reticle, drawn in the weapon layer - does not follow the scene motion vectors, so while one
+is up the upscaler's history is invalidated every frame and the upscale stays spatial. The last
+clause of that predicate gated on hud_fov_params.x > 1.25, i.e. on the optic's magnification factor,
+and that number is not usable: the pack's optics report factors at or below 1. The log line for an
+M82 carrying a sight reads rtZoom=0.0, so a screen type thermal sight was excluded from the rule,
+its image was reprojected with the scene motion vectors, and the result trails behind the camera -
+a ring that only exists in movement, exactly as reported.
+
+The predicate now uses the engine's own aiming facts instead: the ADS progress from the game, plus
+"this weapon has an optic with lens data" (the optic facts the game publishes for the second
+viewport, or a magnifying optic). That covers screen type sights the wearer's magnification factor
+says nothing about, and still excludes plain iron sight aiming.
+
+r__svp_lcd_flat from the previous commit stays in place, off by default: it was based on the
+reflection hypothesis, which this report disproved, and it is inert rather than wrong, so it is left
+for the pack author's benefit rather than removed mid stream.

@@ -59,14 +59,22 @@ bool StableOverlaysActive()
     // of the world inside its lens: reprojecting that stale image with the scene
     // motion vectors is what leaves the heavy trailing while panning.
     if (Device.m_SecondViewport.IsSVPActive()) return true;
-    // Any optic lens is screen locked: the magnified/reticle image does not follow
-    // the scene motion vectors, so the upscaler smears it while the camera moves.
-    // Covered whenever the player is actually aiming through a magnifying optic
-    // (the zoom rotate factor is the weapon ADS progress, the scope factor is the
-    // optic's magnification; both are zero without a weapon).
+    // Any optic is screen locked while the player is actually aiming: the sight's image - lens or
+    // reticle - is drawn in the weapon layer and does not follow the scene motion vectors, so the
+    // upscaler smears it and trails it behind camera motion.
+    //
+    // The zoom factor used to gate this (hud_fov_params.x > 1.25) is NOT a usable signal: the
+    // pack's own optics report factors at or below 1 - the log line for an M82 with a sight on it
+    // reads rtZoom=0.0 - so a screen type thermal sight was excluded and its image ghosted as a
+    // ring while panning. That is also why the artifact only showed in movement: a stationary
+    // view converges, panning leaves the stale history visible. The engine's own aiming facts are
+    // used instead: the ADS progress from the game, plus "this weapon has an optic with lens
+    // data", which covers sights the wearer's magnification factor says nothing about and still
+    // excludes plain iron sight aiming.
     if (!g_pGamePersistent) return false;
     const auto* constants = g_pGamePersistent->m_pGShaderConstants;
-    return constants->hud_params.x > 0.05f && constants->hud_fov_params.x > 1.25f;
+    if (constants->hud_params.x <= 0.05f) return false;
+    return Device.m_SecondViewport.svp_optic_magnifies || Device.m_SecondViewport.svp_lens_fov > 1.0f;
 }
 }
 
