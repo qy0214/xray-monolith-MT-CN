@@ -455,7 +455,21 @@ static class s3ds_param_3 : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
 	{
-		RCache.set_c(C, ps_s3ds_param_3.x, ps_s3ds_param_3.y, ps_s3ds_param_3.z, ps_s3ds_param_3.w);
+		// x image type, y reticle type, z dirt intensity, w chroma power.
+		//
+		// RT_SCREEN (6) and RT_FLAT_SCREEN (8) are the two display types. The lens shader models
+		// a GLASS LENS for every reticle type that is not flat: sample_lens_normalmap() feeds the
+		// environment reflection and the sun specular a spherical normal, whose ring is the halo
+		// the player sees on a screen type thermal sight - the t12 and the gauss sights declare 6,
+		// and their low dirt intensity is exactly what lets those reflections through at full
+		// strength (the reflection weight is pow(1 - dirt, 10)). r__svp_lcd_flat publishes 6 as 8,
+		// the branch the shader already has for a flat display. Off by default because it also
+		// selects the flat reticle projection branch, so it is an experiment to confirm the cause
+		// and, if the reticle still looks right, to remove the ring without touching the mod.
+		int reticleType = int(ps_s3ds_param_3.y + 0.5f);
+		if (compat::r__svp_lcd_flat && reticleType == 6)
+			reticleType = 8;
+		RCache.set_c(C, ps_s3ds_param_3.x, float(reticleType), ps_s3ds_param_3.z, ps_s3ds_param_3.w);
 	}
 }    s3ds_param_3;
 

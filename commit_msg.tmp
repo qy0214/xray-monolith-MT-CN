@@ -1,31 +1,25 @@
-fix(pip): Publish each view's FOV, and derive the position decompression from the projection
+feat(pip): Add r__svp_lcd_flat to publish RT_SCREEN as RT_FLAT_SCREEN
 
-The systematic sweep for "buffers and parameters a lens pass shader can read but the lens pass
-never produces" turned up the real root of the aperture mask, and it is a single quantity.
+The halo inside a screen type thermal sight is the pack's own glass lens model, and the shader says
+so plainly:
 
-Device.fFOV is the GAME camera's FOV, and the lens pass keeps the optic's projection in
-Device.mProject without touching it. So every FOV derived value in the lens pass described the main
-view while the depth buffer had been rendered with a 2.7 degree optic:
+    float3 normalmap = sample_lens_normalmap(I.tc0, 3);      // the display treated as a curved lens
+    reflections.rgb  = sample_reflections(...) ...;          // environment reflection, ring shaped
+    specular = sample_specular(...) ...;                     // the sun glint
+    bool is_flat = RETICLE_TYPE == RT_FLAT_SCREEN;
+    if (is_flat) specular = float3(0, 0, 0);
+    if (!is_flat) reflections *= sample_vignette(tc);
 
- - pos_decompression_params (r4.cpp): the constant every screen space effect uses to turn depth into
-   world position. Reconstructed with 65 degrees against a 2.7 degree depth, the fog landed as a
-   flat wall across part of the aperture, and it grew with the magnification because the error is
-   the ratio of the two FOVs - the mask as reported. It is now derived from the ACTIVE projection
-   matrix (-1/_22 and -1/_11, which equal -tan(fov/2) and -tan(fov/2)/aspect, so the main view is
-   bit for bit unchanged);
- - the SSAO noise and kernel scale (phase_combine, phase_ssao);
- - the rain volume projection (r4_R_rain);
- - the light visibility cone (light_vis);
- - the light LOD factor (R_calculate).
+RT_SCREEN (6) and RT_FLAT_SCREEN (8) are the two display types, and only 8 is exempt from that
+lens model, so a screen type sight gets a spherical normal, an environment reflection and a sun
+specular - whose locus is a ring, the halo the player sees. Two details of the optic make it
+prominent: the t12 declares s3ds_reticle_type = 6, and its s3ds_dirt_intensity = 0.1 is low, while
+the reflection weight is pow(1 - dirt, 10) - a low dirt value is exactly what lets the reflections
+through at full strength. The echo1 nearby declares 8, so it should show no ring at all, which is a
+prediction the player can check.
 
-Rather than patch five sites, svpcam::View now carries the vertical FOV of the view it describes
-(captured from Device.fFOV for the main view, set to the smoothed optic FOV by DeriveZoom) and
-Apply publishes it, so Device.fFOV follows the view being drawn for the whole frame. The game only
-reads Device.fFOV outside Render(), so inside the frame it belongs to the pass. That makes all five
-derive the lens camera's FOV, and it costs nothing for the main view, whose value is what it always
-was.
-
-This also corrects two earlier statements of mine: the fog's geometry was NOT per pass - it read the
-main view's FOV - and the two previous commits (gating the fog and clearing the AO/IL) removed
-symptoms of this same cause. Both remain in place: those passes are still unnecessary work for the
-lens, and the fog's blend still consumes a blur chain the lens never generates.
+Engine side there is no way to switch those layers off - they are shader internal - so this adds
+r__svp_lcd_flat (default 0): when set, the s3ds_param_3 binder publishes reticle type 6 as 8, the
+branch the shader already has for a flat display. It is deliberately an experiment rather than a
+default because the same value also selects the flat reticle projection branch (RETICLE_PROJECT 0),
+so the reticle has to be looked at before that becomes the default.

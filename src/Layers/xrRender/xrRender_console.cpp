@@ -1352,6 +1352,11 @@ namespace compat
 	int		scope_lense_allow_nvg = 1;
 	int		scope_lense_allow_thermal = 1;
 
+	// See UpscalerCompat.h: publishes RT_SCREEN as RT_FLAT_SCREEN so a screen type optic can be
+	// rendered with the flat display branch the shader already has (removes the modelled lens
+	// reflection ring). Off by default.
+	int		r__svp_lcd_flat = 0;
+
 	float	scope_lense_brightness = 1.0f;
 	float	scope_lense_contrast = 1.0f;
 	float	scope_lense_saturation = 1.0f;
@@ -1444,6 +1449,11 @@ namespace compat
 		CMD4(CCC_Float, "scope_lense_dirt", &scope_lense_dirt, 0.0f, 2.0f);
 		CMD4(CCC_Integer, "scope_lense_tint", &scope_lense_tint, 0, 4);
 		CMD4(CCC_Float, "scope_lense_tint_intensity", &scope_lense_tint_intensity, 0.0f, 1.0f);
+
+		// PiP optic imaging aid (see UpscalerCompat.h): 1 = publish the pack's RT_SCREEN reticle
+		// type as RT_FLAT_SCREEN, i.e. render a screen type thermal sight with the shader's flat
+		// display branch instead of its modelled glass lens reflections.
+		CMD4(CCC_Integer, "r__svp_lcd_flat", &r__svp_lcd_flat, 0, 1);
 
 		// engine-owned: mirrors SecondVP state (set in Tick())
 		CMD4(CCC_Integer, "scope_lense_ads_is_pip", &scope_lense_ads_is_pip, 0, 1);

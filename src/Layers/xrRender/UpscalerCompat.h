@@ -44,6 +44,15 @@ namespace compat
 	// engine-owned: 1 while the current ADS is a PiP (second viewport) ADS.
 	extern int		scope_lense_ads_is_pip;
 
+	// PiP optic imaging aid: 1 publishes the pack's RT_SCREEN (6) reticle type as
+	// RT_FLAT_SCREEN (8), the branch the lens shader has for a flat display. The shader models a
+	// glass lens for every other type - a spherical normal map feeds its environment reflection
+	// and sun specular, whose ring is the halo seen on a screen type thermal sight (the t12 and
+	// the gauss sights declare RT_SCREEN, and their low dirt intensity is what lets those
+	// reflections through at full strength). Off by default: it also selects the flat reticle
+	// projection branch, so it is an experiment first.
+	extern int		r__svp_lcd_flat;
+
 	// PiP (T3 #6) same-frame lens: 1 (default) renders the second viewport into the
 	// second target set inside the main frame; 0 restores the legacy behaviour
 	// (scope frame rendered to the swapchain, copied into $user$viewport2, Present
