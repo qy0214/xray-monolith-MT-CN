@@ -720,16 +720,21 @@ void CRender::Render()
 			render_stats::SetSuppress(lensPass);
 		}
 
-		// PiP: publish the current frame's lens camera VP for the shader's projection matrix.
-		// This engine composes view-projection as mul(View, Project) - see Device.mFullTransform
-		// and every other use of it - so the lens VP must be built the same way. Building it as
-		// mul(Project, View) produced a matrix that is transposed relative to the engine's own
-		// mInvFullTransform, and the composition then did not encode the lens magnification at
-		// all: the publish diagnostic measured sampled spans of 1.5 and 0.62 for magnifications
-		// of 24 and 3, where 0.042 and 0.33 are expected.
+		// PiP: publish the mapping between the main view and the lens view. The two passes share
+		// the same view matrix by construction (the lens camera is the game camera with a
+		// magnified projection), so the mapping between them is a PURE projection difference:
+		//
+		//     captured_ndc = P_lens * inv(P_main) * main_ndc
+		//
+		// Building it this way removes the view matrices, and with them the operand order and
+		// convention questions that made the composed matrix degenerate: the diagnostic measured
+		// a sampled span of 0 in both readings, i.e. the lens displayed a single texel stretched
+		// over the whole aperture, which is the black lens that does not change with direction.
 		if (publish && svpcam::Ready())
 		{
-			svp_vp_lens.mul(svpcam::s_zoom.mView, svpcam::s_zoom.mProject);
+			Fmatrix invMainProj;
+			invMainProj.invert(svpcam::s_main.mProject);
+			svp_vp_lens.mul(invMainProj, svpcam::s_zoom.mProject);
 			svp_vp_lens_valid = true;
 		}
 	// Configure
@@ -1097,8 +1102,7 @@ void CRender::Render()
 					// maps the whole texture lands near 0 and 1 instead.
 					if (svp_vp_lens_valid)
 					{
-						Fmatrix m;
-						m.mul(svp_vp_lens, Device.mInvFullTransform);
+						Fmatrix m = svp_vp_lens;
 						// Two readings, because whether this engine's set_c() uploads an Fmatrix
 						// as is or transposed decides which one the pack's mul(M, v) sees. The
 						// correct reading is the one whose spans are about 1/mag, so the log

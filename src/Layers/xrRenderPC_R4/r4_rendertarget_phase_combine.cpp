@@ -584,13 +584,23 @@ void CRenderTarget::phase_combine()
 	// bloom, DOF, SMAA/TAA, the post-process chain and the temporal upscaler) belongs
 	// to the main pass; running it twice per frame is what left the upscaler state
 	// invalid ("unable to swap until render target reset", NGX E_INVALIDARG).
+
 	const bool svpLensPass = Device.true_pip_on && Device.m_SecondViewport.m_render_pass_is_svp;
 
 	if(ps_r2_nightvision > 0)
 		phase_nightvision();
 
 	//--DSR-- HeatVision_start
-	if (ps_r2_heatvision > 0)
+	// PiP: the lens pass renders its image hot when the optic is a thermal one, and it does not
+	// need the player's heat vision switch for that. The heat vision shader derives the thermal
+	// look from the position buffer and the combined image, both of which the lens set has its
+	// own copy of, so running this pass here makes the lens image thermal without touching
+	// ps_r2_heatvision - which is a frame level switch with frame wide consequences (upscaler
+	// bypass, flare path, a different shader element) and is what turned the whole screen into a
+	// black heat vision frame when it was driven from the optic instead.
+	const bool svpLensWantsThermal = svpLensPass
+		&& (Device.m_SecondViewport.svp_optic_thermal || Device.m_SecondViewport.svp_optic_image_type >= 2);
+	if (ps_r2_heatvision > 0 || svpLensWantsThermal)
 		phase_heatvision();
 	//--DSR-- HeatVision_end
 

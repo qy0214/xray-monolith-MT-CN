@@ -187,7 +187,12 @@ void CRenderTarget::phase_heatvision()
 	RCache.Vertex.Unlock(4, g_combine->vb_stride);
 
 	//Set pass
-	RCache.set_Element(s_heatvision->E[ps_r2_heatvision]);
+	// The heat vision blender compiles a single pass (CBlender_heatvision, blender_nightvision
+	// .cpp), while ps_r2_heatvision is a 0/1 console switch - so using it as the element index
+	// asked for E[1] on a shader that only has E[0]. That is a pre existing engine bug: any
+	// r__heatvision 1 (the heat vision device, for instance) drew an out of range element and
+	// produced a black screen. The only valid element is E[0].
+	RCache.set_Element(s_heatvision->E[0]);
 
 	//Set geometry
 	RCache.set_Geometry(g_combine);
