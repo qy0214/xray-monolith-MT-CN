@@ -1,24 +1,16 @@
-fix(pip): Review of the stable overlay fix: no stale facts, and the same blind spot in the boost
+diag(pip): Log the stable overlay inputs while aiming, and note the motion blur
 
-Reviewing the previous commit (the withheld lens optic case) found two things.
+The thermal sight keeps its ring through the stable overlay fix, and the log explains why the fix
+could not have helped: the pass lines in it belong to an ordinary optical sight (img=0), and the
+sight the player is testing never appears in the optic lines, so the predicate's inputs for it were
+never visible. What the log does show is that the camera motion blur is on (ssfx_motionblur 8, 0.1,
+...), and that is a screen space effect driven by the scene motion vectors, applied to a sight whose
+image is screen locked. On a flat, circular edged display that smear reads as a halo, it only exists
+while the view moves, and my earlier gating of it covers the lens pass only - which a thermal optic
+never runs, because the engine withholds its lens. That matches "the fix did nothing".
 
-One, the new clause could latch. The optic facts it reads (svp_optic_magnifies, svp_lens_fov) are
-published only from CWeapon::UpdateSecondVP, which returns early unless the weapon is the active
-item, so after the player puts a scoped weapon away they keep their last values. A predicate built
-on them alone would stay true from then on, keeping the upscaler in its spatial-only mode - a
-quality regression rather than a crash, and a silent one. The clause is now gated on the ADS
-progress from the game, which is refreshed every frame and is zero when nothing is aimed, so it can
-only fire while an optic is actually up.
-
-Two, the same blind spot exists one function away, and it is the cause of the pixelated screen the
-player reported earlier. ScopeResolutionRequested() decides whether to raise the upscaler's internal
-resolution while an optic is in use, and it also looked at the zoom factor - at or below 1 for this
-pack's optics - or at IsSVPActive(), which is false for the sights that keep the 3DSS path. A
-thermal sight therefore never raised the resolution, and its screen, which is the whole image for
-that optic, was reconstructed from the upscaler's internal size. It now also triggers on the optic
-facts, so screen type sights get the same treatment as the rest.
-
-Note for a later round: the stale facts are a latent issue beyond these two predicates. The
-evaluated state feeds svp_make_inputs from the same values, so a holstered scoped weapon can keep
-the lens set alive and the state true. That is not introduced here and is left alone rather than
-changed mid stream.
+This adds both halves of the measurement. The stable overlay test now logs its inputs and result
+once per 300 frames while the player is aiming (unstable, svp, magnifies, lensFov, ads, zoom,
+motionblur, img), so the next test says whether the clause fires for a thermal optic; and the
+motion blur can be ruled in or out immediately with "ssfx_motionblur 0, 0, 0, 0", which needs no
+rebuild.

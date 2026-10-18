@@ -285,6 +285,19 @@ void BeginScene()
     // Scope frames must neither consume a jitter sample nor overwrite the history.
     mainView = !Device.m_SecondViewport.m_render_pass_is_svp;
     const bool stableOverlay = StableOverlaysActive();
+    // PiP diagnostic: the inputs and the result of the stable overlay test, plus the camera motion
+    // blur, logged only while the player is actually aiming. The thermal sights are the case that
+    // needs watchng here: they report zoom factors at or below 1 and have no second viewport, so
+    // every clause of this test depends on the optic facts, and the log is what tells whether the
+    // clause fired for them.
+    if (Device.dwFrame % 300 == 0 && g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants
+        && g_pGamePersistent->m_pGShaderConstants->hud_params.x > 0.05f)
+        Msg("* [PIP] unstable=%d svp=%d magnifies=%d lensFov=%.2f ads=%.2f zoom=%.2f motionblur=%.2f img=%d",
+            stableOverlay ? 1 : 0, Device.m_SecondViewport.IsSVPActive() ? 1 : 0,
+            Device.m_SecondViewport.svp_optic_magnifies ? 1 : 0, Device.m_SecondViewport.svp_lens_fov,
+            g_pGamePersistent->m_pGShaderConstants->hud_params.x,
+            g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x,
+            ps_ssfx_motionblur.y, Device.m_SecondViewport.svp_optic_image_type);
     if (Active())
     {
         // A device view changes the whole image every frame without matching the
