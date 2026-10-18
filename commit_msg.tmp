@@ -1,22 +1,25 @@
-fix(pip): Keep the screen space fog out of the lens pass
+fix(pip): Clear the second set's SSFX AO/IL for the lens pass, and correct the fog rationale
 
-The mask the player reported over the lower half of the sight, worse the more the optic is
-magnified and invisible at 1x, is the SSFX volumetric fog. phase_ssfx_fog_scattering() is a screen
-space effect: it reconstructs the world position and the distance from the depth buffer with the
-camera's own projection. The lens pass renders with the optic's FOV - 2.7 degrees at 24x against the
-main view's 65 - so that reconstruction is off by that factor and the fog lands as a flat wall
-across part of the aperture. The size of the error is exactly the size of the projection mismatch,
-which is why it tracks the magnification and disappears at 1x.
+Review of the previous commit found the real mechanism, and the previous commit's rationale was
+wrong in its details.
 
-Every other screen space effect in phase_combine is already kept out of the lens pass for the same
-reason - SSAO and IL, SSR, the water passes, the blur chain, the bloom and the night vision - so the
-fog and two effects of the same class had simply been missed:
+The SSFX AO and IL are cleared and computed inside the SVP guard in phase_combine, so the lens set
+never computed them, but the combine reads both unconditionally. The clears belonged to the
+"second set keeps its own buffers" rule, not to the phase gating, so the second set's maps kept
+whatever they were created with - and the combine uses them as multipliers:
+    hdiffuse.rgb *= ssfx_ao.Sample(...).www;
+    hdiffuse *= lerp(1.0f, IL_sample * (30.0f * ssfx_il_setup.y), IL_sample);
+A stale AO/IL map multiplied into the lens image is a flat dark mask over part of the aperture, and
+it covers a larger share of the picture the more the optic magnifies, because the same map is
+spread over a narrower view - which is exactly what the player reported. The clears now run for
+every pass (the phases stay main pass only), and clearing to (0,0,0,1) is provably neutral for this
+combine: the AO term is read from the map's ALPHA, which is 1 at that value, and the IL term is the
+lerp factor itself, which at 0 selects the unmodified 1.0. This mirrors what the bloom already does
+a few lines below.
 
- - phase_ssfx_fog_scattering(): the effect above;
- - phase_ssfx_rain(): the rain refraction is likewise reconstructed from the main view's depth, so
-   only that composite is skipped (the rain volumes are world geometry and still render);
- - phase_ssfx_motion_blur(): it samples the main view's motion vectors, which do not describe the
-   lens camera at all.
-
-The engine's own fog (fog_params / fog_color, applied per pixel inside the combine) is projection
-independent and still runs, so the lens keeps its fog - just not the broken screen space layer.
+The fog gating from the previous commit stands, but for a different reason than stated there. Its
+geometry reconstruction is per pass and therefore correct for the lens (it reads
+pos_decompression_params, uploaded for the active pass); what is wrong is that its blend consumes
+the blur chain, which the lens pass deliberately does not generate. The comment now says that
+instead of blaming the projection, and the rain refraction and the motion blur are gated for the
+same reason: both consume main view buffers.

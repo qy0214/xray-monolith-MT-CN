@@ -135,14 +135,24 @@ void CRenderTarget::phase_combine()
 	}
 
 	{
-		// Disable when rendering SecondViewport
-		if (!Device.m_SecondViewport.m_render_pass_is_svp)
+		// PiP: the lens pass does not compute the SSFX AO and IL - they are reconstructed from
+		// buffers that describe the main view - but the combine still reads them, so the lens
+		// set's copies must be cleared the same way the bloom is further down (that one already
+		// had this treatment; the AO/IL clears were left inside the SVP guard, which meant the
+		// second set's buffers kept whatever they were created with). A stale AO/IL map blended
+		// into the lens image is exactly the flat dark mask the player reported over part of the
+		// aperture, and it covers a larger share of the picture the more the optic magnifies,
+		// because the same map is spread over a narrower view. So: clear for every pass, run the
+		// AO/IL phases for the main pass only.
 		{
-			// Clear RT
 			FLOAT ColorRGBA[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 			HW.pContext->ClearRenderTargetView(rt_ssfx_temp->pRT, ColorRGBA);
 			HW.pContext->ClearRenderTargetView(rt_ssfx_temp2->pRT, ColorRGBA);
+		}
 
+		// Disable when rendering SecondViewport
+		if (!Device.m_SecondViewport.m_render_pass_is_svp)
+		{
 			if (RImplementation.o.ssfx_ao && ps_ssfx_ao.y > 0)
 			{
 				ssfx_PrevPos_Requiered = true;
@@ -552,17 +562,20 @@ void CRenderTarget::phase_combine()
 		}
 	}
 
-	// PiP: the SSFX fog is a SCREEN SPACE effect. It reconstructs the world position and the
-	// distance from the depth buffer using the camera's own projection, and the lens pass renders
-	// with the optic's FOV - 2.7 degrees at 24x against the main view's 65 - so the reconstruction
-	// is off by that factor and the fog lands as a flat wall across part of the aperture. That is
-	// the mask the player reported over the lower half of the sight: it scales with the
-	// magnification and is invisible at 1x, which is exactly the size of the projection mismatch.
-	// Every other screen space effect in this function is already kept out of the lens pass for
-	// the same reason (SSAO/IL, SSR, water, blur, bloom); the fog was missed. The engine's own
-	// fog (fog_params / fog_color, applied per pixel inside the combine) is projection
-	// independent and still runs, so the lens keeps its fog - just not the broken screen space
-	// layer.
+	// PiP: the SSFX fog consumes buffers the lens pass deliberately does not produce, and that is
+	// what makes it wrong here - not its projection. Its geometry is reconstructing per pass (it
+	// reads pos_decompression_params, which is uploaded for the ACTIVE pass, so the lens camera is
+	// used correctly), but its blend reads the scene's blur chain (s_blur_2, and s_image through
+	// Delta), and phase_blur is skipped for the lens because the blur chain is a main view stage.
+	// The lens set's own blur textures are therefore never written, so the fog blends whatever
+	// they hold into the lens image. With the pack's height fog enabled (ssfx_fog height 20,
+	// density 1.5) the strongest term is the ground right below the horizon, which is the lower
+	// half of a magnified sight - so it lands as a flat wall over part of the aperture, grows with
+	// the magnification and all but disappears at 1x, where the lens FOV matches the main view.
+	// Every other screen space effect in this function is already kept out of the lens pass (SSAO
+	// and IL, SSR, water, blur, bloom); the fog, the rain refraction and the motion blur had been
+	// missed. The engine's own fog (fog_params / fog_color, applied per pixel inside the combine)
+	// is projection independent and still runs, so the lens keeps its fog.
 	if (RImplementation.o.ssfx_fog && ps_ssfx_fog_scattering > 0
 		&& !Device.m_SecondViewport.m_render_pass_is_svp)
 	{
