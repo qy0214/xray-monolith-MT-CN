@@ -91,7 +91,15 @@ static bool ScopeResolutionRequested()
 		return true;
 
 	const float zoom = g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x;
-	return zoom > 1.25f || Device.m_SecondViewport.IsSVPActive();
+	// The pack's optics report zoom factors at or below 1 (an M82 carrying a sight logs
+	// rtZoom=0.0), so the factor alone leaves the screen type sights out - the same blind spot the
+	// upscaler's stable overlay predicate had. The optic facts the game publishes cover them, and
+	// they matter most for exactly those sights: a thermal optic has no lens of its own, so its
+	// screen is what the player reads and it was being reconstructed from the upscaler's internal
+	// resolution.
+	const bool opticUp = Device.m_SecondViewport.svp_optic_magnifies
+		&& Device.m_SecondViewport.svp_lens_fov > 1.0f;
+	return zoom > 1.25f || opticUp || Device.m_SecondViewport.IsSVPActive();
 }
 
 // Returns true when the targets were rebuilt; the caller then skips this frame,

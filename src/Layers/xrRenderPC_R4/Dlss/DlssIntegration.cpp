@@ -76,9 +76,16 @@ bool StableOverlaysActive()
     if (Device.m_SecondViewport.svp_optic_magnifies && Device.m_SecondViewport.svp_lens_fov > 1.0f)
         return true;
 
+    // ...and the gate below is the per frame aiming signal, not the optic facts alone: the facts
+    // are only published while the weapon is the active item (Weapon.cpp UpdateSecondVP returns
+    // early otherwise), so they keep their last values after the weapon is put away, and a
+    // predicate built on them alone would stay true forever.
     if (!g_pGamePersistent) return false;
     const auto* constants = g_pGamePersistent->m_pGShaderConstants;
-    return constants->hud_params.x > 0.05f && constants->hud_fov_params.x > 1.25f;
+    if (constants->hud_params.x <= 0.05f) return false;
+    if (Device.m_SecondViewport.svp_optic_magnifies && Device.m_SecondViewport.svp_lens_fov > 1.0f)
+        return true;
+    return constants->hud_fov_params.x > 1.25f;
 }
 }
 

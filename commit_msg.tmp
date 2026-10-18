@@ -1,18 +1,24 @@
-fix(pip): Cover the optic whose lens the engine withheld, and nothing else
+fix(pip): Review of the stable overlay fix: no stale facts, and the same blind spot in the boost
 
-Correcting the previous commit, which was too wide. The player narrowed the ghosting to thermal
-sights, and that is the precise case the predicate was missing.
+Reviewing the previous commit (the withheld lens optic case) found two things.
 
-StableOverlaysActive() already returns true for any optic whose lens this engine renders
-(IsSVPActive()), which is why ordinary magnifying sights never ghosted while panning. A thermal
-optic has its lens withheld on purpose (svp_scope_state.h), so IsSVPActive() is false for it and it
-fell through to the magnification test, which reads hud_fov_params.x - a number the pack's optics
-report at or below 1 (the log line for an M82 carrying a sight reads rtZoom=0.0). Treated as a
-stable overlay, its image was reprojected with the scene motion vectors and trailed as a ring that
-only exists in movement.
+One, the new clause could latch. The optic facts it reads (svp_optic_magnifies, svp_lens_fov) are
+published only from CWeapon::UpdateSecondVP, which returns early unless the weapon is the active
+item, so after the player puts a scoped weapon away they keep their last values. A predicate built
+on them alone would stay true from then on, keeping the upscaler in its spatial-only mode - a
+quality regression rather than a crash, and a silent one. The clause is now gated on the ADS
+progress from the game, which is refreshed every frame and is zero when nothing is aimed, so it can
+only fire while an optic is actually up.
 
-The previous commit instead widened the fallback to "aiming and this weapon has lens data", which
-would have covered sights that already work and iron sight cases that the pack handles differently.
-This version adds exactly the missing case and leaves everything else as it was: the optic facts say
-a lens applies (svp_optic_magnifies, svp_lens_fov) while the engine is not rendering one. Iron sight
-aiming carries no lens data and stays excluded.
+Two, the same blind spot exists one function away, and it is the cause of the pixelated screen the
+player reported earlier. ScopeResolutionRequested() decides whether to raise the upscaler's internal
+resolution while an optic is in use, and it also looked at the zoom factor - at or below 1 for this
+pack's optics - or at IsSVPActive(), which is false for the sights that keep the 3DSS path. A
+thermal sight therefore never raised the resolution, and its screen, which is the whole image for
+that optic, was reconstructed from the upscaler's internal size. It now also triggers on the optic
+facts, so screen type sights get the same treatment as the rest.
+
+Note for a later round: the stale facts are a latent issue beyond these two predicates. The
+evaluated state feeds svp_make_inputs from the same values, so a holstered scoped weapon can keep
+the lens set alive and the state true. That is not introduced here and is left alone rather than
+changed mid stream.
