@@ -79,12 +79,16 @@ static bool ScopeResolutionRequested()
 	if (!ps_r__upscaler_scope_lock || !dlss::Configured() || !g_pGamePersistent)
 		return false;
 
-	// PiP (T3 #6): with the second target set in charge of the lens, the override
-	// has nothing left to buy - the scope frame renders at that set's own extent.
-	// It stays as the fallback for when the set could not be created (out of VRAM)
-	// and for the pure screen-space magnification cases below.
-	if (compat::r__svp_same_frame && RImplementation.TargetSVP && Device.m_SecondViewport.IsSVPActive())
-		return false;
+	// PiP (T3 #6): with the second target set in charge of the lens, the resolution the
+	// player actually reads is the one INSIDE the lens: the lens image is magnified into the
+	// aperture, so the upscaler's internal resolution is what its pixels are made of. The
+	// earlier version of this function returned false for this case ("the override has nothing
+	// left to buy - the scope frame renders at that set's own extent"), and that is what the
+	// player sees as the small sight going pixelated after a while: with the PiP path live the
+	// boost could never even be REQUESTED while the lens was up, so it survived only on the
+	// idle timer and then fell back to the default upscaler scale mid aim.
+	if (Device.m_SecondViewport.IsSVPActive())
+		return true;
 
 	const float zoom = g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x;
 	return zoom > 1.25f || Device.m_SecondViewport.IsSVPActive();
@@ -1055,12 +1059,17 @@ void CRender::Render()
 		// here explains a pass that draws into something other than this set's targets.
 		if (svpcam::s_svpDebug > 0 && (lensPass || viewCount > 1))
 		{
-			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u set=%ux%u mag=%.2f heat=%.0f nvg=%.0f",
+			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u rsw=%u set=%ux%u mag=%.2f heat=%.0f nvg=%.0f",
 				view, lensPass ? (publish ? "(lens,publish)" : "(lens,dry)") : "(main)",
 				publish ? "lens" : "main",
 				(RImplementation.Target == (lensPass ? (CRenderTarget*)TargetSVP : (CRenderTarget*)TargetMain)) ? "this" : "OTHER",
 				Device.dwWidth, Device.dwHeight, dlss::Configured() ? 1 : 0,
 				dlss::RenderWidth(), dlss::RenderHeight(),
+				// The extent the pass actually renders the scene at: RenderScreenWidth() is the
+				// upscaler's internal size for the main view but the target's own extent for the
+				// second viewport, so this field is what tells the two apart (the lens texture is
+				// display sized either way, which is why the texture dimensions alone cannot).
+				RenderScreenWidth(),
 				lensPass ? (TargetSVP ? TargetSVP->Width : 0) : (TargetMain ? TargetMain->Width : 0),
 				lensPass ? (TargetSVP ? TargetSVP->Height : 0) : (TargetMain ? TargetMain->Height : 0),
 				svpcam::s_lastMag, ps_r2_heatvision, ps_r2_nightvision);

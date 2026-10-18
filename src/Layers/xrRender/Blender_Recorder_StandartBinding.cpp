@@ -420,7 +420,26 @@ static class s3ds_param_1 : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
 	{
-		RCache.set_c(C, ps_s3ds_param_1.x, ps_s3ds_param_1.y, ps_s3ds_param_1.z, ps_s3ds_param_1.w);
+		// x reticle size, y eye relief, z exit pupil, w first focal plane (the pack writes
+		// them from s3ds_reticle_size / s3ds_eye_relief / s3ds_exit_pupil / s3ds_ffp).
+		//
+		// The reticle scale convention differs between the two paths, and this is what the
+		// player reads as "the cross turns into a fat cross at maximum power":
+		//   3DSS: current_zoom = max(min_scope_zoom_factor * 0.75 / fFOV, 1), which is 1 for
+		//         every optic in this pack, so the reticle is drawn at its texture scale and
+		//         the lens shader never magnifies it - whatever s3ds_ffp says.
+		//   PiP:  current_zoom = fFOV / lens FOV, i.e. the full sight power, so an optic
+		//         marked s3ds_ffp = 1 (the multi power ones, for instance marchf) has its
+		//         reticle scaled by up to twenty odd times.
+		// The reticle textures are authored for the 3DSS scale - there is no per power art to
+		// magnify - so the faithful FFP behaviour produces a cross tens of times too thick
+		// instead of a magnified one. While the engine is providing the second viewport, the
+		// reticle therefore keeps the scale the player is used to, by selecting the SFP branch
+		// the shader already has for exactly this.
+		float ffp = ps_s3ds_param_1.w;
+		if (Device.m_SecondViewport.IsSVPActive())
+			ffp = 0.0f;
+		RCache.set_c(C, ps_s3ds_param_1.x, ps_s3ds_param_1.y, ps_s3ds_param_1.z, ffp);
 	}
 }    s3ds_param_1;
 
