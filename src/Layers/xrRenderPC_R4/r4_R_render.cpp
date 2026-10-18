@@ -155,11 +155,11 @@ namespace svpcam
 	// 100 = exactly what the optic authors.
 	int s_lensPowerPct = 100;
 
-	// Diagnostic switch for the lens content probes (staging readbacks, mid pass probes and
-	// the per pass binding lines). The probes earned their place while the black lens was
-	// being chased, but they cost a readback every few seconds and belong behind a switch
-	// now that the content pipeline is understood.
-	int s_svpDebug = 0;
+	// Diagnostic switch for the lens content probes (staging readbacks, mid pass probes, the
+	// per pass binding lines and the image dumps). The probes earned their place while the
+	// black lens was being chased, but they cost a readback every few seconds and belong
+	// behind a switch. Default 1 while the lens image is still being diagnosed.
+	int s_svpDebug = 1;
 
 	void RegisterLensCvars()
 	{
@@ -267,8 +267,112 @@ void SvpRegisterLensCvars()
 	svpcam::RegisterLensCvars();
 }
 
-// PiP lens content probe (diagnostic, throttled): reads back a 16x16 block from the centre
-// of the second view's scene result and of the texture the lens material actually samples.
+// Dump a render target as a BMP so the lens image can be looked at directly instead of
+// being inferred from log numbers. 8 bit BGRA targets go out as 24 bit BMP; 16F targets are
+// clamped to 0..1 and scaled, which is enough to see whether an image contains a scene.
+static void svp_dump_rt(LPCSTR path, ref_rt& rt)
+{
+	if (!rt || !rt->pSurface)
+		return;
+
+	ID3D11Texture2D* tex = nullptr;
+	if (FAILED(rt->pSurface->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex)) || !tex)
+		return;
+
+	D3D11_TEXTURE2D_DESC d = {};
+	tex->GetDesc(&d);
+
+	D3D11_TEXTURE2D_DESC s = d;
+	s.Usage = D3D11_USAGE_STAGING;
+	s.BindFlags = 0;
+	s.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+	s.MiscFlags = 0;
+	s.ArraySize = 1;
+	s.MipLevels = 1;
+	s.SampleDesc.Count = 1;
+	s.SampleDesc.Quality = 0;
+
+	ID3D11Texture2D* stg = nullptr;
+	if (FAILED(HW.pDevice->CreateTexture2D(&s, nullptr, &stg)) || !stg)
+	{
+		_RELEASE(tex);
+		return;
+	}
+	HW.pContext->CopyResource(stg, tex);
+
+	D3D11_MAPPED_SUBRESOURCE m = {};
+	if (SUCCEEDED(HW.pContext->Map(stg, 0, D3D11_MAP_READ, 0, &m)))
+	{
+		const bool float16 = (d.Format == DXGI_FORMAT_R16G16B16A16_FLOAT);
+		const u32 bpp = float16 ? 8u : 4u;
+		const u32 rowBytes = ((d.Width * 3u) + 3u) & ~3u;
+
+		FILE* f = fopen(path, "wb");
+		if (f)
+		{
+			const u32 dataBytes = rowBytes * d.Height;
+			u8 hdr[54] = {};
+			hdr[0] = 'B'; hdr[1] = 'M';
+			const u32 total = 54u + dataBytes;
+			memcpy(&hdr[2], &total, 4);
+			const u32 off = 54;
+			memcpy(&hdr[10], &off, 4);
+			const u32 info = 40;
+			memcpy(&hdr[14], &info, 4);
+			const s32 w = (s32)d.Width, h = (s32)d.Height;
+			memcpy(&hdr[18], &w, 4);
+			memcpy(&hdr[22], &h, 4);
+			const u16 planes = 1, bppOut = 24;
+			memcpy(&hdr[26], &planes, 2);
+			memcpy(&hdr[28], &bppOut, 2);
+			memcpy(&hdr[34], &dataBytes, 4);
+			fwrite(hdr, 1, 54, f);
+
+			xr_vector<u8> row(rowBytes, 0);
+			for (s32 y = (s32)d.Height - 1; y >= 0; --y) // BMP is bottom up
+			{
+				const u8* src = (const u8*)m.pData + size_t(y) * m.RowPitch;
+				for (u32 x = 0; x < d.Width; ++x)
+				{
+					u8 r, g, b;
+					if (float16)
+					{
+						// half float -> float -> byte
+						const u16* hp = (const u16*)(src + size_t(x) * bpp);
+						auto h2f = [](u16 h) -> float {
+							const u32 sign = (h >> 15) & 1u, exp = (h >> 10) & 0x1Fu, man = h & 0x3FFu;
+							float v;
+							if (exp == 0) v = man ? ldexpf(float(man), -24) : 0.f;
+							else if (exp == 31) v = man ? 1.f : 1.f;
+							else v = ldexpf(float(man) + 1024.f, int(exp) - 25);
+							return sign ? -v : v;
+						};
+						const float rf = h2f(hp[0]), gf = h2f(hp[1]), bf = h2f(hp[2]);
+						r = (u8)clampr(int(rf * 255.f), 0, 255);
+						g = (u8)clampr(int(gf * 255.f), 0, 255);
+						b = (u8)clampr(int(bf * 255.f), 0, 255);
+					}
+					else
+					{
+						const u8* p = src + size_t(x) * bpp;
+						b = p[0]; g = p[1]; r = p[2];
+					}
+					row[x * 3 + 0] = b;
+					row[x * 3 + 1] = g;
+					row[x * 3 + 2] = r;
+				}
+				fwrite(row.data(), 1, rowBytes, f);
+			}
+			fclose(f);
+			Msg("* [PIP] dumped %s (%ux%u)", path, d.Width, d.Height);
+		}
+		HW.pContext->Unmap(stg, 0);
+	}
+	_RELEASE(stg);
+	_RELEASE(tex);
+}
+
+// PiP lens content probe (diagnostic, throttled): reads back a 16x16 block from the centre// of the second view's scene result and of the texture the lens material actually samples.
 // A black lens has three very different causes and the log must separate them:
 //   source black             -> the second view rendered nothing (camera, culling, combine)
 //   source good, dst black   -> the blit did not land (format or size mismatch) or the
@@ -927,6 +1031,25 @@ void CRender::Render()
 				// to name one specific set's texture.
 				HW.pContext->CopyResource(lensDst->rt_secondVP->pSurface, TargetSVP->rt_Generic_0->pSurface);
 				svp_lens_rendered = true;
+
+				// Diagnostic dump (r__svp_debug): write the images out as BMP so the lens can
+				// be looked at directly instead of inferred from numbers. The lens texture is
+				// what the optic samples; generic0 is its source; the accumulator shows
+				// whether the lighting ran; the main set's generic0 is a reference frame.
+				static u32 s_dumpAt = 0;
+				if (svpcam::s_svpDebug > 0 && Device.dwFrame >= s_dumpAt)
+				{
+					s_dumpAt = Device.dwFrame + 600;
+					string_path p;
+					FS.update_path(p, "$logs$", "pip_lens.bmp");        svp_dump_rt(p, lensDst->rt_secondVP);
+					FS.update_path(p, "$logs$", "pip_src.bmp");         svp_dump_rt(p, TargetSVP->rt_Generic_0);
+					FS.update_path(p, "$logs$", "pip_accum.bmp");       svp_dump_rt(p, TargetSVP->rt_Accumulator);
+					FS.update_path(p, "$logs$", "pip_albedo.bmp");      svp_dump_rt(p, TargetSVP->rt_Color);
+					if (TargetMain)
+					{
+						FS.update_path(p, "$logs$", "pip_main.bmp");    svp_dump_rt(p, TargetMain->rt_Generic_0);
+					}
+				}
 			}
 		}
 	}	// end of the per-view loop
