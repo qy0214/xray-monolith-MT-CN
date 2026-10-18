@@ -1103,9 +1103,12 @@ void CRender::Render()
 				// what the optic samples; generic0 is its source; the accumulator shows
 				// whether the lighting ran; the main set's generic0 is a reference frame.
 				static u32 s_dumpAt = 0;
-				if (svpcam::s_svpDebug >= 2 && Device.dwFrame >= s_dumpAt)
+				// Level 1 dumps the first instance and then rarely (the files are tens of
+				// megabytes); level 2 dumps every instance while an optic is up.
+				const u32 interval = (svpcam::s_svpDebug >= 2) ? 600u : 6000u;
+				if (svpcam::s_svpDebug > 0 && Device.dwFrame >= s_dumpAt)
 				{
-					s_dumpAt = Device.dwFrame + 600;
+					s_dumpAt = Device.dwFrame + interval;
 					string_path p;
 					FS.update_path(p, "$logs$", "pip_lens.bmp");        svp_dump_rt(p, lensDst->rt_secondVP);
 					FS.update_path(p, "$logs$", "pip_src.bmp");         svp_dump_rt(p, TargetSVP->rt_Generic_0);
