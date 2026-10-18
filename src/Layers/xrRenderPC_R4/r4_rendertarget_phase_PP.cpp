@@ -160,6 +160,16 @@ ref_rt& CRenderTarget::phase_upscaler_camera_mv()
 
 void CRenderTarget::phase_dlss_postprocess()
 {
+	// PiP: this is the upscaler's pass, and the upscaler is a single frame level resource -
+	// dlss::Output(), dlss::SceneDepthTexture(), the history and the jitter state. Evaluating
+	// it for the second set would run it twice per frame, consume the main set's depth and
+	// output, and throw its history away. The lens pass therefore never reaches this pass at
+	// all: it returns from phase_combine before the post process tail and gets its own tone
+	// map (phase_lens_postprocess). The guard makes that a property of the code rather than a
+	// coincidence of the current call order.
+	if (!m_is_main_target)
+		return;
+
 	const auto sceneJitter = dlss::RasterJitter();
 	const bool dlssOutput = dlss::Evaluate(rt_Color->pSurface, phase_upscaler_camera_mv()->pSurface);
 	dlss::EndScene();

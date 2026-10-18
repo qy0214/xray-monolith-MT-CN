@@ -151,10 +151,11 @@ public:
 	public:
 		bool isCamReady; // Oeaa aioiaiinoe eaia?u (FOV, iiceoey, e o.i) e ?aiaa?o aoi?iai au?ii?oa
 
-		// Faithful to pipdlss: read by the upscaler as "the current pass draws
-		// the second viewport". This engine has no per-target pass binding (an
-		// SVP frame draws the scope view instead of the main view), so it is
-		// refreshed once per frame from the frame-level predicate.
+		// Read by the upscaler as "the pass currently being rendered is the second view".
+		// Owned by CRenderTarget::SetActive, which sets it per pass from the set it binds
+		// (true while the lens set is active, false otherwise); the per pass render side
+		// branches read it instead of a frame level predicate, and it is false again by the
+		// time the frame ends on the main set.
 		bool m_render_pass_is_svp = false;
 
 		// PiP: set by the renderer while it draws the lens itself in the same frame.

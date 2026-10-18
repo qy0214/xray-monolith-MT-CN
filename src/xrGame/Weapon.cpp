@@ -3396,15 +3396,34 @@ void CWeapon::UpdateSecondVP()
 	float lensFov = 0.0f;
 	bool thermal = false;
 	int thermalMode = 0;
-	// The pack marks its thermal sights with scope_lense_thermal (+ mode) and its lens FOV with
-	// scope_lense_fov. Either may live on the optic's own section (the scope item) or on the
-	// weapon's child section for the mounted scope, so both are consulted for both values -
-	// checking only one of them for the thermal flags left the thermal sights rendering a plain
-	// image inside the lens.
+	bool dynamic = false;
+	float lensFovMax = 0.0f;      // pack value at the sight's HIGHEST power
+	float lensFovBase = 0.0f;     // pack value at its LOWEST power (dynamic sights)
+
+	// The packs write the lens FOV as either scope_lens_fov or scope_lense_fov, and for a
+	// dynamic zoom sight they also give the two ends: ..._base at the lowest power and the
+	// plain key at the highest. Read both spellings and both ends from either of the two
+	// sections that can carry them (the mounted optic's own section or the weapon's child
+	// section for it), because the packs generate one from the other and either may be the
+	// one present on a given weapon.
 	auto readOpticFacts = [&](shared_str const& section) {
 		if (!section.size() || !pSettings->section_exist(*section)) return;
-		if (lensFov <= 0.005f && pSettings->line_exist(*section, "scope_lense_fov"))
-			lensFov = pSettings->r_float(*section, "scope_lense_fov");
+
+		auto readFloat = [&](LPCSTR key, float& dst) {
+			if (dst <= 0.005f && pSettings->line_exist(*section, key))
+				dst = pSettings->r_float(*section, key);
+		};
+		auto readBase = [&](LPCSTR key) {
+			if (lensFovBase <= 0.005f && pSettings->line_exist(*section, key))
+				lensFovBase = pSettings->r_float(*section, key);
+		};
+
+		readFloat("scope_lense_fov", lensFovMax);
+		readFloat("scope_lens_fov", lensFovMax);
+		readBase("scope_lense_fov_base");
+		readBase("scope_lens_fov_base");
+		if (pSettings->line_exist(*section, "scope_dynamic_zoom"))
+			dynamic = dynamic || pSettings->r_bool(*section, "scope_dynamic_zoom");
 		if (!thermal && pSettings->line_exist(*section, "scope_lense_thermal"))
 			thermal = pSettings->r_bool(*section, "scope_lense_thermal");
 		if (thermalMode == 0 && pSettings->line_exist(*section, "scope_lense_thermal_mode"))
@@ -3416,6 +3435,27 @@ void CWeapon::UpdateSecondVP()
 		readOpticFacts(cNameSect());
 		readOpticFacts(GetScopeName());
 	}
+
+	if (dynamic && lensFovMax > 0.005f && lensFovBase > 0.005f)
+	{
+		// Dynamic zoom: the engine's stock ADS FOV is the value between the pack's two ends
+		// that the currently selected power asks for (at the highest power it equals the
+		// pack's plain key, at the lowest it equals ..._base, and it tracks the steps in
+		// between), so scaling the pack's authored lens FOV by nothing is not needed - the
+		// ADS FOV is the lens FOV. It is clamped into the declared range so a degenerate
+		// zoom state can never put the lens outside what the optic authors allowed.
+		const float adsFov = GetZoomFactor() * 0.75f;
+		if (adsFov > 0.005f)
+		{
+			const float lo = (lensFovMax < lensFovBase) ? lensFovMax : lensFovBase;
+			const float hi = (lensFovMax < lensFovBase) ? lensFovBase : lensFovMax;
+			lensFov = adsFov;
+			if (lensFov < lo) lensFov = lo;
+			if (lensFov > hi) lensFov = hi;
+		}
+	}
+	if (lensFov <= 0.005f)
+		lensFov = lensFovMax;
 
 	// A bad value must not reach the camera: fall back to the sight's legacy lens FOV.
 	if (!(lensFov > 0.5f && lensFov < 120.0f))

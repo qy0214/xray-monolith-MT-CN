@@ -501,6 +501,13 @@ void CRenderTarget::SetActive(bool force)
 	{
 		// the lens always samples the second viewport (see CRender::Render), so the
 		// main set must not pull $user$viewport2 back to its own surface
+		// INVARIANT: the $user$viewport2 name STAYS OUT of this remap on purpose. That name
+		// must keep resolving to the MAIN set's rt_secondVP, because that is where the
+		// renderer publishes the lens image (CRender::Render) and where the optic, drawn by
+		// the main pass, samples it. Re-pointing it at the active set would make the optic
+		// read its own set's empty surface and the lens would be black with no other symptom,
+		// so if this skip is ever removed PiP breaks silently. Every other name is
+		// deliberately re-pointed per pass.
 		for (auto& r : RenderTargetRemaps)
 		{
 			if (!xr_strcmp(*r.first->cName, r2_RT_secondVP))
@@ -512,13 +519,10 @@ void CRenderTarget::SetActive(bool force)
 
 	RImplementation.Target = this;
 
-	if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
-	{
-		// PiP (T3 #6): hud_params.w is the lens shader's "the engine is providing the second
-		// view" flag, so it belongs to the frame, not to the pass - and it is emitted while
-		// the MAIN pass draws the optic, which is exactly where a per pass value would be
-		// zero. The game publishes it once per frame (Actor.cpp) from the evaluated state.
-	}
+	// PiP (T3 #6): hud_params.w is the lens shader's "the engine is providing the second
+	// view" flag and belongs to the frame, not to the pass; the game publishes it once per
+	// frame (Actor.cpp) from the evaluated state, and this function must not overwrite it.
+	// The per pass state the renderer needs is m_render_pass_is_svp, set here.
 	Device.m_SecondViewport.m_render_pass_is_svp = !m_is_main_target;
 
 	Device.dwWidth = Width;

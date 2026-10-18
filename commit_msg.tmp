@@ -1,0 +1,20 @@
+fix(pip): Full review pass - variable power lens FOV, thermal facts, hygiene
+
+Applied after reading both mods' sources instead of guessing. They share byte identical reticle
+shaders; the only difference is one binding, so the engine contract is small and exact.
+
+Variable power sights: the packs give the lens FOV at the two ends of the range
+(scope_lense_fov at the highest power, scope_lense_fov_base at the lowest) plus
+scope_dynamic_zoom, and the engine's stock ADS FOV is precisely the value between those ends
+that the selected power asks for. The lens FOV now takes that value clamped into the declared
+range, so the lens tracks the sight instead of sitting at one end. Both pack spellings
+(scope_lens_fov and scope_lense_fov) are read; a sight whose config carries only the 3DSS
+spelling previously fell through to GetSecondVPZoomFactor(), i.e. to no magnification at all.
+
+Hygiene and latent items found by reviewing the whole change set rather than one file at a
+time: the image dumps now require r__svp_debug 2 so a normal session never writes tens of
+megabytes to disk, the dead s_lastMagTarget is gone, three stale comments that still described
+the old alternating frame scheme are corrected, MT_PIP_BUILD is bumped, the upscaler post
+process refuses to run for the second set (it owns frame level state), the $user$viewport2
+remap exception carries the reason and the failure mode it would cause if removed, and the
+Thermal facts are read from both sections that can carry them.

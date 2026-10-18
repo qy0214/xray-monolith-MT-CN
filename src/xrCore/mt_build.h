@@ -8,4 +8,4 @@
 // is bumped deliberately whenever the PiP chain changes, and the stamp prints it next to
 // the loaded module's own timestamp and size, both of which I can reproduce from the
 // deployed file. Bump it in the same commit as any change to the PiP path.
-#define MT_PIP_BUILD 9
+#define MT_PIP_BUILD 10

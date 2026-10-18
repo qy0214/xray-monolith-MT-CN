@@ -123,9 +123,10 @@ static bool UpdateScopeResolution()
 
 extern u32 g_r;
 
-// PiP (T3 #6): the game alternates the camera per frame (the SVP frame carries the
-// zoomed one), so the renderer keeps a copy of both cameras instead of deriving the
-// optics zoom itself, and applies whichever one a pass needs.
+// PiP (T3 #6): two cameras per frame. The game publishes the normal view and the optic's
+// lens FOV; the renderer copies the game camera (s_main) and derives the lens camera
+// (s_zoom, the same view with the projection magnified by g_fov / lens FOV) instead of
+// asking the game for it, then applies whichever one a pass needs.
 namespace svpcam
 {
 	struct View
@@ -146,7 +147,6 @@ namespace svpcam
 	// Smoothed magnification and its target (see DeriveZoom): the lens follows a change of
 	// sight power with the same 0.12 s feel the stock camera has.
 	float s_magSmooth = 0.f;
-	float s_lastMagTarget = 0.f;
 
 	// Live tuning of the lens magnification in percent of the optic's authored value.
 	// Some packs leave a sight's zoom range undefined (the engine then reports g_fov as its
@@ -155,10 +155,11 @@ namespace svpcam
 	// 100 = exactly what the optic authors.
 	int s_lensPowerPct = 100;
 
-	// Diagnostic switch for the lens content probes (staging readbacks, mid pass probes, the
-	// per pass binding lines and the image dumps). The probes earned their place while the
-	// black lens was being chased, but they cost a readback every few seconds and belong
-	// behind a switch. Default 1 while the lens image is still being diagnosed.
+	// Diagnostic switch for the lens content probes. 0 disables everything, 1 logs the
+	// throttled readbacks and the per pass lines, 2 additionally writes the lens images to
+	// BMP in the logs directory (tens of megabytes per dump, so it is never on by default).
+	// The probes were what found the faults in this chain and are cheap at level 1, but the
+	// plan is to drop the default to 0 once the lens image is settled.
 	int s_svpDebug = 1;
 
 	void RegisterLensCvars()
@@ -229,8 +230,7 @@ namespace svpcam
 			s_lastMagFrame = Device.dwFrame;
 
 			const float k = 1.0f - expf(-Device.fTimeDelta / 0.12f);
-			s_lastMagTarget = target;
-			s_magSmooth += (target - s_magSmooth) * k;
+					s_magSmooth += (target - s_magSmooth) * k;
 			const float mag = s_magSmooth;
 			if (mag > 1.001f)
 			{
@@ -499,12 +499,12 @@ static void svp_probe_composite()
 	}
 }
 
-// PiP (T3 #6): parked at file scope so the early second-viewport allocation gate can see
-// it. The same-frame lens is compiled in but off: the pack's optics keep their own 3DSS
-// path (which works and which the player knows), no second target set is created, the main
-// camera keeps its ADS zoom and the mouse keeps its stock ratio. The pieces stay in the
-// tree for the eventual port, and are switched on again only once the lens content is
-// finished and verified without the player acting as the test rig.
+// PiP (T3 #6): compile time switch for the same-frame lens, kept at file scope so the early
+// second-viewport allocation gate can read it. With it on, and only when the pack's PiP
+// module is actually installed (pip_lens_shaders), the renderer draws the lens and the main
+// view in the same frame, one pass each; the reachability of that whole chain is decided at
+// run time by r__svp_same_frame and by the pack being present, so a stock 3DSS setup and a
+// setup without the module both keep their previous behaviour untouched.
 static const bool SVP_SAME_FRAME_READY = true;
 
 // Startup stamp helper (see CRender::create): lets the log state which engine build is
@@ -615,10 +615,11 @@ void CRender::Render()
 	u64 statsMark = statsFrameStart;
 	render_stats::BeginFrame();
 
-	// PiP (T3 #6): the game alternates the camera per frame (IsSVPFrame() carries the
-	// zoomed one), so keep a copy of both cameras and draw the lens view and the
-	// normal view in the same frame, one pass each. The lens is then current, unlike
-	// the legacy scheme which copied the swapchain and skipped Present.
+	// PiP (T3 #6): the lens view and the normal view are drawn in the same frame, one pass
+	// each, so the lens image is always current - unlike the legacy scheme, which rendered
+	// the zoomed view on alternate frames, copied the swapchain into the lens texture and
+	// skipped Present on the scope frames. Drawn before the main pass so the optic, which
+	// the main pass draws over the lens image, samples a texture that is already filled.
 	svp_lens_rendered = false;
 
 	// PiP: no lens pass this frame means no current-frame lens VP; the binder falls back to
@@ -1102,7 +1103,7 @@ void CRender::Render()
 				// what the optic samples; generic0 is its source; the accumulator shows
 				// whether the lighting ran; the main set's generic0 is a reference frame.
 				static u32 s_dumpAt = 0;
-				if (svpcam::s_svpDebug > 0 && Device.dwFrame >= s_dumpAt)
+				if (svpcam::s_svpDebug >= 2 && Device.dwFrame >= s_dumpAt)
 				{
 					s_dumpAt = Device.dwFrame + 600;
 					string_path p;
