@@ -48,7 +48,7 @@
 - **准星高倍尺度**：pack 声明的 FFP 在 PiP 下改用 SFP 分支，保持 3DSS 观感；
 - **变倍镜**：
 
-## 五、已知问题（诚实标注）
+## 五、已知问题
 
 1. **热成像镜快速转动时镜内出现一圈"光圈"**：**未解决**。已实测排除五条：镜片反射模型、上采样"屏幕锁定"判据、相机运动模糊、上采样器本身（关闭 DLSS 无效）、TAA 掩码路径。下一步建议：`r__svp_debug 2` 并在举镜扫视时抓取 `appdata\logs\pip_optics_screen.bmp`，按其形状定位。
 2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）尚未解析；目前以"瞄具是否真的放大 + PiP 模块是否存在"作为等价门槛。
