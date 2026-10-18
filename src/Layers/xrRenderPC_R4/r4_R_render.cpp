@@ -1077,11 +1077,14 @@ void CRender::Render()
 				svpcam::s_lastMag, ps_r2_heatvision, ps_r2_nightvision);
 		}
 
+		// Probe throttle shared by BOTH passes so the lens and the main set are read in the
+		// same frames and their numbers can be compared directly.
+		static u32 s_lensProbe_at = 0;
+
 		if (lensPass && TargetSVP && TargetSVP->rt_Generic_0)
 		{
 			// Probe after every lens run so the discarded main-camera run and the
 			// published lens-camera run can be compared directly.
-			static u32 s_lensProbe_at = 0;
 			if (svpcam::s_svpDebug > 0 && Device.dwFrame >= s_lensProbe_at)
 			{
 				if (view == 0)
@@ -1094,6 +1097,22 @@ void CRender::Render()
 				svp_probe_rt(view == 0 ? "dry rt_Color" : "pub rt_Color", TargetSVP->rt_Color);
 				svp_probe_rt(view == 0 ? "dry rt_Position" : "pub rt_Position", TargetSVP->rt_Position);
 				svp_probe_rt(view == 0 ? "dry rt_Accum" : "pub rt_Accum", TargetSVP->rt_Accumulator);
+			}
+		}
+		else if (TargetMain && TargetMain->rt_Generic_0)
+		{
+			// The MAIN set, same frame, same throttle, same targets. This is the measurement
+			// that separates the two explanations for a lens that reads dark: a lens render
+			// whose lighting really is weaker (the rt_Accum values differ) against a lens
+			// render that is only missing the post process tail, which the lens never runs
+			// (rt_Accum matches, generic0 does not). The averages are content weighted - a
+			// narrow lens FOV is mostly world while the main view is half sky - so the albedo
+			// and the accumulator are the comparable numbers, not the combined images.
+			if (svpcam::s_svpDebug > 0 && Device.dwFrame >= s_lensProbe_at && Device.dwFrame > 0)
+			{
+				svp_probe_rt("main(generic0)", TargetMain->rt_Generic_0);
+				svp_probe_rt("main rt_Color", TargetMain->rt_Color);
+				svp_probe_rt("main rt_Accum", TargetMain->rt_Accumulator);
 			}
 		}
 

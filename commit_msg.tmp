@@ -1,13 +1,20 @@
-fix(pip): Publish the G-buffer position for a thermal optic's infrared look
+diag(pip): Read the main set with the same probes as the lens, in the same frames
 
-Review follow up on the thermal optic rule. The pack's scope shaders read the G-buffer position
-through s_position, which both scope mods bind to $user$generic2 (models_scope_reticle.s). In this
-engine that name is the volumetric light buffer (r2_types.h), and the only code that puts the
-position there is phase_3DSSReticle(), the fake scope path, which runs when r__3Dfakescope is on -
-it is on in the pack's user.ltx, which is why the pack's shading has worked here. The pack's
-infrared() thermal look is the one consumer that cannot work without it, so making a thermal optic
-depend on the player leaving that option enabled would be a hidden dependency.
+The lens image improved from about 8/255 to 34/255 with the exposure fix and its sky now matches
+the main view, so the remaining darkness is not an exposure problem. Three candidates have been
+ruled out with evidence rather than by argument:
 
-A thermal optic now gets the same copy on its own, without the fake scope reticle pass. It is safe
-to overwrite because the volumetric buffer is reset every frame (phase_scene_begin clears
-m_bHasActiveVolumetric), and it only runs while such an optic is aimed.
+ - the lens shader's own grade: scope_lense_brightness/contrast/saturation/gamma are all 1.0 in the
+   player's user.ltx, so grade_second_vp is skipped entirely;
+ - the name keyed remap: every G-buffer target of the second set is created through createUnique
+   (r4_rendertarget.cpp), so $user$albedo, $user$accum and friends do resolve to the lens set;
+ - the accumulator contents: the lens accumulator probes bright (134/2/127) while the lens combined
+   image is dark, so the lighting ran.
+
+What is left needs one comparison the current probes cannot make, because they only read the lens
+set: the same numbers for the MAIN set, in the same frame. A lens render whose rt_Accum is weaker
+than the main's points at the lighting or the combine; one whose rt_Accum matches and whose
+generic0 does not points at the post process tail, which the lens never runs while the reference
+build did (its SVP frame ran phase_pp and only skipped blur, bloom, SSR and water, and its lens
+texture was copied from the swapchain - i.e. the post processed frame). Both possibilities are
+named in the code and the probe throttle is now shared by the two passes so the numbers line up.
