@@ -180,9 +180,15 @@ namespace svpcam
 	// Diagnostic switch for the lens content probes. 0 disables everything, 1 logs the
 	// throttled readbacks and the per pass lines, 2 additionally writes the lens images to
 	// BMP in the logs directory (tens of megabytes per dump, so it is never on by default).
-	// The probes were what found the faults in this chain and are cheap at level 1, but the
-	// plan is to drop the default to 0 once the lens image is settled.
-	int s_svpDebug = 1;
+	//
+	// Default 0. The probes were what found the faults in this chain - the exposure, the
+	// projection, the withheld lens - but they are not free: every probe reads a full render
+	// target back to the CPU (a staging copy of a 1920x1200 surface plus a blocking Map, so a
+	// stall of a few milliseconds each time), and at level 1 the per pass line is written every
+	// pass of every frame, which is what makes the log grow by megabytes per session. With the
+	// chain settled there is no reason to pay for that in normal play: set r__svp_debug 1 (or 2)
+	// for a diagnostic session instead.
+	int s_svpDebug = 0;
 
 	void RegisterLensCvars()
 	{
@@ -1089,7 +1095,7 @@ void CRender::Render()
 		// Binding evidence per pass: which set the renderer thinks is active, what the
 		// device extent is and what the upscaler thinks the render extent is. A mismatch
 		// here explains a pass that draws into something other than this set's targets.
-		if (svpcam::s_svpDebug > 0 && (lensPass || viewCount > 1))
+		if (svpcam::s_svpDebug > 0 && (lensPass || viewCount > 1) && (Device.dwFrame % 120) == 0)
 		{
 			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u rsw=%u set=%ux%u mag=%.2f heat=%.0f nvg=%.0f",
 				view, lensPass ? (publish ? "(lens,publish)" : "(lens,dry)") : "(main)",
@@ -1226,10 +1232,11 @@ void CRender::Render()
 				// what the optic samples; generic0 is its source; the accumulator shows
 				// whether the lighting ran; the main set's generic0 is a reference frame.
 				static u32 s_dumpAt = 0;
-				// Level 1 dumps the first instance and then rarely (the files are tens of
-				// megabytes); level 2 dumps every instance while an optic is up.
-				const u32 interval = (svpcam::s_svpDebug >= 2) ? 600u : 6000u;
-				if (svpcam::s_svpDebug > 0 && Device.dwFrame >= s_dumpAt)
+				// Images only at level 2: a dump writes every pixel of a full sized surface to
+				// disk, so at level 1 (the throttled readbacks and the per pass lines) it would
+				// still cost tens of megabytes per dump.
+				const u32 interval = 600u;
+				if (svpcam::s_svpDebug >= 2 && Device.dwFrame >= s_dumpAt)
 				{
 					s_dumpAt = Device.dwFrame + interval;
 					string_path p;

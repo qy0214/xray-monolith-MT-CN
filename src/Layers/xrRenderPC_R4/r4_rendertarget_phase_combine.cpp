@@ -7,6 +7,11 @@
 
 #define STENCIL_CULL 0
 
+// PiP diagnostics, defined in r4_R_render.cpp: the probe that reads a render target back, and the
+// diagnostic level that gates it (default 0, so a readback only happens in a diagnostic session).
+extern void svp_probe_rt(LPCSTR tag, ref_rt& rt);
+namespace svpcam { extern int s_svpDebug; }
+
 void CRenderTarget::DoAsyncScreenshot()
 {
 	//	Igor: screenshot will not have postprocess applied.
@@ -42,9 +47,6 @@ void CRenderTarget::phase_combine()
 {
 	PIX_EVENT_C(phase_combine, dx10_marker_combine);
     PROF_EVENT("phase_combine");
-	// Defined in r4_R_render.cpp; reads a render target back and logs its statistics (PiP
-	// diagnostics only, see the albedo probe below).
-	extern void svp_probe_rt(LPCSTR tag, ref_rt& rt);
 	
 	bool ssfx_PrevPos_Requiered = false;
 
@@ -93,7 +95,7 @@ void CRenderTarget::phase_combine()
 	// G-buffer problem or a combine/post process one. The accumulator probe already matched
 	// (123/12/128 against 116/9/112) with the combined images differing by 2.2x, so the albedo
 	// is the remaining input that can explain it.
-	if (Device.true_pip_on && (Device.dwFrame % 600) == 0)
+	if (svpcam::s_svpDebug > 0 && Device.true_pip_on && (Device.dwFrame % 600) == 0)
 		svp_probe_rt(m_is_main_target ? "in(main) rt_Color(albedo)" : "in(lens) rt_Color(albedo)", rt_Color);
 
 	if (RImplementation.o.ssao_hdao && RImplementation.o.ssao_ultra)
