@@ -1240,6 +1240,24 @@ void CRender::Render()
 
 	render_stats::SetSuppress(false);
 
+	// PiP diagnostic: with a thermal optic the engine withholds the lens, so the publish block
+	// inside the loop never runs and no image is ever written out for that optic - which is
+	// exactly the case where the aperture needs to be looked at. Dump the main view's combined
+	// image here instead (rt_Generic_0 still holds the combine output at this point; the post
+	// process tail writes rt_Color), throttled, and only while an optic is actually up.
+	if (svpcam::s_svpDebug >= 2 && Device.m_SecondViewport.svp_optic_magnifies
+		&& TargetMain && TargetMain->rt_Generic_0)
+	{
+		static u32 s_noLensDumpAt = 0;
+		if (Device.dwFrame >= s_noLensDumpAt)
+		{
+			s_noLensDumpAt = Device.dwFrame + 600;
+			string_path p;
+			FS.update_path(p, "$logs$", svp_lens_rendered ? "pip_optics_lens.bmp" : "pip_optics_screen.bmp");
+			svp_dump_rt(p, TargetMain->rt_Generic_0);
+		}
+	}
+
 	// PiP: the main set stays active for the rest of the frame (HUD, PP, UI). Reaching
 	// this with the lens still active would mean the frame ended on the second set and
 	// every display-sized consumer would have seen the lens extent - that is a state

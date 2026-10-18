@@ -1,25 +1,15 @@
-feat(pip): Add r__svp_lcd_flat to publish RT_SCREEN as RT_FLAT_SCREEN
+diag(pip): Dump the main view for optics that keep the 3DSS path
 
-The halo inside a screen type thermal sight is the pack's own glass lens model, and the shader says
-so plainly:
+r__svp_lcd_flat is wired correctly (same entity in UpscalerCompat.h and xrRender_console, registered
+in RegisterConsoleVars), so it does reach the shader - and that disproves the lens reflection as the
+cause of the halo, because the flat branch would have changed its shape: for RT_FLAT_SCREEN
+sample_reflections() switches to a flat normal and skips its vignette modulation, and the specular
+is zeroed. A ring that survives all three unchanged is not that layer.
 
-    float3 normalmap = sample_lens_normalmap(I.tc0, 3);      // the display treated as a curved lens
-    reflections.rgb  = sample_reflections(...) ...;          // environment reflection, ring shaped
-    specular = sample_specular(...) ...;                     // the sun glint
-    bool is_flat = RETICLE_TYPE == RT_FLAT_SCREEN;
-    if (is_flat) specular = float3(0, 0, 0);
-    if (!is_flat) reflections *= sample_vignette(tc);
-
-RT_SCREEN (6) and RT_FLAT_SCREEN (8) are the two display types, and only 8 is exempt from that
-lens model, so a screen type sight gets a spherical normal, an environment reflection and a sun
-specular - whose locus is a ring, the halo the player sees. Two details of the optic make it
-prominent: the t12 declares s3ds_reticle_type = 6, and its s3ds_dirt_intensity = 0.1 is low, while
-the reflection weight is pow(1 - dirt, 10) - a low dirt value is exactly what lets the reflections
-through at full strength. The echo1 nearby declares 8, so it should show no ring at all, which is a
-prediction the player can check.
-
-Engine side there is no way to switch those layers off - they are shader internal - so this adds
-r__svp_lcd_flat (default 0): when set, the s3ds_param_3 binder publishes reticle type 6 as 8, the
-branch the shader already has for a flat display. It is deliberately an experiment rather than a
-default because the same value also selects the flat reticle projection branch (RETICLE_PROJECT 0),
-so the reticle has to be looked at before that becomes the default.
+The remaining candidates are drawn for every reticle type, the reticle texture being the first:
+mark_texture = s_base.Sample(...) is always blended in, so a circle that is part of the optic's own
+screen art would look identical under both types - exactly what was observed. The dump path cannot
+settle it either, because it only runs from the publish block, which a thermal optic never reaches
+(the engine withholds the lens for it). This adds the missing dump: with r__svp_debug 2 the main
+view's combined image is written out while any optic is up, as pip_optics_screen.bmp when the lens
+was withheld and pip_optics_lens.bmp when one was rendered.
