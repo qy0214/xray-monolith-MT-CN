@@ -46,3 +46,4 @@ compressor/gamedata.db0
 __pycache__/
 src/tests/build/
 
+commit_msg.tmp
