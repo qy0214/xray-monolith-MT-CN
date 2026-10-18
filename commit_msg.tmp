@@ -1,15 +1,22 @@
-diag(pip): Read the G-buffer albedo at the combine, for both sets
+fix(pip): Keep the screen space fog out of the lens pass
 
-The same frame probes settle the lighting question: the lens accumulator and the main accumulator
-agree (123/12/128 against 116/9/112, i.e. the lighting is the same) while the combined images
-differ by 2.2x (41/40/34 against 18/18/13). Of the combine's inputs only the albedo can explain
-that, and the existing "mid albedo" line cannot measure it: this engine runs albedo_wo, where the
-G-buffer writes the albedo into rt_Accumulator and phase_scene_end transfers it into rt_Color, so a
-probe taken at the end of the geometry pass reads the PREVIOUS content - which is exactly the
-34/29/19 against 18/18/13 disagreement seen earlier, and why that looked like an overwrite.
+The mask the player reported over the lower half of the sight, worse the more the optic is
+magnified and invisible at 1x, is the SSFX volumetric fog. phase_ssfx_fog_scattering() is a screen
+space effect: it reconstructs the world position and the distance from the depth buffer with the
+camera's own projection. The lens pass renders with the optic's FOV - 2.7 degrees at 24x against the
+main view's 65 - so that reconstruction is off by that factor and the fog lands as a flat wall
+across part of the aperture. The size of the error is exactly the size of the projection mismatch,
+which is why it tracks the magnification and disappears at 1x.
 
-The new probe reads rt_Color at the start of phase_combine, after that transfer and before the pass
-writes anything, with the lens pass running first - so the two lines are the same stage of the two
-sets in the same frame. If the lens albedo really is about half, the fault is in the lens G-buffer
-render (and the albedo_wo transfer is the first thing to inspect); if the two match, it is the
-combine/post process side. svp_probe_rt became non static for this, which is diagnostic only.
+Every other screen space effect in phase_combine is already kept out of the lens pass for the same
+reason - SSAO and IL, SSR, the water passes, the blur chain, the bloom and the night vision - so the
+fog and two effects of the same class had simply been missed:
+
+ - phase_ssfx_fog_scattering(): the effect above;
+ - phase_ssfx_rain(): the rain refraction is likewise reconstructed from the main view's depth, so
+   only that composite is skipped (the rain volumes are world geometry and still render);
+ - phase_ssfx_motion_blur(): it samples the main view's motion vectors, which do not describe the
+   lens camera at all.
+
+The engine's own fog (fog_params / fog_color, applied per pixel inside the combine) is projection
+independent and still runs, so the lens keeps its fog - just not the broken screen space layer.

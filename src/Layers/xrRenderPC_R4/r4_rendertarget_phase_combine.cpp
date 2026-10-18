@@ -418,7 +418,11 @@ void CRenderTarget::phase_combine()
 	{
 		if (RImplementation.o.ssfx_rain)
 		{
-			phase_ssfx_rain(); // Render a small color buffer to do the refraction and more
+			// PiP: same class as the fog above - the rain refraction is a screen space effect
+			// reconstructed from the main view's depth. Drawing the volumes themselves is world
+			// geometry and still happens; only this composite is skipped for the lens.
+			if (!Device.m_SecondViewport.m_render_pass_is_svp)
+				phase_ssfx_rain(); // Render a small color buffer to do the refraction and more
 
 			if (!RImplementation.o.dx10_msaa)
 				u_setrt(rt_Generic_0, 0, rt_ssfx_motion_vectors, HW.pBaseZB);
@@ -548,13 +552,28 @@ void CRenderTarget::phase_combine()
 		}
 	}
 
-	if (RImplementation.o.ssfx_fog && ps_ssfx_fog_scattering > 0)
+	// PiP: the SSFX fog is a SCREEN SPACE effect. It reconstructs the world position and the
+	// distance from the depth buffer using the camera's own projection, and the lens pass renders
+	// with the optic's FOV - 2.7 degrees at 24x against the main view's 65 - so the reconstruction
+	// is off by that factor and the fog lands as a flat wall across part of the aperture. That is
+	// the mask the player reported over the lower half of the sight: it scales with the
+	// magnification and is invisible at 1x, which is exactly the size of the projection mismatch.
+	// Every other screen space effect in this function is already kept out of the lens pass for
+	// the same reason (SSAO/IL, SSR, water, blur, bloom); the fog was missed. The engine's own
+	// fog (fog_params / fog_color, applied per pixel inside the combine) is projection
+	// independent and still runs, so the lens keeps its fog - just not the broken screen space
+	// layer.
+	if (RImplementation.o.ssfx_fog && ps_ssfx_fog_scattering > 0
+		&& !Device.m_SecondViewport.m_render_pass_is_svp)
 	{
 		PIX_EVENT(phase_ssfx_fog_scattering);
 		phase_ssfx_fog_scattering();
 	}
 
-	if (RImplementation.o.ssfx_motionblur && ps_ssfx_motionblur.y > 0)
+	// Same class, same reason: the motion blur samples the main view's motion vectors, which do
+	// not describe the lens camera at all.
+	if (RImplementation.o.ssfx_motionblur && ps_ssfx_motionblur.y > 0
+		&& !Device.m_SecondViewport.m_render_pass_is_svp)
 	{
 		PIX_EVENT(phase_ssfx_motion_blur);
 		phase_ssfx_motion_blur();
