@@ -721,9 +721,15 @@ void CRender::Render()
 		}
 
 		// PiP: publish the current frame's lens camera VP for the shader's projection matrix.
+		// This engine composes view-projection as mul(View, Project) - see Device.mFullTransform
+		// and every other use of it - so the lens VP must be built the same way. Building it as
+		// mul(Project, View) produced a matrix that is transposed relative to the engine's own
+		// mInvFullTransform, and the composition then did not encode the lens magnification at
+		// all: the publish diagnostic measured sampled spans of 1.5 and 0.62 for magnifications
+		// of 24 and 3, where 0.042 and 0.33 are expected.
 		if (publish && svpcam::Ready())
 		{
-			svp_vp_lens.mul(svpcam::s_zoom.mProject, svpcam::s_zoom.mView);
+			svp_vp_lens.mul(svpcam::s_zoom.mView, svpcam::s_zoom.mProject);
 			svp_vp_lens_valid = true;
 		}
 	// Configure
@@ -1103,12 +1109,17 @@ void CRender::Render()
 							outU = c.x * inv * 0.5f + 0.5f;
 							outV = 0.5f - c.y * inv * 0.5f;
 						};
-						float cu, cv, lu, lv, ru, rv;
+						float cu, cv, lu, lv, ru, rv, tu, tv, bu, bv;
 						mapNdc(0.f, 0.f, cu, cv);
 						mapNdc(-0.5f, 0.f, lu, lv);
 						mapNdc(0.5f, 0.f, ru, rv);
-						Msg("* [PIP] reproject uv centre=(%.3f,%.3f) left=(%.3f,%.3f) right=(%.3f,%.3f) [expect a small centred span]",
-							cu, cv, lu, lv, ru, rv);
+						// Vertical samples too: the player saw a lens that was half black and
+						// half bright when aiming at the sky, i.e. an offset along y, and the
+						// horizontal pair alone cannot see that.
+						mapNdc(0.f, 0.5f, tu, tv);
+						mapNdc(0.f, -0.5f, bu, bv);
+						Msg("* [PIP] reproject uv centre=(%.3f,%.3f) left=(%.3f,%.3f) right=(%.3f,%.3f) top=(%.3f,%.3f) bottom=(%.3f,%.3f) [expect centre 0.5,0.5 and spans ~1/mag]",
+							cu, cv, lu, lv, ru, rv, tu, tv, bu, bv);
 					}
 				}
 				// Publish the lens pass's COMBINED image, before any post processing, exactly
