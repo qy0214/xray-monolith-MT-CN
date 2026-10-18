@@ -404,3 +404,76 @@ jobs:
       with:
         # Artifacts older than this will be deleted (e.g. "2 months", "1 day"). Parsed by moment.
         age: "1 second"
+
+  release_mt:
+    # The MT branch is built by build_mt alone, so the plain (non MT) exes that the release job above
+    # packages never exist there and that job is skipped, which is why pushes to this branch only ever
+    # produced loose artifacts. This packages the MT outputs into a release of its own.
+    #
+    # Artifacts are deliberately not removed here: the release job's cleanup step does not run on this
+    # branch, and keeping it that way leaves the per configuration exe artifacts downloadable for
+    # their retention window.
+    name: Release (MT)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/all-in-one-vs2022-wpo-mt'
+    needs: [pack_gamedata, build_mt]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      # with:
+      #   ref: all-in-one-vs2022-wpo-mt
+
+    # Unlike the job above this uses the GITHUB_OUTPUT file instead of the deprecated set-output
+    # workflow command, and a mt- prefixed tag so the two release jobs cannot collide.
+    - name: Get Datetime
+      id: datetime
+      run: echo "today=$(date +'%-Y.%-m.%-d')" >> "$GITHUB_OUTPUT"
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v4.1.8
+
+    - name: Zip Exe folder
+      run: |
+        mkdir release_mt
+        mkdir release_mt/bin
+        mkdir release_mt/db
+        mkdir release_mt/db/mods
+
+        cp ${{env.PACK_GAMEDATA_NAME}}/*.db0 release_mt/db/mods
+
+        mv ${{env.DX11}}_mt_exe/*.exe release_mt/bin
+        mv ${{env.DX10}}_mt_exe/*.exe release_mt/bin
+        mv ${{env.DX9}}_mt_exe/*.exe release_mt/bin
+        mv ${{env.DX8}}_mt_exe/*.exe release_mt/bin
+        mv ${{env.DX11AVX}}_mt_exe/*.exe release_mt/bin
+        mv ${{env.DX10AVX}}_mt_exe/*.exe release_mt/bin
+        mv ${{env.DX9AVX}}_mt_exe/*.exe release_mt/bin
+        mv ${{env.DX8AVX}}_mt_exe/*.exe release_mt/bin
+        unzip ${{env.DX11}}_mt_pdb/*.zip -d release_mt/bin
+        unzip ${{env.DX11AVX}}_mt_pdb/*.zip -d release_mt/bin
+
+        cd release_mt
+        zip -r 'STALKER-Anomaly-modded-exes-MT_${{steps.datetime.outputs.today}}.zip' ./*
+        mv 'STALKER-Anomaly-modded-exes-MT_${{steps.datetime.outputs.today}}.zip' ../
+        cd ..
+
+    - name: Move PDBs to folder
+      run: |
+        mkdir pdb
+        mv ${{env.DX11}}_mt_pdb/*.zip pdb
+        mv ${{env.DX10}}_mt_pdb/*.zip pdb
+        mv ${{env.DX9}}_mt_pdb/*.zip pdb
+        mv ${{env.DX8}}_mt_pdb/*.zip pdb
+        mv ${{env.DX11AVX}}_mt_pdb/*.zip pdb
+        mv ${{env.DX10AVX}}_mt_pdb/*.zip pdb
+        mv ${{env.DX9AVX}}_mt_pdb/*.zip pdb
+        mv ${{env.DX8AVX}}_mt_pdb/*.zip pdb
+
+    - name: Publish
+      uses: softprops/action-gh-release@v2.3.2
+      with:
+        files: |
+          STALKER-Anomaly-modded-exes-MT_*.zip
+          pdb/*.zip
+        tag_name: "mt-${{steps.datetime.outputs.today}}"
+        generate_release_notes: true
+        token: "${{ secrets.GITHUB_TOKEN }}"
