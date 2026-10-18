@@ -523,6 +523,9 @@ bool SvpSameFramePathEnabled() { return SVP_SAME_FRAME_READY; }
 Fmatrix svp_vp_lens = Fidentity;
 bool svp_vp_lens_valid = false;
 
+// Throttle for the publish step's before/after readback (see the lens publish block).
+static u32 s_publishProbeAt = 0;
+
 void CRender::Render()
 {
 	PIX_EVENT_C(CRender_Render, dx10_marker_frame);
@@ -1077,8 +1080,22 @@ void CRender::Render()
 				// gets (phase_lens_postprocess): the lens pass returns from phase_combine
 				// before the post process tail, so a plain blit would publish a linear
 				// image that renders nearly black.
+				// Evidence for the step: the published texture before and after it, so a
+				// post process that does not run (or runs without effect) is visible instead
+				// of being assumed.
+				const bool probeNow = (svpcam::s_svpDebug > 0 && Device.dwFrame >= s_publishProbeAt);
+				if (probeNow)
+				{
+					s_publishProbeAt = Device.dwFrame + 600;
+					Msg("* [PIP] publish thermal=%d mode=%d",
+						Device.m_SecondViewport.svp_optic_thermal ? 1 : 0,
+						Device.m_SecondViewport.svp_optic_thermal_mode);
+					svp_probe_rt("pre postprocess(viewport2)", lensDst->rt_secondVP);
+				}
 				TargetSVP->phase_lens_postprocess(lensDst->rt_secondVP);
 				svp_lens_rendered = true;
+				if (probeNow)
+					svp_probe_rt("post postprocess(viewport2)", lensDst->rt_secondVP);
 
 				// Diagnostic dump (r__svp_debug): write the images out as BMP so the lens can
 				// be looked at directly instead of inferred from numbers. The lens texture is

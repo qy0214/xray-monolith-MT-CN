@@ -3396,27 +3396,25 @@ void CWeapon::UpdateSecondVP()
 	float lensFov = 0.0f;
 	bool thermal = false;
 	int thermalMode = 0;
+	// The pack marks its thermal sights with scope_lense_thermal (+ mode) and its lens FOV with
+	// scope_lense_fov. Either may live on the optic's own section (the scope item) or on the
+	// weapon's child section for the mounted scope, so both are consulted for both values -
+	// checking only one of them for the thermal flags left the thermal sights rendering a plain
+	// image inside the lens.
+	auto readOpticFacts = [&](shared_str const& section) {
+		if (!section.size() || !pSettings->section_exist(*section)) return;
+		if (lensFov <= 0.005f && pSettings->line_exist(*section, "scope_lense_fov"))
+			lensFov = pSettings->r_float(*section, "scope_lense_fov");
+		if (!thermal && pSettings->line_exist(*section, "scope_lense_thermal"))
+			thermal = pSettings->r_bool(*section, "scope_lense_thermal");
+		if (thermalMode == 0 && pSettings->line_exist(*section, "scope_lense_thermal_mode"))
+			thermalMode = pSettings->r_s32(*section, "scope_lense_thermal_mode");
+	};
+
 	if (IsScopeAttached() || m_zoomtype == 0)
 	{
-		shared_str sect = cNameSect();
-		if (sect.size() && pSettings->section_exist(*sect))
-		{
-			if (pSettings->line_exist(*sect, "scope_lense_fov"))
-				lensFov = pSettings->r_float(*sect, "scope_lense_fov");
-			// The pack marks its thermal sights here; nothing else in the engine knows
-			// which optics want heat vision (ps_r2_heatvision is never set for an optic).
-			if (pSettings->line_exist(*sect, "scope_lense_thermal"))
-				thermal = pSettings->r_bool(*sect, "scope_lense_thermal");
-			if (pSettings->line_exist(*sect, "scope_lense_thermal_mode"))
-				thermalMode = pSettings->r_s32(*sect, "scope_lense_thermal_mode");
-		}
-
-		if (lensFov <= 0.005f && IsScopeAttached())
-		{
-			shared_str scope = GetScopeName();
-			if (scope.size() && pSettings->section_exist(*scope) && pSettings->line_exist(*scope, "scope_lense_fov"))
-				lensFov = pSettings->r_float(*scope, "scope_lense_fov");
-		}
+		readOpticFacts(cNameSect());
+		readOpticFacts(GetScopeName());
 	}
 
 	// A bad value must not reach the camera: fall back to the sight's legacy lens FOV.
