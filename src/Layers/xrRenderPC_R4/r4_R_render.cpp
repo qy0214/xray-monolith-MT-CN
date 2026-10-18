@@ -666,8 +666,14 @@ void CRender::Render()
 		const bool lensUp = Device.m_SecondViewport.svp_scope.lens_rendered;
 		const bool wantThermal = lensUp && compat::scope_lense_allow_thermal != 0
 			&& (Device.m_SecondViewport.svp_optic_thermal || compat::scope_lense_head_thermal_active != 0);
+		// Night vision is NOT driven from the optic here, and that is deliberate: in the PiP
+		// branch the lens shader still applies its own apply_nvg() for an IT_NV optic, unlike
+		// the thermal path where it skips infrared() and needs the engine to render the image
+		// hot. Enabling night vision for the optic as well would double the effect. The device
+		// driven flag below is the pack's own choice (its bridge script runs r__nightvision
+		// when the worn device is a night vision one) and is kept as is.
 		const bool wantNvg = lensUp && compat::scope_lense_allow_nvg != 0
-			&& (Device.m_SecondViewport.svp_optic_nvg || compat::scope_lense_head_nvg_active != 0);
+			&& compat::scope_lense_head_nvg_active != 0;
 
 		if (wantThermal)
 		{
