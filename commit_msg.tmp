@@ -1,22 +1,27 @@
-diag(pip): Record the thermal optic's engine state once per aim, and point the next test at the dump
+fix(pip): Give the scope's TAA skip mask somewhere to land
 
-The camera motion blur is ruled out (turning it off changed nothing), the third hypothesis against
-this artifact. What the failures have narrowed is worth recording: the thermal image is computed in
-the pack's shader from the G-buffer (infrared(gbuffer_load_data(...))), so no post process effect can
-be its source - the fog, the rain, the bloom and the motion blur all operate on the colour image
-afterwards. That leaves either something that changes the pixels the sight is drawn into (the
-temporal upscaler) or an input of the shader itself.
+Turning DLSS off changed nothing, and that is the clue that closes this: with the upscaler off the
+SSS TAA takes over (phase_ssfx_taa is gated on !dlss::Configured()), so both temporal filters were
+doing the same thing to the sight's pixels all along - reprojecting a screen locked image with the
+scene's motion vectors and dragging the previous frame across it while panning.
 
-Two things are needed from the next session and both are now in place.
+The pack's shader already writes what is needed. At the end of models_scope_reticle.ps:
 
-One, the engine's state for the thermal case, once per aim rather than behind the debug switch: the
-answer to "did the stable overlay clause fire" was only ever visible in a debug session, which the
-previous commit then turned off by default. One line per aim is affordable and it says whether
-unstable=1 for the optic whose image ghosts, along with the ADS progress, the zoom factor, the motion
-blur value and the image type.
+    // z keeps the existing HUD classification; w is the SSFX TAA skip mask.
+    // The PiP image is already spatially antialiased in its own viewport and
+    // must not be accumulated again through the main camera's temporal history.
+    result.taa_mask = float4(0, 0, 0, 1);
 
-Two, an image. The dump built for exactly this case (a thermal optic has no lens, so the publish
-block never runs for it) writes the main view to pip_optics_screen.bmp with r__svp_debug 2, throttled
-to every 600 frames. Panning with the sight up should land one while the artifact is in the frame,
-and its shape - a circle, a band, a gradient edge - identifies the mechanism in a way that reading
-code has not.
+and ssfx_taa.ps reads that mask from the motion vector target's alpha:
+
+    float vel_acc = s_motion_vectors.SampleLevel(smp_point, I.tc0.xy, 0).a;
+
+The pass that draws the optic bound only two targets (rt_Generic_0, rt_Position), so SV_Target2 had
+nowhere to go: the mask was written into nothing and the sight's pixels kept the world's motion
+vectors. Binding the motion vector target as the third slot lands both halves of the fix at once -
+the mask in the alpha, which tells the filter to keep the current frame, and zero in the RGB, which
+is the correct velocity for something that does not move with the scene.
+
+This applies to the pass render_Reticle() runs in, which with r__3Dfakescope on (the pack's default
+here) is where the sight's screen is drawn. The same binding for the non fake scope path is a
+separate, smaller exercise; it is named here rather than guessed at.

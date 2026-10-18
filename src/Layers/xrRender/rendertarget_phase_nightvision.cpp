@@ -213,7 +213,17 @@ void CRenderTarget::phase_3DSSReticle()
 
 	HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0->pTexture->surface_get());
 
-	u_setrt(RImplementation.Target->rt_Generic_0, RImplementation.Target->rt_Position, 0, HW.pBaseZB);
+	// The scope material writes its SSFX TAA skip mask into SV_Target2 (see the note at the end of
+	// models_scope_reticle.ps: "w is the SSFX TAA skip mask ... must not be accumulated again"), and
+	// ssfx_taa.ps reads that mask from the MOTION VECTOR target's alpha (vel_acc, line 224). Leaving
+	// the third slot empty sent the write nowhere, so the sight's pixels kept the world's motion
+	// vectors and the temporal filter dragged the previous frame's image across the screen while
+	// panning: the ring that is only visible in movement, that no post process setting changes, and
+	// that survives turning DLSS off because the SSS TAA then takes over. Binding the motion vector
+	// target here lands both halves: the mask in the alpha, and zero in the RGB, which is what a
+	// screen locked element should report as its velocity.
+	u_setrt(RImplementation.Target->rt_Generic_0, RImplementation.Target->rt_Position,
+		RImplementation.Target->rt_ssfx_motion_vectors, HW.pBaseZB);
 
 	RCache.set_CullMode(CULL_CCW);
 	RCache.set_Stencil(FALSE);
