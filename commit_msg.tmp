@@ -1,25 +1,31 @@
-fix(pip): Clear the second set's SSFX AO/IL for the lens pass, and correct the fog rationale
+fix(pip): Publish each view's FOV, and derive the position decompression from the projection
 
-Review of the previous commit found the real mechanism, and the previous commit's rationale was
-wrong in its details.
+The systematic sweep for "buffers and parameters a lens pass shader can read but the lens pass
+never produces" turned up the real root of the aperture mask, and it is a single quantity.
 
-The SSFX AO and IL are cleared and computed inside the SVP guard in phase_combine, so the lens set
-never computed them, but the combine reads both unconditionally. The clears belonged to the
-"second set keeps its own buffers" rule, not to the phase gating, so the second set's maps kept
-whatever they were created with - and the combine uses them as multipliers:
-    hdiffuse.rgb *= ssfx_ao.Sample(...).www;
-    hdiffuse *= lerp(1.0f, IL_sample * (30.0f * ssfx_il_setup.y), IL_sample);
-A stale AO/IL map multiplied into the lens image is a flat dark mask over part of the aperture, and
-it covers a larger share of the picture the more the optic magnifies, because the same map is
-spread over a narrower view - which is exactly what the player reported. The clears now run for
-every pass (the phases stay main pass only), and clearing to (0,0,0,1) is provably neutral for this
-combine: the AO term is read from the map's ALPHA, which is 1 at that value, and the IL term is the
-lerp factor itself, which at 0 selects the unmodified 1.0. This mirrors what the bloom already does
-a few lines below.
+Device.fFOV is the GAME camera's FOV, and the lens pass keeps the optic's projection in
+Device.mProject without touching it. So every FOV derived value in the lens pass described the main
+view while the depth buffer had been rendered with a 2.7 degree optic:
 
-The fog gating from the previous commit stands, but for a different reason than stated there. Its
-geometry reconstruction is per pass and therefore correct for the lens (it reads
-pos_decompression_params, uploaded for the active pass); what is wrong is that its blend consumes
-the blur chain, which the lens pass deliberately does not generate. The comment now says that
-instead of blaming the projection, and the rain refraction and the motion blur are gated for the
-same reason: both consume main view buffers.
+ - pos_decompression_params (r4.cpp): the constant every screen space effect uses to turn depth into
+   world position. Reconstructed with 65 degrees against a 2.7 degree depth, the fog landed as a
+   flat wall across part of the aperture, and it grew with the magnification because the error is
+   the ratio of the two FOVs - the mask as reported. It is now derived from the ACTIVE projection
+   matrix (-1/_22 and -1/_11, which equal -tan(fov/2) and -tan(fov/2)/aspect, so the main view is
+   bit for bit unchanged);
+ - the SSAO noise and kernel scale (phase_combine, phase_ssao);
+ - the rain volume projection (r4_R_rain);
+ - the light visibility cone (light_vis);
+ - the light LOD factor (R_calculate).
+
+Rather than patch five sites, svpcam::View now carries the vertical FOV of the view it describes
+(captured from Device.fFOV for the main view, set to the smoothed optic FOV by DeriveZoom) and
+Apply publishes it, so Device.fFOV follows the view being drawn for the whole frame. The game only
+reads Device.fFOV outside Render(), so inside the frame it belongs to the pass. That makes all five
+derive the lens camera's FOV, and it costs nothing for the main view, whose value is what it always
+was.
+
+This also corrects two earlier statements of mine: the fog's geometry was NOT per pass - it read the
+main view's FOV - and the two previous commits (gating the fog and clearing the AO/IL) removed
+symptoms of this same cause. Both remain in place: those passes are still unnecessary work for the
+lens, and the fog's blend still consumes a blur chain the lens never generates.

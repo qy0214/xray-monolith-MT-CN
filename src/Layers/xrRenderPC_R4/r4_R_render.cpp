@@ -137,6 +137,15 @@ namespace svpcam
 	{
 		Fmatrix mView, mProject, mProjectHud, mFullTransform, mInvView;
 		Fvector4 hudFov;
+		// The view's own vertical FOV in degrees. Device.fFOV is the game camera's and the lens
+		// pass keeps the optic's projection in Device.mProject without touching it, which left
+		// every FOV derived quantity in the lens pass describing the main view: the G-buffer
+		// position decompression, the SSAO noise and radius, the rain volume projection, the
+		// light visibility cone (light_vis.cpp) and the light LOD factor (R_calculate.cpp).
+		// Publishing the view's FOV here and applying it per pass fixes all of them at once, and
+		// the game itself only reads Device.fFOV outside Render(), so within the frame this value
+		// belongs to whichever view is being drawn.
+		float mFov = 0.f;
 		bool valid;
 
 		View() : valid(false) { hudFov.set(0.f, 0.f, 0.f, 0.f); }
@@ -180,6 +189,7 @@ namespace svpcam
 		v.mProjectHud.set(Device.mProjectHud);
 		v.mFullTransform.set(Device.mFullTransform);
 		v.mInvView.set(Device.mInvView);
+		v.mFov = Device.fFOV;
 		if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
 			v.hudFov.set(g_pGamePersistent->m_pGShaderConstants->hud_fov_params);
 		v.valid = true;
@@ -197,6 +207,10 @@ namespace svpcam
 		Device.mProjectHud.set(v.mProjectHud);
 		Device.mFullTransform.set(v.mFullTransform);
 		Device.mInvView.set(v.mInvView);
+		// See View::mFov: the FOV has to follow the view being drawn, or everything derived from
+		// it describes the main view while the lens pass renders with the optic's projection.
+		if (v.mFov > 0.5f)
+			Device.fFOV = v.mFov;
 		if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
 			g_pGamePersistent->m_pGShaderConstants->hud_fov_params.set(v.hudFov);
 
@@ -244,6 +258,9 @@ namespace svpcam
 			z.mProject._11 = aspect * cot;
 			z.mProject._22 = cot;
 			z.mFullTransform.mul(z.mView, z.mProject);
+			// The FOV this view is rendered with, published so the FOV derived quantities in the
+			// lens pass (see View::mFov) describe the lens camera and not the main view.
+			z.mFov = s_fovSmooth;
 			// Reported as the power the player actually sees: the main view's own FOV over the
 			// lens FOV, which is exactly what the lens shaders compute as current_zoom. It is
 			// for the log and the probes; the published sampling mapping is the identity.
@@ -264,6 +281,8 @@ namespace svpcam
 			z.mProject._11 *= mag;
 			z.mProject._22 *= mag;
 			z.mFullTransform.mul(z.mView, z.mProject);
+			// Same as the authored-FOV branch above: this view renders at the divided FOV.
+			z.mFov = (m.mFov > 0.5f) ? (m.mFov / mag) : Device.fFOV;
 		}
 		s_lastMag = mag;
 		z.valid = true;

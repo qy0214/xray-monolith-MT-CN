@@ -562,20 +562,16 @@ void CRenderTarget::phase_combine()
 		}
 	}
 
-	// PiP: the SSFX fog consumes buffers the lens pass deliberately does not produce, and that is
-	// what makes it wrong here - not its projection. Its geometry is reconstructing per pass (it
-	// reads pos_decompression_params, which is uploaded for the ACTIVE pass, so the lens camera is
-	// used correctly), but its blend reads the scene's blur chain (s_blur_2, and s_image through
-	// Delta), and phase_blur is skipped for the lens because the blur chain is a main view stage.
-	// The lens set's own blur textures are therefore never written, so the fog blends whatever
-	// they hold into the lens image. With the pack's height fog enabled (ssfx_fog height 20,
-	// density 1.5) the strongest term is the ground right below the horizon, which is the lower
-	// half of a magnified sight - so it lands as a flat wall over part of the aperture, grows with
-	// the magnification and all but disappears at 1x, where the lens FOV matches the main view.
-	// Every other screen space effect in this function is already kept out of the lens pass (SSAO
-	// and IL, SSR, water, blur, bloom); the fog, the rain refraction and the motion blur had been
-	// missed. The engine's own fog (fog_params / fog_color, applied per pixel inside the combine)
-	// is projection independent and still runs, so the lens keeps its fog.
+	// PiP: the SSFX fog consumes buffers the lens pass deliberately does not produce, and it was
+	// also reconstructing its geometry with the wrong camera until pos_decompression_params became
+	// projection derived (r4.cpp) - that mistake is what put the flat fog wall over part of the
+	// aperture. With the geometry now correct, the reason to keep it out of the lens pass is its
+	// blend: it reads the scene's blur chain (s_blur_2, and s_image through Delta) and phase_blur
+	// is skipped for the lens because the blur chain is a main view stage, so the lens set's own
+	// blur textures are never written. Every other screen space effect in this function is already
+	// kept out of the lens pass (SSAO and IL, SSR, water, blur, bloom); the fog, the rain
+	// refraction and the motion blur had been missed. The engine's own fog (fog_params /
+	// fog_color, applied per pixel inside the combine) is unaffected and still runs.
 	if (RImplementation.o.ssfx_fog && ps_ssfx_fog_scattering > 0
 		&& !Device.m_SecondViewport.m_render_pass_is_svp)
 	{

@@ -128,8 +128,20 @@ static class cl_pos_decompress_params : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
 	{
-		float VertTan = -1.0f * tanf(deg2rad(Device.fFOV / 2.0f));
-		float HorzTan = - VertTan / Device.fASPECT;
+		// Derive the ray from the ACTIVE projection instead of Device.fFOV. The two agree
+		// exactly for the main view - build_projection stores _22 = 1/tan(fov/2) and
+		// _11 = aspect * that, so -1/_22 is -tan(fov/2) and -1/_11 is -tan(fov/2)/aspect - but
+		// they do NOT agree during the lens pass: the renderer applies the optic's own projection
+		// (2.7 degrees on a 24x sight) while Device.fFOV stays the game camera's 65. Every screen
+		// space effect that reconstructs positions from the depth buffer reads this constant, so
+		// the lens pass reconstructed the world with the main view's FOV and the depth of the
+		// optic: the fog (and the SSAO/IL, and the sun shafts) landed as a flat wall across part
+		// of the aperture, growing with the magnification because the error is the ratio of the
+		// two FOVs - the mask the player reported.
+		const float VertTan = (fabsf(Device.mProject._22) > 1e-6f)
+			? (-1.0f / Device.mProject._22) : (-1.0f * tanf(deg2rad(Device.fFOV / 2.0f)));
+		const float HorzTan = (fabsf(Device.mProject._11) > 1e-6f)
+			? (-1.0f / Device.mProject._11) : (-VertTan / Device.fASPECT);
 
 		// Scene-space texel size at the render resolution, plus the upscaler's
 		// raster jitter (zero when the upscaler is inactive).
