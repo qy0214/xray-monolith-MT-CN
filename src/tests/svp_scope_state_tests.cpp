@@ -58,6 +58,29 @@ void run_svp_scope_state_tests()
 	s = svp_evaluate_scope(no_zoom);
 	CHECK(!s.lens_rendered && !s.main_view_wide && !s.aim_sensitivity_lens);
 
+	// a thermal optic must never take the second viewport: the pack's own shader has the whole
+	// thermal model on the 3DSS path, and the engine's only thermal pass is a masked device
+	// effect that writes black without a worn device (see svp_scope_state.h). Everything else
+	// being ready must not change that.
+	SvpScopeInputs thermal = in;
+	thermal.optic_thermal_image = true;
+	s = svp_evaluate_scope(thermal);
+	CHECK(!s.lens_rendered);
+	CHECK(!s.main_view_wide);
+	CHECK(!s.aim_sensitivity_lens);
+
+	// the input builder carries the thermal fact through like any other
+	SvpScopeInputs th = svp_make_inputs(true, true, true, true, true, true);
+	CHECK(th.optic_thermal_image);
+	s = svp_evaluate_scope(th);
+	CHECK(!s.lens_rendered && !s.main_view_wide && !s.aim_sensitivity_lens);
+
+	// and an optic that is not thermal is unaffected by the new input's presence
+	SvpScopeInputs not_thermal = svp_make_inputs(true, true, true, true, true, false);
+	CHECK(!not_thermal.optic_thermal_image);
+	s = svp_evaluate_scope(not_thermal);
+	CHECK(s.lens_rendered && s.main_view_wide && s.aim_sensitivity_lens);
+
 	// the kill switch (r__svp_same_frame 0) must disable the whole chain
 	SvpScopeInputs sw = svp_make_inputs(true, false, true, true, true);
 	CHECK(!sw.pack_pip_module);
@@ -70,5 +93,5 @@ void run_svp_scope_state_tests()
 	s = svp_evaluate_scope(ok);
 	CHECK(s.lens_rendered && s.main_view_wide && s.aim_sensitivity_lens);
 
-	std::printf("[tests] svp_scope_state: 6 states, 25 checks\n");
+	std::printf("[tests] svp_scope_state: lens ownership states, including the thermal optic case\n");
 }

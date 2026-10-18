@@ -106,8 +106,24 @@ const float thermal = (ps_r2_heatvision > 0 && compat::scope_lense_allow_thermal
 模糊采样数）**无法**安全铺满整帧。
 
 ⇒ **热成像瞄具（`s3ds_image_type ≥ 2`）需要的是一张全帧 GBuffer 热成像图**，也就是 pack 着色器在
-**3DSS 分支**里自己做的那条路：`infrared(gbuffer_load_data(...))`。引擎目前**没有这样的 shader**
-⇒ 在补上之前，热成像瞄具显示**普通（曝光正确）镜头画面**，而不是黑屏（见第四节）。
+**3DSS 分支**里自己做的那条路：`infrared(gbuffer_load_data(...))`。
+
+**结论（已实现的方案 A）**：**热成像瞄具不进入第二视图** ⇒ 该瞄具走 **pack 自己的 3DSS 分支**，
+由 mod 着色器渲染热成像（`infrared()` + `heat_map` 色表 + 像素化 ✓），**引擎侧不新增任何文件** ✓。
+依据：
+1. pack 的 PiP 分支在 `optical_thermal` 时**跳过自己的成像**，把"让第二视图变热"的责任交给引擎；
+2. 引擎唯一的"让画面变热"的手段是 `phase_heatvision()`，而它是**佩戴设备的遮罩效应**
+   （`compute_lens_mask()` 只认 1/2/4 管；无设备 ⇒ `num_tubes = 0` ⇒ **整幅全黑**，已实测），
+   给镜头跑它只会得到黑镜；
+3. 原始引擎（我们仓库历史 `d404b95d9`/`10ed04ea1`）同样只有 `if (ps_r2_heatvision > 0) phase_heatvision();`
+   且由 **pack 脚本**打开该开关（`z_heatvision.script` = 设备；`zzz_anthology_pip_device_bridge.script` = 设备+MCM），
+   **没有任何脚本为"只是瞄具"打开它** ⇒ 妙具侧的热成像原本就只存在于 3DSS 分支。
+
+⇒ 状态机里体现为：`SvpScopeInputs::optic_thermal_image` ⇒ `lens_rendered = false`（`xrCore/svp_scope_state.h` ✓，含主机测试）。
+
+**已知限制**：`[vulcan]` 是唯一"NVG(`s3ds_image_type=1`) + `scope_lense_thermal`"的双通道镜 ⇒ 其**热通道**
+依赖引擎的 `phase_heatvision`（由佩戴设备脚本驱动），而该 shader 在 pack 里被热成像 MOD 覆盖成遮罩版
+⇒ 无设备时与**原始引擎行为一致**（拿不到热画面）。
 
 ### 2.5 政策文件（`mod_system_pip_scope_policy.ltx`）
 
@@ -136,7 +152,7 @@ const float thermal = (ps_r2_heatvision > 0 && compat::scope_lense_allow_thermal
 | 镜内目标尺寸保持显示尺寸/比例 | `EnsureTargetSVP()`（曾试过高度封顶，会变矩形裁剪，已回退）| ✓ |
 | 镜头曝光（否则近黑）| 组合阶段 `t_LUM_dest`（= `$user$tonemap` = `rt_LUM_pool[1]`）改用**主套**的值：镜头 pass 不跑 `phase_pp`（曝光在那里算）| ✓（本提交）|
 | 镜头相机 FOV = pack 授权角度 | `DeriveZoom()` 直接按角度重建投影（`_22=1/tan(fov/2)`、`_11=aspect·_22`），不再用比值缩放 | ✓（本提交）|
-| 热成像瞄具 | —（需要全帧 GBuffer 热成像 pass，见 2.4）| **缺口** |
+| 热成像瞄具 | 状态机排除（`optic_thermal_image`）⇒ 该瞄具走 pack 的 3DSS 热成像分支 | ✓（方案 A，见 2.4）|
 | 变倍镜当前 FOV | `clamp(ADS_FOV, 两端)`，并记录 `ads=`/`end=` 供判定 | ✓（本提交）|
 | 两种 fov 拼写 | `readOpticFacts()` 两者都读 | ✓ |
 | 政策 `scope_lense_enabled` | — | **缺口** |
@@ -146,10 +162,10 @@ const float thermal = (ps_r2_heatvision > 0 && compat::scope_lense_allow_thermal
 ## 四、已知缺口 / 待决
 
 1. **政策文件未解析**（2.5）：折叠放大镜类可能被 PiP 接管；需要 token 解析规则（pack 未在配置里显式给出 token → 段名映射）。
-2. **热成像瞄具**（2.4）：需要一张全帧 GBuffer 热成像 pass（pack 的 `infrared()` 那条路）。
-   方案：在**本工程自己的** `MODS\MT-CN\gamedata\shaders\r4\` 放一个新 shader + 引擎端新 blender/phase，
-   `gbuffer_load_data` + `infrared()` 写成全屏 quad，镜头 pass 末尾对镜头套执行。约 100 行，需与 pack 的
-   `thermal_utils.h`/`infrared.h` include 链相容（运行时从 VFS 解析，可行）。
+2. **热成像瞄具**（2.4）：**已解决（方案 A，不新增文件）** —— 热成像瞄具不进第二视图，改走 pack 自己的 3DSS
+   热成像分支。剩余的是 `[vulcan]` 双通道镜的热通道，属 **pack 自身打包问题**（热 shader 被覆盖成设备遮罩版）。
+   若将来仍想在 PiP 下保留热成像瞄具的镜内锐度，才需要自建一支无遮罩的全帧 GBuffer 热成像 pass
+   （放 `MODS\MT-CN\gamedata\shaders\r3\`，与现有 DLSS/NVG shader 同目录 ✓；`R4::getShaderPath()` 返回 `"r3\\"` ✓）。
 3. **变倍判定**：`clamp(ADS_FOV, 两端)` 依赖引擎 ADS FOV 对这些瞄具有效。M82 等个别瞄具
    `m_fRTZoomFactor` 会读到退化值（曾读到 96°）⇒ 被夹到 pack 较宽一端。日志现给出
    `fovMax/fovBase/ads/end` ⇒ 下一次实测可判定"是瞄具本身不可变"还是"被夹错端"。

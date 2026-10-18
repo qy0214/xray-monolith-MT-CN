@@ -604,8 +604,15 @@ void CRender::Render()
 	// requires the set to exist (target_set_ready) while the set used to be created only
 	// once the state was already true, so nothing ever happened. The evaluated state is
 	// what turns the lens pass on afterwards.
+	//
+	// A thermal optic is excluded here as well as in the state: its image is computed by the
+	// pack's own shader on the 3DSS path, so it never needs a second target set and creating
+	// one for it would only cost VRAM and a second scene pass (see svp_scope_state.h).
+	const bool opticThermalImage = Device.m_SecondViewport.svp_optic_thermal
+		|| Device.m_SecondViewport.svp_optic_image_type >= 2;
 	if (SVP_SAME_FRAME_READY && compat::r__svp_same_frame && Device.m_SecondViewport.pip_lens_shaders
-		&& Device.m_SecondViewport.svp_optic_magnifies && Device.m_SecondViewport.svp_lens_fov > 1.0f)
+		&& Device.m_SecondViewport.svp_optic_magnifies && Device.m_SecondViewport.svp_lens_fov > 1.0f
+		&& !opticThermalImage)
 		EnsureTargetSVP();
 
 	// Scope-aware internal resolution: a rebuild here skips this frame, so the new
@@ -642,7 +649,7 @@ void CRender::Render()
 		const float lensFov = Device.m_SecondViewport.svp_lens_fov;
 		const SvpScopeInputs svpIn = svp_make_inputs(Device.m_SecondViewport.pip_lens_shaders,
 			compat::r__svp_same_frame != 0, Device.m_SecondViewport.svp_optic_magnifies,
-			lensFov > 1.0f, TargetSVP != nullptr);
+			lensFov > 1.0f, TargetSVP != nullptr, opticThermalImage);
 		Device.m_SecondViewport.svp_scope = svp_evaluate_scope(svpIn);
 	}
 
@@ -664,25 +671,20 @@ void CRender::Render()
 	// branch they no longer produce the imaging look themselves (the stock path calls
 	// infrared() on the G-buffer, which the second-view branch skips).
 	//
-	// Driving ps_r2_heatvision from the optic is the WRONG mechanism and was reverted after a
-	// real session: it is a global switch with frame wide consequences (upscaler bypass, flare
-	// path, a different shader element) and it expects the heat mask a worn device fills.
-	// Rendering the heat pass into the LENS target per pass was tried too and can only produce
-	// black - the heat vision shader is a mask based device effect (see phase_combine). The
-	// optic's imaging identity is still read and logged (img= in the per optic line, from the
-	// pack's s3ds_image_type key); a thermal optic needs the pack's own full frame GBuffer
-	// thermal image, which is the documented next step (docs/pip-3dss-mod-contract.md).
-	{
-		const bool lensUp = Device.m_SecondViewport.svp_scope.lens_rendered;
-		const bool opticWantsThermal = Device.m_SecondViewport.svp_optic_thermal
-			|| Device.m_SecondViewport.svp_optic_image_type >= 2;
-		if (lensUp && opticWantsThermal && (Device.dwFrame % 300) == 0)
-			Msg("* [PIP] imaging: optic wants thermal (img=%d thermal=%d mode=%d, device thermal=%d) - lens shows the ordinary image; the full frame GBuffer thermal pass is still to be written",
-				Device.m_SecondViewport.svp_optic_image_type,
-				Device.m_SecondViewport.svp_optic_thermal ? 1 : 0,
-				Device.m_SecondViewport.svp_optic_thermal_mode,
-				compat::scope_lense_head_thermal_active);
-	}
+	// For a thermal optic that is exactly why the engine withholds the second viewport: the
+	// pack's own shader renders the thermal image on the 3DSS path (infrared() over the
+	// G-buffer, the heat map LUT, pixelation) and its PiP branch delegates nothing usable to
+	// the engine, while the engine's only thermal pass is the masked device effect that writes
+	// black with no device worn. Driving ps_r2_heatvision from the optic is the wrong mechanism
+	// and was tried and reverted: it is a global switch with frame wide consequences (upscaler
+	// bypass, flare path, a different shader element) and it expects the heat mask a worn device
+	// fills. This line reports the decision, not a plan.
+	if (opticThermalImage && (Device.dwFrame % 300) == 0)
+		Msg("* [PIP] imaging: thermal optic (img=%d thermal=%d mode=%d, device thermal=%d) - the engine withholds the second viewport so the pack's own 3DSS thermal path renders the lens image",
+			Device.m_SecondViewport.svp_optic_image_type,
+			Device.m_SecondViewport.svp_optic_thermal ? 1 : 0,
+			Device.m_SecondViewport.svp_optic_thermal_mode,
+			compat::scope_lense_head_thermal_active);
 	Device.true_pip_on = Device.m_SecondViewport.svp_scope.lens_rendered;	Device.m_SecondViewport.true_pip_rendering = Device.m_SecondViewport.svp_scope.lens_rendered;
 	Device.m_SecondViewport.true_pip_same_frame = Device.m_SecondViewport.svp_scope.lens_rendered;
 

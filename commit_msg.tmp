@@ -1,31 +1,30 @@
-fix(pip): Keep the reticle at the 3DSS scale, and hold the upscaler boost while aiming
+fix(pip): Let thermal optics keep the 3DSS path, with no new files
 
-Two behaviours the player reads directly, both from comparing what 3DSS does with what the PiP
-path does, since the two mods ship the SAME reticle shader (identical hashes) and differ only in
-the material (.s: s_second_vp = $user$viewport2 and the scopelense(3) marker) and in the uniforms
-the engine publishes.
+The pack's own lens shader treats a thermal optic (s3ds_image_type >= 2, or scope_lense_thermal) as
+"the engine will hand me a hot image": in its scope_svp > 0 branch it skips its grading AND its
+infrared() path, and just displays the second view. Nothing in this engine can satisfy that. The
+only way the engine can make a view hot is phase_heatvision(), which is a DEVICE effect: the bundled
+heat vision shader's compute_lens_mask() accepts a 1/2/4 tube layout and returns 0 everywhere else,
+and with no worn device the tube count is 0, so the pass writes a black frame. That is the measured
+cause of both the black lens and the black screen a forced r__heatvision 1 produces.
 
-Reticle at maximum power. The shader computes current_zoom differently per path:
-  3DSS: max(min_scope_zoom_factor * 0.75 / fFOV, 1), which is 1 for every optic in this pack, so
-        the reticle is drawn at its texture scale and never magnified, whatever s3ds_ffp says.
-  PiP:  fFOV / lens FOV, i.e. the full sight power, so an optic marked s3ds_ffp = 1 - the multi
-        power ones, marchf for instance - has its reticle scaled by up to twenty odd times.
-The reticle art is authored for the 3DSS scale and there is no per power art to magnify, so the
-faithful first focal plane behaviour produced the cross tens of times too thick that the player
-reported. The engine now selects the SFP branch the shader already has for exactly this case
-(s3ds_param_1.w) while it is providing the second viewport, so the reticle keeps the scale the
-player is used to. This is a deliberate deviation from the pack's FFP declaration, taken because
-the declaration cannot be honoured with this art.
+The pack's working thermal model is the one its OWN shader runs on the 3DSS path: infrared() over
+the G-buffer plus the heat map LUT and pixelation. An optic takes that path exactly when the engine
+does not provide the second viewport, so for these optics the honest answer is no lens. The player
+gets the thermal sight the pack authored, with the plain ADS zoom the 3DSS setup already gives, and
+the engine needs no new shader file - which is also what the reference did: its SVP activation
+(CWeapon::UpdateSecondVP, four conditions, none about imaging) and its phase_combine
+(if (ps_r2_heatvision > 0) phase_heatvision(); unguarded on the SVP frame) show that the thermal look
+was always the pack script's job, driven from a worn device, and never the optic's.
 
-Upscaler resolution while aiming. ScopeResolutionRequested() returned false as soon as the PiP
-path was live ("the override has nothing left to buy - the scope frame renders at that set's own
-extent"). That is what makes the small sight go pixelated after a while: the boost could not even
-be requested while the lens was up, so it only survived on ps_r__upscaler_scope_delay and then
-fell back to the default upscaler scale mid aim. The lens is what the player is looking at and it
-is magnified into the aperture, so the internal resolution is what its pixels are made of; the
-second viewport now requests the boost and the idle timer only covers the other triggers.
+Implemented as a state rule, not a special case at the call sites: SvpScopeInputs gained
+optic_thermal_image and svp_evaluate_scope() refuses the lens for it, so the single writer keeps
+owning the decision and every consumer (scope_svp, the wide main view, the mouse ratio, the lens
+creation) follows. Tests cover the new boundary (52 checks now). The second target set is not even
+created for such an optic, so a thermal sight costs no VRAM and no second scene pass.
 
-The per pass diagnostic gained rsw=, the extent the pass actually renders the scene at. It is what
-separates the two mechanisms: RenderScreenWidth() is the upscaler's size for the main view and the
-target's own extent for the second viewport, while the lens texture is display sized in both
-cases, so texture dimensions alone cannot tell which one a lens image came from.
+Every optic that declares a thermal image also carries s3ds_image_type, so the pack's shader does
+have its thermal path on the 3DSS branch. The one exception is [vulcan], the only optic that is both
+NVG (s3ds_image_type = 1) and scope_lense_thermal: its thermal channel needs the engine's heat pass,
+which the heat vision mod's masked shader makes unusable without a device. That is the pack's own
+packaging state, identical in the reference, and is recorded in the contract document.
