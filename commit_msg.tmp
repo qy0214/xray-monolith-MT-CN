@@ -1,22 +1,18 @@
-fix(pip): Treat any optic as screen locked while aiming, not only magnifying ones
+fix(pip): Cover the optic whose lens the engine withheld, and nothing else
 
-The ring inside the thermal sight only appears while the view is moving fast and settles when it
-stops, which is the signature of temporal ghosting rather than of anything drawn in the sight.
+Correcting the previous commit, which was too wide. The player narrowed the ghosting to thermal
+sights, and that is the precise case the predicate was missing.
 
-The engine already had the right idea in StableOverlaysActive(): a screen locked overlay - the sight's
-lens or reticle, drawn in the weapon layer - does not follow the scene motion vectors, so while one
-is up the upscaler's history is invalidated every frame and the upscale stays spatial. The last
-clause of that predicate gated on hud_fov_params.x > 1.25, i.e. on the optic's magnification factor,
-and that number is not usable: the pack's optics report factors at or below 1. The log line for an
-M82 carrying a sight reads rtZoom=0.0, so a screen type thermal sight was excluded from the rule,
-its image was reprojected with the scene motion vectors, and the result trails behind the camera -
-a ring that only exists in movement, exactly as reported.
+StableOverlaysActive() already returns true for any optic whose lens this engine renders
+(IsSVPActive()), which is why ordinary magnifying sights never ghosted while panning. A thermal
+optic has its lens withheld on purpose (svp_scope_state.h), so IsSVPActive() is false for it and it
+fell through to the magnification test, which reads hud_fov_params.x - a number the pack's optics
+report at or below 1 (the log line for an M82 carrying a sight reads rtZoom=0.0). Treated as a
+stable overlay, its image was reprojected with the scene motion vectors and trailed as a ring that
+only exists in movement.
 
-The predicate now uses the engine's own aiming facts instead: the ADS progress from the game, plus
-"this weapon has an optic with lens data" (the optic facts the game publishes for the second
-viewport, or a magnifying optic). That covers screen type sights the wearer's magnification factor
-says nothing about, and still excludes plain iron sight aiming.
-
-r__svp_lcd_flat from the previous commit stays in place, off by default: it was based on the
-reflection hypothesis, which this report disproved, and it is inert rather than wrong, so it is left
-for the pack author's benefit rather than removed mid stream.
+The previous commit instead widened the fallback to "aiming and this weapon has lens data", which
+would have covered sights that already work and iron sight cases that the pack handles differently.
+This version adds exactly the missing case and leaves everything else as it was: the optic facts say
+a lens applies (svp_optic_magnifies, svp_lens_fov) while the engine is not rendering one. Iron sight
+aiming carries no lens data and stays excluded.
