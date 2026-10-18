@@ -1,28 +1,20 @@
-fix(pip): Drive night vision for the lens as well, and record the optic facts in the log
+fix(pip): Transpose the lens projection matrix and measure it in the log
 
-Auditing the imaging family after the thermal change - the review rule being that a fix has to
-be followed by a pass over everything related - showed the same gap on the night vision side:
+Hard numbers first: the lens texture and its source both average 11.84 of 255 while the main
+view of the same frame averages 47.9. Identical values for the texture and its source prove the
+publish and the post process are not the cause; the lens pass renders a much darker image.
 
-  * ps_r2_nightvision, like ps_r2_heatvision, is never set by anything in the engine for an
-    equipped optic, while in the PiP branch the lens shader no longer produces the look itself
-    (the stock path calls infrared() on the G-buffer and the second-view branch skips it).
-  * The pack provides the fact through its device bridge script (scope_lense_head_nvg_active /
-    scope_lense_head_thermal_active) and lets the player refuse it (scope_lense_allow_nvg /
-    scope_lense_allow_thermal), so the renderer now honours all of them and restores the
-    player's own setting when the lens goes away.
+That fits one mistake that explains all three symptoms at once. If the projection maps the whole
+texture into the optic instead of the magnified patch, the lens shows a rectangular image (the
+shader fades the sampled region out at the texture border), looks unmagnified (it is the whole
+wide view) and is dark (a wide view of a dusk scene averages far lower than the optic's patch).
 
-scope_lense_imaging is derived by its binder from those two console variables, so publishing
-them is what makes the shader skip its own grade for an image that already carries the effect.
-An earlier attempt in this change added a device field for the same information; the audit
-showed it would have been redundant state next to the variable the binder already reads, so it
-was dropped rather than left to drift.
+The candidate is the matrix convention: every engine shader consumes these matrices as row
+vectors (mul(v, m), which is why the engine uploads them as they are), while the pack's lens
+shaders write mul(scope_lense_reproject, float4(...)) - the column vector form. The matrix is now
+transposed on upload so the pack's expression computes the mapping it was written for.
 
-The per optic diagnostic now records the weapon section, the optic item section, the resolved
-magnification, the lens FOV, the dynamic zoom flag, and the thermal flags with their mode, so a
-log answers which optic was used instead of requiring the player to remember.
-
-Audit of the constant set this round (every scope_lense_* the lens material reads): values and
-sources match the contract, m_hud_fov_params.z is never written which is what selects the
-direct projection branch, and scope_lense_quality.yz correctly reports the sampled texture
-dimensions - the same extent the shader's texel math needs, an independent confirmation that
-reverting the capped lens extent was necessary.
+The publish diagnostic now also maps three main view NDC points through the same matrix and
+prints the UVs they land on, so the next log states whether the lens samples a small centred
+patch (centre near 0.5, the half offsets a small delta) or the whole texture (near 0 and 1)
+instead of leaving it to judgement by eye.

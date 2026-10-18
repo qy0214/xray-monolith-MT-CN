@@ -1403,6 +1403,13 @@ static class scope_lense_reproject : public R_constant_setup
             reproject.mul(svp_vp_lens, Device.mInvFullTransform);
         else
             reproject.mul(RCache.xforms.m_vp_prev, Device.mInvFullTransform);
+
+        // The pack's lens shaders consume this as mul(scope_lense_reproject, float4(ndc,1,1)),
+        // i.e. the HLSL column vector convention, while this engine uploads matrices in its own
+        // row vector convention (every engine shader writes mul(v, m)). Without the transpose
+        // the projection maps the whole texture instead of the magnified patch, which shows as a
+        // rectangular, unmagnified and dark lens - all three symptoms from one mistake.
+        reproject.transpose();
         RCache.set_c(C, reproject);
     }
 } binder_scope_lense_reproject;

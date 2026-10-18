@@ -1104,6 +1104,32 @@ void CRender::Render()
 						Device.m_SecondViewport.svp_optic_thermal ? 1 : 0,
 						Device.m_SecondViewport.svp_optic_thermal_mode,
 						svpcam::s_lastMag, Device.m_SecondViewport.svp_lens_fov);
+					// Measure the projection instead of judging it by eye: map a few main-view
+					// NDC points through scope_lense_reproject (the same maths the lens shader
+					// does) and report the UVs they land on. A lens that samples the magnified
+					// patch maps the centre to 0.5 and a small offset to a small delta; one that
+					// maps the whole texture lands near 0 and 1 instead.
+					if (svp_vp_lens_valid)
+					{
+						Fmatrix m;
+						m.mul(svp_vp_lens, Device.mInvFullTransform);
+						auto mapNdc = [&](float x, float y, float& outU, float& outV) {
+							Fvector4 v, c;
+							v.set(x, y, 1.f, 1.f);
+							c.x = m._11 * v.x + m._21 * v.y + m._31 * v.z + m._41 * v.w;
+							c.y = m._12 * v.x + m._22 * v.y + m._32 * v.z + m._42 * v.w;
+							c.w = m._14 * v.x + m._24 * v.y + m._34 * v.z + m._44 * v.w;
+							const float inv = (c.w > 1e-6f) ? 1.f / c.w : 0.f;
+							outU = c.x * inv * 0.5f + 0.5f;
+							outV = 0.5f - c.y * inv * 0.5f;
+						};
+						float cu, cv, lu, lv, ru, rv;
+						mapNdc(0.f, 0.f, cu, cv);
+						mapNdc(-0.5f, 0.f, lu, lv);
+						mapNdc(0.5f, 0.f, ru, rv);
+						Msg("* [PIP] reproject uv centre=(%.3f,%.3f) left=(%.3f,%.3f) right=(%.3f,%.3f) [expect a small centred span]",
+							cu, cv, lu, lv, ru, rv);
+					}
 				}
 				// Publish the lens pass's COMBINED image, before any post processing, exactly
 				// as the 3DSS path publishes $user$generic_temp. The lens shader grades it
