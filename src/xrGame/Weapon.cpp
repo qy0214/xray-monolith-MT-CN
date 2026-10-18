@@ -3515,33 +3515,69 @@ void CWeapon::UpdateSecondVP()
 	// for anything that needs to distinguish thermal from thermal colour later.
 	Device.m_SecondViewport.svp_optic_image_type = imageType;
 
-	// Edge triggered diagnostic (section or facts changed), no per-frame cost on the hot path.
+	// Aim summary diagnostic. The previous version fired whenever the lens FOV changed, and a
+	// dynamic zoom sight changes it every frame of its zoom animation, so raising a variable power
+	// optic cost ten to twenty log lines per aim. What those lines were read for - whether the
+	// power tracks the pack's range - is a range, so that is what gets logged, once, when the aim
+	// ends; a long held aim also emits a slow heartbeat (five minutes) so a keeper session still
+	// leaves a trace. Nothing is written while the values simply keep moving.
 	{
-		static shared_str diagLastSect;
-		static float diagLastFov = -1.0f;
-		static bool diagLastMag = false;
-		static int diagLastEnd = -1;
-		if (diagLastSect != cNameSect() || !fsimilar(diagLastFov, lensFov) || diagLastMag != magnifies
-			|| diagLastEnd != lensFovEnd)
+		static bool aimActive = false;
+		static shared_str aimSect;
+		static float aimFovLo = 0.f, aimFovHi = 0.f, aimMagLo = 0.f, aimMagHi = 0.f, aimAdsLo = 0.f, aimAdsHi = 0.f;
+		static u32 aimFrames = 0, aimNextLog = 0;
+
+		auto logScope = [&](LPCSTR kind)
 		{
 			// mag= is what the pack's formula promises for the value the engine picked
 			// (65 / lensFov), so a sight that renders at the wrong power shows up as a mag that
 			// never moves across the zoom steps while lensFovMax/lensFovBase say it should, and
 			// ads= (the engine's own ADS FOV) says whether the power signal itself was usable.
-			Msg("* [PIP/scope] weapon='%s' scope='%s' magnifies=%d lensFov=%.4f mag=%.2f dyn=%d steps=%d fovMax=%.4f fovBase=%.4f ads=%.3f end=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d",
+			const float magNow = (lensFov > 0.005f && g_fov > 0.005f) ? (g_fov / lensFov) : 0.0f;
+			Msg("* [PIP/scope] %s weapon='%s' scope='%s' lensFov=%.4f..%.4f mag=%.2f..%.2f ads=%.3f..%.3f frames=%u (last: magnifies=%d lensFov=%.4f mag=%.2f dyn=%d steps=%d fovMax=%.4f fovBase=%.4f end=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d)",
+				kind,
 				cNameSect().size() ? *cNameSect() : "(none)",
 				GetScopeName().size() ? *GetScopeName() : "(none)",
-				magnifies ? 1 : 0, lensFov,
-				(lensFov > 0.005f && g_fov > 0.005f) ? (g_fov / lensFov) : 0.0f,
+				aimFovLo, aimFovHi, aimMagLo, aimMagHi, aimAdsLo, aimAdsHi, aimFrames,
+				magnifies ? 1 : 0, lensFov, magNow,
 				dynamic ? 1 : 0, zoomSteps, lensFovMax, lensFovBase, adsFovDbg,
 				lensFovEnd,
 				m_zoom_params.m_bUseDynamicZoom ? 1 : 0, m_fRTZoomFactor,
 				IsScopeAttached() ? 1 : 0, m_zoomtype,
 				imageType, thermal ? 1 : 0, thermalMode);
-			diagLastSect = cNameSect();
-			diagLastFov = lensFov;
-			diagLastMag = magnifies;
-			diagLastEnd = lensFovEnd;
+		};
+
+		const float magNow = (lensFov > 0.005f && g_fov > 0.005f) ? (g_fov / lensFov) : 0.0f;
+		if (magnifies)
+		{
+			if (!aimActive || aimSect != cNameSect())
+			{
+				aimActive = true;
+				aimSect = cNameSect();
+				aimFovLo = aimFovHi = lensFov;
+				aimMagLo = aimMagHi = magNow;
+				aimAdsLo = aimAdsHi = adsFovDbg;
+				aimFrames = 0;
+				aimNextLog = Device.dwFrame + 18000;	// five minutes at 60 fps
+			}
+			if (lensFov < aimFovLo) aimFovLo = lensFov;
+			if (lensFov > aimFovHi) aimFovHi = lensFov;
+			if (magNow < aimMagLo) aimMagLo = magNow;
+			if (magNow > aimMagHi) aimMagHi = magNow;
+			if (adsFovDbg < aimAdsLo) aimAdsLo = adsFovDbg;
+			if (adsFovDbg > aimAdsHi) aimAdsHi = adsFovDbg;
+			++aimFrames;
+
+			if (Device.dwFrame >= aimNextLog)
+			{
+				logScope("aim held");
+				aimNextLog = Device.dwFrame + 18000;
+			}
+		}
+		else if (aimActive)
+		{
+			logScope("aim ended");
+			aimActive = false;
 		}
 	}
 }

@@ -1,25 +1,20 @@
-perf(pip): Turn the diagnostic probes off by default, and close the two that escaped the switch
+perf(pip): Rate govern the diagnostics we keep on, so a long session does not fill the log
 
-The probes found every fault in this chain - the exposure, the projection, the withheld lens - but
-they are not free, and the chain is settled enough to stop paying for them in normal play.
+The probes that read render targets back are already off by default; this is about the lines that
+stayed on, which added up over hours.
 
-What each one costs:
- - every svp_probe_rt reads a full render target back to the CPU: a staging copy of a 1920x1200
-   surface plus a blocking Map, i.e. a stall of a few milliseconds each time, and they ran four at a
-   time every 240 frames;
- - the per pass line (pass view=...) was written every pass of every frame, which is what made the
-   log grow by megabytes per session;
- - the BMP dumps write every pixel of full sized surfaces to disk (tens of megabytes each).
+ - the per optic line fired whenever the lens FOV changed, and a dynamic zoom sight changes it on
+   every frame of its zoom animation, so raising a variable power optic cost ten to twenty lines per
+   aim. It is now a summary written once when the aim ends (plus a five minute heartbeat for a held
+   aim), reporting the optic, the range of lens FOV and power that the aim covered - which is what
+   those per step lines were read for - together with the current facts. Nothing is written while
+   the values simply keep moving.
+ - the state line ran every 300 frames while an optic was up: 720 lines per hour with nothing new to
+   say. It now writes on a change of lens/target state plus the same five minute heartbeat.
+ - the thermal optic line and the "second target set is missing" warning likewise write once per
+   episode instead of on a timer.
+ - the per pass line (debug only) is throttled to every 600 frames instead of 120.
+ - the state leak warning fires every frame while leaking; it is now reported once per session.
 
-r__svp_debug now defaults to 0, which removes all of it: no readbacks, no dumps, no per frame log.
-For a diagnostic session "r__svp_debug 1" restores the throttled readbacks and the per pass lines
-(now also throttled to every 120 frames so a debug session does not tank the frame rate), and
-"r__svp_debug 2" adds the images.
-
-Two probes had escaped the switch and are now behind it as well: the albedo probe in phase_combine
-(a readback, every 600 frames) and the stable overlay line in the DLSS integration (a Msg, every
-300). The image dumps are level 2 only now instead of also running rarely at level 1, which is what
-their own comment had always claimed.
-
-What remains in normal play is cheap and worth keeping: the per optic line (edge triggered, on optic
-changes) and the state line (one line every 300 frames, only while an optic is magnifying).
+What stays as it was: the one off messages (target set created, pack policy, build stamp), which are
+per session and worth having.

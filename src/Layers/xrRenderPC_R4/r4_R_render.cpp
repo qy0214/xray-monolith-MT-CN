@@ -694,14 +694,26 @@ void CRender::Render()
 	// take the SVP path" and "engine renders a lens" can never disagree again.
 	Device.m_SecondViewport.SetSVPActive(Device.m_SecondViewport.svp_scope.lens_rendered);
 
-	// PiP state (throttled): the one line that makes any remaining mismatch diagnosable in
-	// a single round - whether the lens rendered, whether the set exists, the kill switch
-	// and the resolved lens FOV.
-	if (Device.m_SecondViewport.svp_optic_magnifies && (Device.dwFrame % 300) == 0)
-		Msg("* [PIP] state build=%d lens=%d pub=%d target=%d switch=%d lensFov=%.3f",
-			MT_PIP_BUILD, Device.m_SecondViewport.svp_scope.lens_rendered ? 1 : 0,
-			svp_lens_rendered ? 1 : 0, TargetSVP ? 1 : 0,
-			compat::r__svp_same_frame, Device.m_SecondViewport.svp_lens_fov);
+	// PiP state: written when the state changes, plus a slow heartbeat (five minutes), because a
+	// steady state produced a line every 300 frames - 720 per hour - with nothing new to say.
+	// lensFov is deliberately NOT part of the change test: a dynamic zoom sight moves it on every
+	// frame of its animation, which is exactly the burst this avoids.
+	{
+		static int lastLens = -1, lastTarget = -1;
+		static u32 nextStateLog = 0;
+		const int lensNow = Device.m_SecondViewport.svp_scope.lens_rendered ? 1 : 0;
+		const int targetNow = TargetSVP ? 1 : 0;
+		if (Device.m_SecondViewport.svp_optic_magnifies
+			&& (lastLens != lensNow || lastTarget != targetNow || Device.dwFrame >= nextStateLog))
+		{
+			Msg("* [PIP] state build=%d lens=%d pub=%d target=%d switch=%d lensFov=%.3f",
+				MT_PIP_BUILD, lensNow, svp_lens_rendered ? 1 : 0, targetNow,
+				compat::r__svp_same_frame, Device.m_SecondViewport.svp_lens_fov);
+			lastLens = lensNow;
+			lastTarget = targetNow;
+			nextStateLog = Device.dwFrame + 18000;
+		}
+	}
 
 	// PiP: the lens shaders decide on ps_r2_heatvision / ps_r2_nightvision, and in the PiP
 	// branch they no longer produce the imaging look themselves (the stock path calls
@@ -714,24 +726,43 @@ void CRender::Render()
 	// black with no device worn. Driving ps_r2_heatvision from the optic is the wrong mechanism
 	// and was tried and reverted: it is a global switch with frame wide consequences (upscaler
 	// bypass, flare path, a different shader element) and it expects the heat mask a worn device
-	// fills. This line reports the decision, not a plan.
-	if (opticThermalImage && (Device.dwFrame % 300) == 0)
-		Msg("* [PIP] imaging: thermal optic (img=%d thermal=%d mode=%d, device thermal=%d) - the engine withholds the second viewport so the pack's own 3DSS thermal path renders the lens image",
-			Device.m_SecondViewport.svp_optic_image_type,
-			Device.m_SecondViewport.svp_optic_thermal ? 1 : 0,
-			Device.m_SecondViewport.svp_optic_thermal_mode,
-			compat::scope_lense_head_thermal_active);
+	// fills. This line reports the decision, not a plan, and it reports it once per thermal optic
+	// (plus the same slow heartbeat) rather than on a timer.
+	{
+		static bool lastThermal = false;
+		static u32 nextImagingLog = 0;
+		if (opticThermalImage && (!lastThermal || Device.dwFrame >= nextImagingLog))
+		{
+			Msg("* [PIP] imaging: thermal optic (img=%d thermal=%d mode=%d, device thermal=%d) - the engine withholds the second viewport so the pack's own 3DSS thermal path renders the lens image",
+				Device.m_SecondViewport.svp_optic_image_type,
+				Device.m_SecondViewport.svp_optic_thermal ? 1 : 0,
+				Device.m_SecondViewport.svp_optic_thermal_mode,
+				compat::scope_lense_head_thermal_active);
+			nextImagingLog = Device.dwFrame + 18000;
+		}
+		lastThermal = opticThermalImage;
+	}
 	Device.true_pip_on = Device.m_SecondViewport.svp_scope.lens_rendered;	Device.m_SecondViewport.true_pip_rendering = Device.m_SecondViewport.svp_scope.lens_rendered;
 	Device.m_SecondViewport.true_pip_same_frame = Device.m_SecondViewport.svp_scope.lens_rendered;
 
 	const bool pipOn = SVP_SAME_FRAME_READY && Device.m_SecondViewport.svp_scope.lens_rendered;
 
-	// PiP diagnostic (throttled): an optic the pack covers, but no second target set -
-	// either its creation failed or the path is disabled. This is the failure the lens
-	// going black used to hide behind.
-	if (Device.m_SecondViewport.pip_lens_shaders && Device.m_SecondViewport.svp_optic_magnifies
-		&& Device.m_SecondViewport.svp_lens_fov > 1.0f && TargetSVP == nullptr && (Device.dwFrame % 600) == 0)
-		Msg("* [PIP] optic is PiP capable but the second target set is missing (creation failed or path disabled)");
+	// PiP: an optic the pack covers, but no second target set - either its creation failed or the
+	// path is disabled. This is the failure the lens going black used to hide behind, and it is a
+	// warning, so it is written once per episode (plus the slow heartbeat) instead of on a timer.
+	{
+		static bool warnedMissing = false;
+		static u32 nextMissingLog = 0;
+		const bool missing = Device.m_SecondViewport.pip_lens_shaders && Device.m_SecondViewport.svp_optic_magnifies
+			&& Device.m_SecondViewport.svp_lens_fov > 1.0f && TargetSVP == nullptr;
+		if (missing && (!warnedMissing || Device.dwFrame >= nextMissingLog))
+		{
+			Msg("* [PIP] optic is PiP capable but the second target set is missing (creation failed or path disabled)");
+			warnedMissing = true;
+			nextMissingLog = Device.dwFrame + 18000;
+		}
+		if (!missing) warnedMissing = false;
+	}
 	// PiP: from here on the renderer owns the lens view (the game alternation and the
 	// game side flags are already derived from the state evaluated above)
 	if (pipOn && TargetSVP)
@@ -1095,7 +1126,7 @@ void CRender::Render()
 		// Binding evidence per pass: which set the renderer thinks is active, what the
 		// device extent is and what the upscaler thinks the render extent is. A mismatch
 		// here explains a pass that draws into something other than this set's targets.
-		if (svpcam::s_svpDebug > 0 && (lensPass || viewCount > 1) && (Device.dwFrame % 120) == 0)
+		if (svpcam::s_svpDebug > 0 && (lensPass || viewCount > 1) && (Device.dwFrame % 600) == 0)
 		{
 			Msg("* [PIP] pass view=%d%s camera=%s active=%s dev=%ux%u dlss=%d/%ux%u rsw=%u set=%ux%u mag=%.2f heat=%.0f nvg=%.0f",
 				view, lensPass ? (publish ? "(lens,publish)" : "(lens,dry)") : "(main)",
@@ -1280,7 +1311,14 @@ void CRender::Render()
 	if (viewCount > 1 && TargetMain && Target != TargetMain)
 	{
 		TargetMain->SetActive(true);
-		Msg("! [PIP] frame ended on the lens target set; main set restored (state leak)");
+		// Once per session: this fires every frame while leaking, and a frame rate's worth of
+		// warnings buries everything else in the log.
+		static bool warnedLeak = false;
+		if (!warnedLeak)
+		{
+			Msg("! [PIP] frame ended on the lens target set; main set restored (state leak, reported once)");
+			warnedLeak = true;
+		}
 	}
 
 	render_stats::Publish(render_stats::MsSince(statsFrameStart));
