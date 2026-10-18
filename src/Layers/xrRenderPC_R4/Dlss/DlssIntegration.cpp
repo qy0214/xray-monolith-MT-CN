@@ -289,19 +289,25 @@ void BeginScene()
     // Scope frames must neither consume a jitter sample nor overwrite the history.
     mainView = !Device.m_SecondViewport.m_render_pass_is_svp;
     const bool stableOverlay = StableOverlaysActive();
-    // PiP diagnostic: the inputs and the result of the stable overlay test, plus the camera motion
-    // blur, logged only while the player is actually aiming. The thermal sights are the case that
-    // needs watchng here: they report zoom factors at or below 1 and have no second viewport, so
-    // every clause of this test depends on the optic facts, and the log is what tells whether the
-    // clause fired for them.
-    if (svpcam::s_svpDebug > 0 && Device.dwFrame % 300 == 0 && g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants
-        && g_pGamePersistent->m_pGShaderConstants->hud_params.x > 0.05f)
-        Msg("* [PIP] unstable=%d svp=%d magnifies=%d lensFov=%.2f ads=%.2f zoom=%.2f motionblur=%.2f img=%d",
-            stableOverlay ? 1 : 0, Device.m_SecondViewport.IsSVPActive() ? 1 : 0,
-            Device.m_SecondViewport.svp_optic_magnifies ? 1 : 0, Device.m_SecondViewport.svp_lens_fov,
-            g_pGamePersistent->m_pGShaderConstants->hud_params.x,
-            g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x,
-            ps_ssfx_motionblur.y, Device.m_SecondViewport.svp_optic_image_type);
+    // Thermal optic diagnostic, once per episode (not on a timer, and not behind the debug switch):
+    // this is the optic whose image ghosts while panning, three hypotheses have been disproved
+    // against it (the lens reflection, the zoom factor gated stable overlay clause, the camera
+    // motion blur), and the values that decide the engine side of it should be in the log of any
+    // session where the artifact is looked at. One line per aim costs nothing.
+    {
+        const bool thermalOptic = Device.m_SecondViewport.svp_optic_magnifies
+            && (Device.m_SecondViewport.svp_optic_image_type >= 2 || Device.m_SecondViewport.svp_optic_thermal);
+        static bool lastThermalOptic = false;
+        if (thermalOptic != lastThermalOptic)
+        {
+            Msg("* [PIP] thermal optic: unstable=%d svp=%d lensFov=%.2f ads=%.2f zoom=%.2f motionblur=%.2f img=%d",
+                stableOverlay ? 1 : 0, Device.m_SecondViewport.IsSVPActive() ? 1 : 0,
+                Device.m_SecondViewport.svp_lens_fov, g_pGamePersistent->m_pGShaderConstants->hud_params.x,
+                g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x, ps_ssfx_motionblur.y,
+                Device.m_SecondViewport.svp_optic_image_type);
+            lastThermalOptic = thermalOptic;
+        }
+    }
     if (Active())
     {
         // A device view changes the whole image every frame without matching the

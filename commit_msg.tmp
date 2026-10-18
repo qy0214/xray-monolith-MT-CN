@@ -1,20 +1,22 @@
-perf(pip): Rate govern the diagnostics we keep on, so a long session does not fill the log
+diag(pip): Record the thermal optic's engine state once per aim, and point the next test at the dump
 
-The probes that read render targets back are already off by default; this is about the lines that
-stayed on, which added up over hours.
+The camera motion blur is ruled out (turning it off changed nothing), the third hypothesis against
+this artifact. What the failures have narrowed is worth recording: the thermal image is computed in
+the pack's shader from the G-buffer (infrared(gbuffer_load_data(...))), so no post process effect can
+be its source - the fog, the rain, the bloom and the motion blur all operate on the colour image
+afterwards. That leaves either something that changes the pixels the sight is drawn into (the
+temporal upscaler) or an input of the shader itself.
 
- - the per optic line fired whenever the lens FOV changed, and a dynamic zoom sight changes it on
-   every frame of its zoom animation, so raising a variable power optic cost ten to twenty lines per
-   aim. It is now a summary written once when the aim ends (plus a five minute heartbeat for a held
-   aim), reporting the optic, the range of lens FOV and power that the aim covered - which is what
-   those per step lines were read for - together with the current facts. Nothing is written while
-   the values simply keep moving.
- - the state line ran every 300 frames while an optic was up: 720 lines per hour with nothing new to
-   say. It now writes on a change of lens/target state plus the same five minute heartbeat.
- - the thermal optic line and the "second target set is missing" warning likewise write once per
-   episode instead of on a timer.
- - the per pass line (debug only) is throttled to every 600 frames instead of 120.
- - the state leak warning fires every frame while leaking; it is now reported once per session.
+Two things are needed from the next session and both are now in place.
 
-What stays as it was: the one off messages (target set created, pack policy, build stamp), which are
-per session and worth having.
+One, the engine's state for the thermal case, once per aim rather than behind the debug switch: the
+answer to "did the stable overlay clause fire" was only ever visible in a debug session, which the
+previous commit then turned off by default. One line per aim is affordable and it says whether
+unstable=1 for the optic whose image ghosts, along with the ADS progress, the zoom factor, the motion
+blur value and the image type.
+
+Two, an image. The dump built for exactly this case (a thermal optic has no lens, so the publish
+block never runs for it) writes the main view to pip_optics_screen.bmp with r__svp_debug 2, throttled
+to every 600 frames. Panning with the sight up should land one while the artifact is in the frame,
+and its shape - a circle, a band, a gradient edge - identifies the mechanism in a way that reading
+code has not.
