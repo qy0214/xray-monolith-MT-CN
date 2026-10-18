@@ -716,6 +716,7 @@ void CRender::Render()
 	// still decides which pixels are drawn. The HOM is left to the main pass, whose result the
 	// rest of the frame uses.
 	const bool svpWideFrustum = pipOn && view == 0 && svpcam::s_main.valid;
+	const bool svpLensViewPass = pipOn && view == 0;
 	Fmatrix& svpVisMatrix = svpWideFrustum ? svpcam::s_main.mFullTransform : Device.mFullTransform;
 	ViewBase.CreateFromMatrix(svpVisMatrix, FRUSTUM_P_LRTB + FRUSTUM_P_FAR);
 	if (!svpWideFrustum)
@@ -821,14 +822,25 @@ void CRender::Render()
 		PIX_EVENT_C(DEFER_PART1_SPLIT, dx10_marker_gbuffer);
 		// level
 		Target->phase_scene_begin();
-		GMBase.r_dsgraph_capture_hud();
-		// DLSS: move the PDA/glass items out of the scene so they are not upscaled.
-		// phase_dlss_postprocess always runs on the complex post-process path
-		// (PP_Complex is forced on in phase_combine), so the display-resolution
-		// pass that redraws these items is always there when DLSS is configured.
-		if (dlss::Configured())
-			GMBase.r_dsgraph_extract_native_ui();
-		GMBase.r_dsgraph_render_hud();
+		// PiP: the lens content is the world and nothing else. Drawing the first person
+		// model here put the optic - and therefore the lens material, which samples the
+		// second view - inside the second view, so the lens contained another lens, which
+		// contained another: the nested rings the player described, one per magnification
+		// step, and the reason the lens looked like a dark copy of the screen with a
+		// magnified reticle instead of a magnified world. The optic and the reticle belong
+		// to the main pass, which draws them over the lens image exactly like the stock
+		// scope does.
+		if (!svpLensViewPass)
+		{
+			GMBase.r_dsgraph_capture_hud();
+			// DLSS: move the PDA/glass items out of the scene so they are not upscaled.
+			// phase_dlss_postprocess always runs on the complex post-process path
+			// (PP_Complex is forced on in phase_combine), so the display-resolution
+			// pass that redraws these items is always there when DLSS is configured.
+			if (dlss::Configured())
+				GMBase.r_dsgraph_extract_native_ui();
+			GMBase.r_dsgraph_render_hud();
+		}
 		GMBase.r_dsgraph_render_lods(true,true);
 		if (Details) Details->Render();
 		Target->phase_scene_end();
