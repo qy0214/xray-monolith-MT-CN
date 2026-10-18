@@ -501,7 +501,15 @@ void CCameraManager::ApplyDevice(float _viewport_near)
 	Device.fASPECT = m_cam_info.fAspect;
 	//--#SM+# Begin-- +SecondVP+
 	// Recalculate scene FOV for SecondVP frame
-	if (Device.m_SecondViewport.IsSVPFrame())
+	//
+	// PiP (T3 #6): this is the LEGACY SVP frame swap, and it must not run while the renderer
+	// produces the lens in the same frame. Its predicate is the legacy alternation, and it
+	// also sets isCamReady, which suppresses Present. With the same frame path live it used
+	// to fire on alternate frames while aiming - corrupting the main view's FOV (Device.fFOV
+	// is also the lens shader's ogse_c_screen.x, so the reticle scale flickered), stealing
+	// Present on those frames and fighting the two pass render loop. true_pip_same_frame is
+	// published by the renderer once per frame for exactly this check.
+	if (!Device.m_SecondViewport.true_pip_same_frame && Device.m_SecondViewport.IsSVPFrame())
 	{
 		// For the second viewport, set FOV from HUD shader constants
 		Device.fFOV = g_pGamePersistent->m_pGShaderConstants->hud_params.y;

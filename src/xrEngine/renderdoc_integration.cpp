@@ -315,7 +315,7 @@ void renderdoc_annotate_frame(const Fvector4* shader_params, u32 count)
 
 	rdc_annotate("xray.render.width", Device.dwWidth);
 	rdc_annotate("xray.render.height", Device.dwHeight);
-	rdc_annotate("xray.svp", Device.m_SecondViewport.IsSVPFrame() ? 1u : 0u);
+	rdc_annotate("xray.svp", Device.m_SecondViewport.IsSVPActive() ? 1u : 0u);
 
 	rdc_annotate("xray.level.name", g_pGameLevel ? g_pGameLevel->name().c_str() : "");
 

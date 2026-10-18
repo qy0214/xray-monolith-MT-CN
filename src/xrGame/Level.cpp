@@ -1312,7 +1312,7 @@ void CLevel::OnRender()
 	Game().OnRender();
 	BulletManager().Render();
 
-	if (Device.m_SecondViewport.IsSVPFrame())
+	if (Device.m_SecondViewport.IsSVPActive())   // PiP: frame level, not the legacy alternation
 		Render->RenderToTarget(Render->rtSVP);
 
 	if (use_reshade)

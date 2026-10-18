@@ -484,13 +484,13 @@ void dxRenderDeviceRender::End()
 
 	// PiP (T3 #6): with the same-frame lens every frame carries the normal view, so
 	// every frame is presentable; the legacy path still skips the scope frame.
-	if ((compat::r__svp_same_frame || !Device.m_SecondViewport.IsSVPFrame()) && !Device.m_SecondViewport.isCamReady) {
+	if ((compat::r__svp_same_frame || !Device.m_SecondViewport.IsSVPActive()) && !Device.m_SecondViewport.isCamReady) {
 		HW.m_pSwapChain->Present(present_interval, present_flags);
 	}
 #else //!USE_DX10 || USE_DX11
 	CHK_DX(HW.pDevice->EndScene());
 
-	if ((compat::r__svp_same_frame || !Device.m_SecondViewport.IsSVPFrame()) && !Device.m_SecondViewport.isCamReady)
+	if ((compat::r__svp_same_frame || !Device.m_SecondViewport.IsSVPActive()) && !Device.m_SecondViewport.isCamReady)
 		HW.pDevice->Present(NULL, NULL, NULL, NULL);
 #endif //-USE_DX10
 	//HRESULT _hr		= HW.pDevice->Present( NULL, NULL, NULL, NULL );
