@@ -547,6 +547,17 @@ void CRenderTarget::phase_combine()
 	{
 		phase_3DSSReticle(); // Redotix99: for 3D Shader Based Scopes
 	}
+	else if (Device.m_SecondViewport.svp_optic_thermal || Device.m_SecondViewport.svp_optic_image_type >= 2)
+	{
+		// The pack's scope shaders read the G-buffer position from $user$generic2, which this
+		// engine otherwise uses as the volumetric light buffer (r2_types.h). That buffer is
+		// cleared at the start of every frame (phase_scene_begin resets m_bHasActiveVolumetric),
+		// so publishing the position there for the scope pollutes nothing. The fake scope path
+		// does it for its reticle pass; a THERMAL optic needs it for the infrared() look its own
+		// shader runs on the 3DSS path - which is the whole reason that optic keeps that path -
+		// so it is done here for that optic instead of depending on r__3Dfakescope being on.
+		HW.pContext->CopyResource(rt_Generic_2->pTexture->surface_get(), rt_Position->pTexture->surface_get());
+	}
 
 	//Compute blur textures
 	if (!Device.m_SecondViewport.m_render_pass_is_svp) // Temp fix for blur buffer and SVP

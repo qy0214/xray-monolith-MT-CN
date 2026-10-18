@@ -1,30 +1,13 @@
-fix(pip): Let thermal optics keep the 3DSS path, with no new files
+fix(pip): Publish the G-buffer position for a thermal optic's infrared look
 
-The pack's own lens shader treats a thermal optic (s3ds_image_type >= 2, or scope_lense_thermal) as
-"the engine will hand me a hot image": in its scope_svp > 0 branch it skips its grading AND its
-infrared() path, and just displays the second view. Nothing in this engine can satisfy that. The
-only way the engine can make a view hot is phase_heatvision(), which is a DEVICE effect: the bundled
-heat vision shader's compute_lens_mask() accepts a 1/2/4 tube layout and returns 0 everywhere else,
-and with no worn device the tube count is 0, so the pass writes a black frame. That is the measured
-cause of both the black lens and the black screen a forced r__heatvision 1 produces.
+Review follow up on the thermal optic rule. The pack's scope shaders read the G-buffer position
+through s_position, which both scope mods bind to $user$generic2 (models_scope_reticle.s). In this
+engine that name is the volumetric light buffer (r2_types.h), and the only code that puts the
+position there is phase_3DSSReticle(), the fake scope path, which runs when r__3Dfakescope is on -
+it is on in the pack's user.ltx, which is why the pack's shading has worked here. The pack's
+infrared() thermal look is the one consumer that cannot work without it, so making a thermal optic
+depend on the player leaving that option enabled would be a hidden dependency.
 
-The pack's working thermal model is the one its OWN shader runs on the 3DSS path: infrared() over
-the G-buffer plus the heat map LUT and pixelation. An optic takes that path exactly when the engine
-does not provide the second viewport, so for these optics the honest answer is no lens. The player
-gets the thermal sight the pack authored, with the plain ADS zoom the 3DSS setup already gives, and
-the engine needs no new shader file - which is also what the reference did: its SVP activation
-(CWeapon::UpdateSecondVP, four conditions, none about imaging) and its phase_combine
-(if (ps_r2_heatvision > 0) phase_heatvision(); unguarded on the SVP frame) show that the thermal look
-was always the pack script's job, driven from a worn device, and never the optic's.
-
-Implemented as a state rule, not a special case at the call sites: SvpScopeInputs gained
-optic_thermal_image and svp_evaluate_scope() refuses the lens for it, so the single writer keeps
-owning the decision and every consumer (scope_svp, the wide main view, the mouse ratio, the lens
-creation) follows. Tests cover the new boundary (52 checks now). The second target set is not even
-created for such an optic, so a thermal sight costs no VRAM and no second scene pass.
-
-Every optic that declares a thermal image also carries s3ds_image_type, so the pack's shader does
-have its thermal path on the 3DSS branch. The one exception is [vulcan], the only optic that is both
-NVG (s3ds_image_type = 1) and scope_lense_thermal: its thermal channel needs the engine's heat pass,
-which the heat vision mod's masked shader makes unusable without a device. That is the pack's own
-packaging state, identical in the reference, and is recorded in the contract document.
+A thermal optic now gets the same copy on its own, without the fake scope reticle pass. It is safe
+to overwrite because the volumetric buffer is reset every frame (phase_scene_begin clears
+m_bHasActiveVolumetric), and it only runs while such an optic is aimed.
