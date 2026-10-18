@@ -1,0 +1,41 @@
+MT-CN 性能设置（MT 引擎调优记录）
+=====================================
+
+一、已生效的关键设置（都在游戏的 appdata\user.ltx 与 gamedata\configs\axr_options.ltx 里）
+
+1) scheduler_batch_size = 512
+   作用：MT 调度器每个处理步收集的到期对象数。
+   为什么：默认 256、本整合包原先 128。128 时步数过多 → 锁往返/交接次数与积压外溢变多
+           → 明显掉帧。官方 README 对 GAMMA 类重整合包建议 512+。
+   现状：引擎源码默认值也已改为 512（换机/重置配置不会退回 128）。
+
+2) lua_use_functor_cache = 1   （本轮新增）
+   作用：缓存 Lua functor 查找（script_engine_inline.h），降低每次 Lua 调用开销。
+   低风险，Lua 重度整合包通常有收益。
+
+3) mt_task_manager = 1         （本轮新增）
+   作用：把 HUD / Level 回调作为并行 task 执行（HUDManager.cpp / Level.cpp），移出主线程。
+   中等收益；如遇到 HUD/关卡相关脚本异常，把它改回 0。
+
+二、MT 相关开关当前状态
+
+  已开启：mt_scheduler, mt_ui, mt_calc_bones, mt_bullets, mt_particles, r2_mt,
+          lua_parallel_gc（并行 Lua GC）, mt_update_weapon_sounds
+  仍关闭：mt_schedulerRT（整帧循环独立线程——收益最大，但官方注明可能破坏部分模组）
+          mt_level_call（物理 commander 线程化）
+
+三、怎么测（一次只改一个，同地点同朝向对比）
+
+  1. 控制台：rs_stats on             （显示引擎渲染统计/帧率）
+  2. 记录「DLSS 关 / 开」以及「改动前 / 改动后」的帧率
+  3. 注意：DLSS 只减 GPU 负载；人多/脚本多的区域若 CPU 瓶颈，帧率提升有限。
+     想看 DLSS 的效果差异，可切到 Ultra Performance（内部 640x400）观察草/铁丝网/远处文字是否变软。
+
+四、怎么回退
+
+  - 关掉本轮两项：MCM → Modded Exes → Optimizations 里把
+      "Lua functor cache" / "Task manager" 改回关闭（会同步写回两份配置）；
+    或直接把 appdata\user.ltx、gamedata\configs\axr_options.ltx 里对应值改回 0。
+  - 完全回退 MT-CN：JSGME 停用 MT-CN → 跑一次「清空着色器缓存.bat」。
+    （注意：本文件列的 1/2/3 是 cvar，存放于游戏自身配置，不在 MT-CN 里，
+      所以停用 MT-CN 不会自动还原它们；按上面方式手动改回即可。）

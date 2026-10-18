@@ -4,7 +4,6 @@
 
 > 本分支 = 上游 **X-Ray Monolith (MT)** 引擎 + **本仓库自己的适配层**。
 > 目标：让整合包（剧情 / 武器 / 画面类 MOD）在该引擎上**全部可用**，并在其上提供 **DLSS / FSR3 原生上采样** 与 **同帧 PiP 3D 镜内视图**。
-> 部署方式：仅写入整合包的 `MODS\MT-CN\`（由 MO2 覆盖）；**不写入整合包自带 `bin\`，不修改任何 MOD 文件**。
 
 ## 一、新增功能（简要）
 
@@ -14,9 +13,9 @@
 | **同帧 PiP 3D 镜内视图（3DSS / PiP 3DSS）** | 镜内与主画面**同一帧**渲染（第二套渲染目标），镜内永远是最新画面；镜头相机 FOV、曝光归属、后处理归属均有明确契约 |
 | **整合包兼容层（compat）** | 读取并驱动 MOD 自己约定的 cvar：`scope_lense_*`、`r__svp_*`、`r4_upscaler_*`、`s3ds_*` 等（整合包 MCM 可直接调整） |
 | **渲染统计面板** | 分阶段 CPU 耗时 + 上采样器实际输入/输出尺寸（含"举镜提升内部分辨率"状态） |
-| **诊断开关** | `r__svp_debug 0/1/2`（默认 0 = 零开销）、`r__svp_lens_power` 等；日志写率已按"长时间游玩"治理 |
+| **诊断开关** | `r__svp_debug 0/1/2`（默认 0 = 零开销）、`r__svp_lens_power` 等；|
 
-## 二、DLSS / FSR3 出处（引用）
+## 二、DLSS / FSR3 出处
 
 | | 出处 | 位置 |
 |---|---|---|
@@ -45,15 +44,25 @@
 - **第二套渲染目标**：SSFX **AO/IL 清零**、雾 / SSR / 水 / 雨 / 运动模糊 / 泛光**按遍守卫**、模糊链归属明确；
 - **名称重映射**：第二套目标全部经 `createUnique`，并把镜内图**发布到镜头材质真正采样的那张表面**；
 - **镜内目标尺寸/格式**：保持显示尺寸与比例；HDR10 下格式不匹配时**拒绝创建**（避免静默失败）；
-- **准星高倍尺度**：pack 声明的 FFP 在 PiP 下改用 SFP 分支，保持 3DSS 观感（准星贴图无逐倍率美术）；
-- **变倍镜**：跟踪当前倍率并给出可判定日志（`lensFov/mag/ads` 区间）；
-- **日志与性能**：探针默认关闭，按"变化时 + 5 分钟心跳"写入，长时间游玩不再产生海量日志。
+- **准星高倍尺度**：pack 声明的 FFP 在 PiP 下改用 SFP 分支，保持 3DSS 观感；
+- **变倍镜**：
 
 ## 五、已知问题（诚实标注）
 
 1. **热成像镜快速转动时镜内出现一圈"光圈"**：**未解决**。已实测排除五条：镜片反射模型、上采样"屏幕锁定"判据、相机运动模糊、上采样器本身（关闭 DLSS 无效）、TAA 掩码路径。下一步建议：`r__svp_debug 2` 并在举镜扫视时抓取 `appdata\logs\pip_optics_screen.bmp`，按其形状定位。
 2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）尚未解析；目前以"瞄具是否真的放大 + PiP 模块是否存在"作为等价门槛。
 3. **部署方式**：整合包 `bin\AnomalyDX11AVX.exe` 的归属需玩家确认（MO2 覆盖 vs 拷入 `bin`）；可用日志启动戳的 `exeTime/exeSize` 判定实际运行的构建。
+
+## 六、部署要求与运行时来源（配套归档：`dist/MT-CN/`）
+
+本仓库的 `dist/MT-CN/` 是整合包 `MODS\MT-CN\` 的**可部署快照**（不含大体积二进制）；完整说明见 `dist/MT-CN/来源与要求.md`。
+
+| 项 | 说明 |
+|---|---|
+| **`bin\nvngx_dlss.dll`**（未归档）| **NVIDIA DLSS 运行时**：产品 `NVIDIA Deep Learning SuperSampling`，版本 **310.9.1.0**（`NVIDIA DLSS - DVS PRODUCTION`），SHA-256 前缀 `3975567B8943`；与整合包 `bin\` 下为**同一份**。出处：**NVIDIA DLSS SDK（NGX）** <https://github.com/NVIDIA/DLSS> ／ <https://developer.nvidia.com/rtx/dlss> |
+| **`bin\ffx_*.dll`**（未归档）| **AMD FidelityFX FSR 3.1.2** 运行时，由游戏安装提供；SDK 与许可证见仓库 `sdk/FSR3/` |
+| **`bin\AnomalyDX11AVX.exe`**（未归档）| 由本仓库源码构建产出 |
+| **`scheduler_batch_size = 512`（必须）**| 需同时满足两处：`appdata\user.ltx` 的 `scheduler_batch_size 512`，与 `gamedata\configs\axr_options.ltx` 的 `modded_exes/optimizations/scheduler_batch_size = 512`（整合包基座中亦已是 512）。本快照两份均为 **512**。 |
 
 ---
 
