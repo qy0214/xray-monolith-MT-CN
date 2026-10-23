@@ -111,12 +111,12 @@ sPoly2D* C2DFrustum::ClipPoly(sPoly2D& S, sPoly2D& D) const
 
 void ui_core::OnDeviceReset()
 {
-	m_scale_.set(float(Device.dwWidth) / UI_BASE_WIDTH, float(Device.dwHeight) / UI_BASE_HEIGHT);
+	m_scale_.set(float(Device.ScreenWidth()) / UI_BASE_WIDTH, float(Device.ScreenHeight()) / UI_BASE_HEIGHT);
 
 	m_2DFrustum.CreateFromRect(Frect().set(0.0f,
 	                                       0.0f,
-	                                       float(Device.dwWidth),
-	                                       float(Device.dwHeight)
+	                                       float(Device.ScreenWidth()),
+	                                       float(Device.ScreenHeight())
 	));
 }
 
@@ -269,14 +269,14 @@ void ui_core::RenderFont()
 
 bool ui_core::is_widescreen()
 {
-	return (float(Device.dwWidth) / float(Device.dwHeight)) > (UI_BASE_WIDTH / UI_BASE_HEIGHT + 0.01f);
+	return (float(Device.ScreenWidth()) / float(Device.ScreenHeight())) > (UI_BASE_WIDTH / UI_BASE_HEIGHT + 0.01f);
 }
 
 u8 ui_core::screenmode()
 {
-	if ((float(Device.dwWidth) / float(Device.dwHeight)) > 1.8f)
+	if ((float(Device.ScreenWidth()) / float(Device.ScreenHeight())) > 1.8f)
 		return u8(2);
-	else if ((float(Device.dwWidth) / float(Device.dwHeight)) > (UI_BASE_WIDTH / UI_BASE_HEIGHT + 0.01f))
+	else if ((float(Device.ScreenWidth()) / float(Device.ScreenHeight())) > (UI_BASE_WIDTH / UI_BASE_HEIGHT + 0.01f))
 		return u8(1);
 	return u8(0);
 }
@@ -288,8 +288,8 @@ float ui_core::get_current_kx()
 	if (core && (core->m_currentPointType == IUIRender::pttLIT || core->m_bAspectNeutral))
 		return 1.0f;
 
-	float h = float(Device.dwHeight);
-	float w = float(Device.dwWidth);
+	float h = float(Device.ScreenHeight());
+	float w = float(Device.ScreenWidth());
 
 	float res = (h / w) / (UI_BASE_HEIGHT / UI_BASE_WIDTH);
 	return res;

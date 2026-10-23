@@ -1267,7 +1267,10 @@ void CActor::UpdateCL()
 			// 0, which is what the pack's shaders did before (a clean screen).
 			{
 				auto* constants = g_pGamePersistent->m_pGShaderConstants;
-				constants->m_actor_params.set(0.f, conditions().health(), 0.f, 0.f);
+				// The FDDA contract is 0..1 (ShadersExternalData.h); health() can be
+				// negative in the dying frame (MIN_HEALTH is -0.01 and the death
+				// effector ends at -1.0), which the screen tint would extrapolate.
+				constants->m_actor_params.set(0.f, clampr(conditions().health(), 0.f, 1.f), 0.f, 0.f);
 				constants->m_affects.set(0.f, 0.f, 0.f, 0.f);
 
 				// _TIME_ID is milliseconds of in-game time; a day is 86400000 ms.
@@ -2570,8 +2573,8 @@ void CActor::RenderText(LPCSTR Text, Fvector dpos, float* pdup, u32 color)
 	if (v_res.z < 0 || v_res.w < 0) return;
 	if (v_res.x < -1.f || v_res.x > 1.f || v_res.y < -1.f || v_res.y > 1.f) return;
 
-	float x = (1.f + v_res.x) / 2.f * (Device.dwWidth);
-	float y = (1.f - v_res.y) / 2.f * (Device.dwHeight);
+	float x = (1.f + v_res.x) / 2.f * (Device.ScreenWidth());
+	float y = (1.f - v_res.y) / 2.f * (Device.ScreenHeight());
 
 	pFont->SetAligment(CGameFont::alCenter);
 	pFont->SetColor(color);

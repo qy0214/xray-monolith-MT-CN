@@ -307,8 +307,8 @@ void CSpaceRestrictor::OnRender	()
 		if (v_res.x < -1.f || v_res.x > 1.f || v_res.y<-1.f || v_res.y>1.f) return;
 
 		// get real (x,y)
-		float x = (1.f + v_res.x)/2.f * (Device.dwWidth);
-		float y = (1.f - v_res.y)/2.f * (Device.dwHeight) - delta_height;
+		float x = (1.f + v_res.x)/2.f * (Device.ScreenWidth());
+		float y = (1.f - v_res.y)/2.f * (Device.ScreenHeight()) - delta_height;
 
 		UI().Font().pFontMedium->SetColor	(0xffff0000);
 		UI().Font().pFontMedium->OutSet	(x, y-=delta_height);

@@ -1911,11 +1911,11 @@ const Fvector3 world2ui_with_depth(Fvector pos, bool hud = false, bool allow_off
 		if (abs(v_res.x) > 1.f || abs(v_res.y) > 1.f) return { -9999,0 };
 	}
 
-	float x = (1.f + v_res.x) / 2.f * (Device.dwWidth);
-	float y = (1.f - v_res.y) / 2.f * (Device.dwHeight);
+	float x = (1.f + v_res.x) / 2.f * (Device.ScreenWidth());
+	float y = (1.f - v_res.y) / 2.f * (Device.ScreenHeight());
 
-	float width_fk = Device.dwWidth / UI_BASE_WIDTH;
-	float height_fk = Device.dwHeight / UI_BASE_HEIGHT;
+	float width_fk = Device.ScreenWidth() / UI_BASE_WIDTH;
+	float height_fk = Device.ScreenHeight() / UI_BASE_HEIGHT;
 
 	x /= width_fk;
 	y /= height_fk;

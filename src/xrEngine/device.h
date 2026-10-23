@@ -249,6 +249,17 @@ public:
 		u32 svp_pass_height = 0;
 		IC void SetSVPPassExtent(u32 w, u32 h) { svp_pass_width = w; svp_pass_height = h; }
 
+		// P1-2 seam: the DISPLAY extent, i.e. the main pass's own size. SetActive
+		// publishes it whenever the main set is bound and the lens pass never
+		// changes it, so game-side readers (UI layout, input, screen-space
+		// gameplay math) can read the size of the screen the player sees without
+		// observing the lens pass's temporary rewrite of Device.dwWidth/dwHeight.
+		// Reads that want the pass being rendered right now belong in
+		// RenderScreenWidth/Height (DlssIntegration) instead.
+		u32 main_pass_width = 0;
+		u32 main_pass_height = 0;
+		IC void SetMainPassExtent(u32 w, u32 h) { main_pass_width = w; main_pass_height = h; }
+
 		IC bool IsSVPActive() { return isActive; }
 		void SetSVPActive(bool bState);
 		bool    IsSVPFrame();
@@ -380,6 +391,14 @@ public:
 	bool true_pip_on = false;
 
 	CSecondVPParams m_SecondViewport;	//--#SM+#-- +SecondVP+
+
+	// The display/main-pass extent, stable while a lens pass rewrites dwWidth/
+	// dwHeight to the lens size (see CSecondVPParams::main_pass_width). Game-side
+	// per-frame code that wants "the size of the screen the player sees" should
+	// read these instead of the raw globals; before the first SetActive they
+	// simply fall back to the globals.
+	IC u32 ScreenWidth() const { return m_SecondViewport.main_pass_width ? m_SecondViewport.main_pass_width : dwWidth; }
+	IC u32 ScreenHeight() const { return m_SecondViewport.main_pass_height ? m_SecondViewport.main_pass_height : dwHeight; }
 
 	//float fFOV;
 	//float fASPECT;
