@@ -300,6 +300,13 @@ MT 版本的已知问题
 5. 若要批量编译所有配置，使用 `batch_build.bat`
 6. 要顺利编译，**需要最新且包含 MFC 与 ATL 库的生成工具**
 
+### 上游同步策略（2026-10-24 实测）
+
+本仓库的血缘上游是 `themrdemonized/xray-monolith` 的 `all-in-one-vs2022-wpo-mt` 分支（remote `upstream` 已配置）。实测分叉数据：fork 点 2026-10-11，我方 148 提交 vs 上游 4 提交（±20 行/6 文件），合并零冲突。结论与约定：
+
+- **轻度跟上游成本极低**：每个开发批次开始时执行 `git fetch upstream && git merge upstream/all-in-one-vs2022-wpo-mt`，构建验证后继续。
+- **重度重构（Weapon.cpp / console_commands.cpp 拆分、整库 C++ 现代化）不做**：那才是真正的冲突热点；现代化只针对本 fork 自有代码（DLSS/PiP/compat 层），保持对上游的 diff 干净。
+
 ### 在 VS2022 中使用 Hot Reload 特性以便快速反馈（作者 lulnope）：
 
 1. 先按上面的「如何编译 exe」说明操作
