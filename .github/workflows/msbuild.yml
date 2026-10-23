@@ -297,8 +297,28 @@ jobs:
         # Duration after which artifact will expire in days. 0 means using default retention. Minimum 1 day. Maximum 90 days unless changed from the repository settings page.
         retention-days: 1
 
+  tests:
+    name: unit-tests-job
+    # The host tests (src/tests) are deliberately standalone: no engine libs, no
+    # submodules, one vcxproj. They gate the release so a broken table or state
+    # machine never ships as an exe. run_tests.bat builds tests.vcxproj and runs
+    # the exe; a non-zero exit code fails this job.
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: setup-msbuild
+      uses: microsoft/setup-msbuild@v1.3.1
+      with:
+        msbuild-architecture: "x64"
+
+    - name: Build and run host tests
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: .\src\tests\run_tests.bat
+
   release:
-    needs: [pack_gamedata, build, build_mt]
+    needs: [pack_gamedata, build, build_mt, tests]
     name: Release
     runs-on: ubuntu-latest
     steps:
