@@ -52,7 +52,9 @@
 
 1. **热成像镜快速转动时镜内出现一圈"光圈"**：**未解决**。已实测排除五条：镜片反射模型、上采样"屏幕锁定"判据、相机运动模糊、上采样器本身（关闭 DLSS 无效）、TAA 掩码路径。下一步建议：`r__svp_debug 2` 并在举镜扫视时抓取 `appdata\logs\pip_optics_screen.bmp`，按其形状定位。
 2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）尚未解析；目前以"瞄具是否真的放大 + PiP 模块是否存在"作为等价门槛。
-3. **部署方式**：整合包 `bin\AnomalyDX11AVX.exe` 的归属需玩家确认（MO2 覆盖 vs 拷入 `bin`）；可用日志启动戳的 `exeTime/exeSize` 判定实际运行的构建。
+3. **MCM 的 live effects 开关当前无效**（`scope_lense_live_effects`）：引擎尚未提供主视口 effect buffer（`s_pip_main_effects`），着色器常量固定按"关闭"上报（`Blender_Recorder_StandartBinding.cpp` 的 `scope_lense_live_effects` binder），镜头走旧路径。MCM 页可调但画面不变——这是已知的未实现项，不是配置问题；完整方案见计划文档 Task 8 Step 2（把主视口颜色 RT 绑定为退化来源）。
+4. **`scope_lense_ads_is_pip` 晚一帧**：该值由渲染器每帧开头刷新（`compat::Tick`），比"本帧是否 PiP 瞄准"的评估结果晚一帧到达；MCM/脚本侧展示用途不受影响，做逐帧逻辑时不要依赖它的即时性。
+5. **部署方式**：整合包 `bin\AnomalyDX11AVX.exe` 的归属需玩家确认（MO2 覆盖 vs 拷入 `bin`）；可用日志启动戳的 `exeTime/exeSize` 判定实际运行的构建。
 
 ## 六、部署要求与运行时来源（配套归档：`dist/MT-CN/`）
 
