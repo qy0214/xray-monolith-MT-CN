@@ -29,7 +29,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>..\xrCore;..\xrEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\xrCore;..\xrEngine;..\Layers\xrRender;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <Optimization>MaxSpeed</Optimization>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -45,12 +45,14 @@
     <ClCompile Include="svp_scope_state_tests.cpp" />
     <ClCompile Include="spawn_budget_tests.cpp" />
     <ClCompile Include="console_registry_tests.cpp" />
+    <ClCompile Include="upscaler_alias_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="test_harness.h" />
     <ClInclude Include="..\xrCore\svp_scope_state.h" />
     <ClInclude Include="..\xrCore\spawn_budget.h" />
     <ClInclude Include="..\xrEngine\console_registry.h" />
+    <ClInclude Include="..\Layers\xrRender\UpscalerAliasMap.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

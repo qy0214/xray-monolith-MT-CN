@@ -4,6 +4,7 @@
 #include	"xrRender_console.h"
 #include	"dxRenderDeviceRender.h"
 #include	"UpscalerCompat.h"
+#include	"UpscalerAliasMap.h"
 
 #include "../../build_config_defines.h"
 
@@ -13,7 +14,14 @@ u32 ps_r_dlss_quality = 0;
 // Its quality defaults to Off, so a fresh installation still renders natively.
 u32 ps_r_upscaler = 1;
 u32 ps_r_fsr3_quality = 1;
-xr_token upscaler_token[] = {{"off", 0}, {"dlss", 1}, {"fsr3", 2}, {nullptr, 0}};
+// Generated from compat::UpscalerMethods (UpscalerAliasMap.h): this array is in
+// native order (index == native value).
+xr_token upscaler_token[] = {
+	{compat::UpscalerMethods[0].name, int(compat::UpscalerMethods[0].native)},
+	{compat::UpscalerMethods[1].name, int(compat::UpscalerMethods[1].native)},
+	{compat::UpscalerMethods[2].name, int(compat::UpscalerMethods[2].native)},
+	{nullptr, 0}
+};
 xr_token fsr3_quality_token[] = {
     {"native_aa", 0}, {"quality", 1}, {"balanced", 2},
     {"performance", 3}, {"ultra_performance", 4}, {nullptr, 0}
@@ -1344,6 +1352,16 @@ namespace compat
 	float	r4_upscaler_custom_scale = 1.0f;
 	float	r4_upscaler_sharpness = 0.0f;
 
+	// Latched by CCC_TokenConfigured (below) when r4_upscaler / r_upscaler
+	// execute: the user.ltx load, console entry and MCM script writes all funnel
+	// through Execute, so "latched" means "this side carries an explicit user
+	// selection". The startup alias sync (SyncUpscalerAliases) reads them to tell
+	// that apart from "the variable still sits on its default": pushing the alias
+	// default (off) over a configured native value is what silently disabled
+	// DLSS/FSR3 for users upgrading with a pipdlss-era user.ltx (review P1-1).
+	bool s_alias_method_configured = false;	// r4_upscaler executed at least once
+	bool s_native_method_configured = false;	// r_upscaler executed at least once
+
 	int		scope_lense_live_effects = 1;
 	int		scope_lense_temporal_mode = 2;
 	int		scope_lense_quality_percent = 100;
@@ -1413,12 +1431,41 @@ namespace compat
 	int		session_start = 0;
 	int		tasks_version = 0;
 
+	// Generated from UpscalerMethods (UpscalerAliasMap.h): this array is in alias
+	// order (index == alias value), which is off/fsr3/dlss - deliberately NOT the
+	// table's (native) order.
 	xr_token upscaler_compat_token[] = {
-		{"off", 0}, {"fsr3", 1}, {"dlss", 2}, {nullptr, 0}
+		{UpscalerMethods[0].name, int(UpscalerMethods[0].alias)},
+		{UpscalerMethods[2].name, int(UpscalerMethods[2].alias)},
+		{UpscalerMethods[1].name, int(UpscalerMethods[1].alias)},
+		{nullptr, 0}
 	};
+	static_assert(UpscalerMethods[0].alias == 0 && UpscalerMethods[2].alias == 1
+		&& UpscalerMethods[1].alias == 2, "upscaler_compat_token order must follow the alias values");
 	xr_token upscaler_quality_compat_token[] = {
 		{"native", 0}, {"quality", 1}, {"balanced", 2}, {"performance", 3},
 		{"ultra_performance", 4}, {"custom", 5}, {nullptr, 0}
+	};
+
+	// r4_upscaler / r_upscaler with an "explicitly configured" latch: Execute is
+	// the single funnel for user.ltx, the console and MCM script writes, so the
+	// latch answers "did the user set this" for the startup alias sync.
+	class CCC_TokenConfigured : public CCC_Token
+	{
+	public:
+		CCC_TokenConfigured(LPCSTR N, u32* V, xr_token* T, bool& latch) :
+			CCC_Token(N, V, T), m_latch(latch)
+		{
+		}
+
+		virtual void Execute(LPCSTR args)
+		{
+			CCC_Token::Execute(args);
+			m_latch = true;
+		}
+
+	private:
+		bool& m_latch;
 	};
 
 	void RegisterConsoleVars()
@@ -1427,7 +1474,7 @@ namespace compat
 		if (registered)	return;
 		registered = true;
 
-		CMD3(CCC_Token, "r4_upscaler", &r4_upscaler, upscaler_compat_token);
+		CMD4(CCC_TokenConfigured, "r4_upscaler", &r4_upscaler, upscaler_compat_token, s_alias_method_configured);
 		CMD3(CCC_Token, "r4_upscaler_quality", &r4_upscaler_quality, upscaler_quality_compat_token);
 		CMD4(CCC_Float, "r4_upscaler_custom_scale", &r4_upscaler_custom_scale, 0.33f, 1.0f);
 		CMD4(CCC_Float, "r4_upscaler_sharpness", &r4_upscaler_sharpness, 0.0f, 1.0f);
@@ -1522,24 +1569,8 @@ namespace compat
 	static u32	s_last_native_method = u32(-1), s_last_native_dlss_q = u32(-1), s_last_native_fsr3_q = u32(-1);
 	static float	s_last_native_sharp = -1.0f;
 
-	inline u32 aliasMethodToNative(u32 v) { return (v == 0) ? 0u : ((v == 1) ? 2u : 1u); }
-	inline u32 nativeMethodToAlias(u32 v) { return (v == 0) ? 0u : ((v == 1) ? 2u : 1u); }
-	inline u32 aliasQualityToDlss(u32 q)
-	{
-		switch (q) { case 0: return 1; case 1: return 2; case 2: return 3; case 3: return 4; case 4: return 5; default: return 4; }
-	}
-	inline u32 dlssQualityToAlias(u32 q)
-	{
-		switch (q) { case 1: return 0; case 2: return 1; case 3: return 2; case 4: return 3; case 5: return 4; default: return 3; }
-	}
-	inline u32 aliasQualityToFsr3(u32 q)
-	{
-		switch (q) { case 0: return 0; case 1: return 1; case 2: return 2; case 3: return 3; case 4: return 4; default: return 3; }
-	}
-	inline u32 fsr3QualityToAlias(u32 q)
-	{
-		switch (q) { case 0: return 0; case 1: return 1; case 2: return 2; case 3: return 3; case 4: return 4; default: return 3; }
-	}
+	// The value mapping (aliasMethodToNative etc.) comes from UpscalerAliasMap.h:
+	// one table for both vocabularies, unit tested in src/tests.
 
 	void SyncUpscalerAliases()
 	{
@@ -1548,17 +1579,24 @@ namespace compat
 		const bool nativeChanged = ps_r_upscaler != s_last_native_method || ps_r_dlss_quality != s_last_native_dlss_q
 			|| ps_r_fsr3_quality != s_last_native_fsr3_q || ps_r_dlss_sharpness != s_last_native_sharp;
 
-		// The first call is the startup one (before the targets are created). At
-		// that point both sides look "changed" only because the trackers are
-		// empty, so a pre-existing mismatch between the MCM selection and the
-		// latched native value must be resolved alias -> native. Otherwise the
-		// upscaler would start native and only pick the selection up when the
-		// user touches a control.
+		// The first call is the startup one (before the targets are created), when
+		// the trackers are empty and both sides look "changed", so the change
+		// counters alone cannot pick a direction. The s_*_method_configured
+		// latches (CCC_TokenConfigured) say which side the user actually set:
+		//   alias configured        -> the MCM selection wins over a stale native
+		//                              value (the historical direction)
+		//   only native configured  -> a pipdlss-era user.ltx (r_upscaler dlss,
+		//                              no r4_* keys): keep the native value and
+		//                              mirror it into the MOD names. Pushing the
+		//                              alias default (off) here is what silently
+		//                              disabled DLSS/FSR3 for upgrading users.
+		//   neither configured      -> fresh install: push the (off) defaults,
+		//                              exactly as before this latch existed.
 		static bool s_firstSync = true;
 		const bool firstSync = s_firstSync;
 		s_firstSync = false;
 
-		if (aliasChanged && (firstSync || !nativeChanged))
+		const auto pushAliasToNative = [&]()
 		{
 			ps_r_upscaler = aliasMethodToNative(r4_upscaler);
 			if (ps_r_upscaler == 2)	// fsr3
@@ -1566,13 +1604,25 @@ namespace compat
 			else
 				ps_r_dlss_quality = aliasQualityToDlss(r4_upscaler_quality);
 			ps_r_dlss_sharpness = r4_upscaler_sharpness;
-		}
-		else if (!firstSync && nativeChanged && !aliasChanged)
+		};
+
+		const auto pushNativeToAlias = [&]()
 		{
 			r4_upscaler = nativeMethodToAlias(ps_r_upscaler);
 			r4_upscaler_quality = (ps_r_upscaler == 2) ? fsr3QualityToAlias(ps_r_fsr3_quality) : dlssQualityToAlias(ps_r_dlss_quality);
 			r4_upscaler_sharpness = ps_r_dlss_sharpness;
-		}
+		};
+
+		if (firstSync && s_alias_method_configured)
+			pushAliasToNative();
+		else if (firstSync && s_native_method_configured)
+			pushNativeToAlias();
+		else if (firstSync)
+			pushAliasToNative();	// fresh install: the off defaults, as before
+		else if (aliasChanged && !nativeChanged)
+			pushAliasToNative();
+		else if (nativeChanged && !aliasChanged)
+			pushNativeToAlias();
 
 		s_last_alias_method = r4_upscaler;
 		s_last_alias_quality = r4_upscaler_quality;
@@ -1589,6 +1639,10 @@ namespace compat
 		SyncUpscalerAliases();
 	}
 }
+
+// The CMD macros build the variable name by pasting the class name, so a
+// namespace qualified class cannot be passed to them; lift it instead.
+using compat::CCC_TokenConfigured;
 
 //-----------------------------------------------------------------------
 void xrRender_initconsole()
@@ -2128,7 +2182,9 @@ void xrRender_initconsole()
 #if defined(USE_DX11)
 	// Temporal upscalers (native names; MOD aliases map onto these).
 	CMD3(CCC_Token, "r_dlss_quality", &ps_r_dlss_quality, dlss_quality_token);
-	CMD3(CCC_Token, "r_upscaler", &ps_r_upscaler, upscaler_token);
+	// CCC_TokenConfigured: latches "the user set r_upscaler" for the startup
+	// alias sync (see compat::s_native_method_configured).
+	CMD4(CCC_TokenConfigured, "r_upscaler", &ps_r_upscaler, upscaler_token, compat::s_native_method_configured);
 	CMD3(CCC_Token, "r_fsr3_quality", &ps_r_fsr3_quality, fsr3_quality_token);
 	CMD3(CCC_Token, "r_dlss_preset", &ps_r_dlss_preset, dlss_preset_token);
 	CMD4(CCC_Float, "r_dlss_sharpness", &ps_r_dlss_sharpness, 0.0f, 1.0f);
