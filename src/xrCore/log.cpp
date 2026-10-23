@@ -325,18 +325,21 @@ xrLogger::~xrLogger()
 
 namespace
 {
-	// "YYYY-MM-DD_HH-MM-SS" from a file timestamp, or from the local clock.
+	// "YYYY-MM-DD_HH-MM-SS-mmm" from a file timestamp, or from the local clock.
+	// The milliseconds matter for the crash-restart case: a session that ends and
+	// is relaunched inside the same second is exactly the one whose log must be
+	// kept, and a seconds-only stamp made the two archives overwrite each other.
 	void SessionStamp(string_path& out, const FILETIME* source)
 	{
 		SYSTEMTIME st = {};
 		FILETIME local = {};
 		if (source && FileTimeToLocalFileTime(source, &local) && FileTimeToSystemTime(&local, &st))
 		{
-			xr_sprintf(out, "%04u-%02u-%02u_%02u-%02u-%02u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+			xr_sprintf(out, "%04u-%02u-%02u_%02u-%02u-%02u-%03u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 			return;
 		}
 		GetLocalTime(&st);
-		xr_sprintf(out, "%04u-%02u-%02u_%02u-%02u-%02u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+		xr_sprintf(out, "%04u-%02u-%02u_%02u-%02u-%02u-%03u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 	}
 
 	// Moves or copies a log file to "<name>_<timestamp>.log" so sessions never
@@ -362,11 +365,21 @@ namespace
 		if (dot != xr_string::npos)
 			base.erase(dot);
 
+		// Even a millisecond stamp can collide in principle; keep both by
+		// numbering instead of letting the second archive replace the first.
 		xr_string archive = base + "_" + stamp + ".log";
-		if (move)
-			::MoveFileExA(path, archive.c_str(), MOVEFILE_REPLACE_EXISTING);
-		else
-			::CopyFileA(path, archive.c_str(), FALSE);
+		for (unsigned int attempt = 1; attempt < 100 && ::GetFileAttributesA(archive.c_str()) != INVALID_FILE_ATTRIBUTES; ++attempt)
+		{
+			char suffix[16] = {};
+			xr_sprintf(suffix, sizeof(suffix), "_%u", attempt);
+			archive = base + "_" + stamp + suffix + ".log";
+		}
+
+		const BOOL archived = move
+			? ::MoveFileExA(path, archive.c_str(), MOVEFILE_REPLACE_EXISTING)
+			: ::CopyFileA(path, archive.c_str(), FALSE);
+		if (!archived)
+			Msg("! Cannot archive log file [%s] to [%s]", path, archive.c_str());
 	}
 }
 

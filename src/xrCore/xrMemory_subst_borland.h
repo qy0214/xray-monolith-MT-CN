@@ -1,3 +1,6 @@
+// The name is historical (the X-Ray Borland era): these are the LIVE xr_new /
+// xr_delete templates, included unconditionally by xrMemory.h. The .cpp that
+// once sat next to it was Borland-only (#ifdef __BORLANDC__) and is gone.
 // new(0)
 template <class T>
 IC T* xr_new()
