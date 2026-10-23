@@ -55,6 +55,7 @@
 3. **MCM 的 live effects 开关当前无效**（`scope_lense_live_effects`）：引擎尚未提供主视口 effect buffer（`s_pip_main_effects`），着色器常量固定按"关闭"上报（`Blender_Recorder_StandartBinding.cpp` 的 `scope_lense_live_effects` binder），镜头走旧路径。MCM 页可调但画面不变——这是已知的未实现项，不是配置问题；完整方案见计划文档 Task 8 Step 2（把主视口颜色 RT 绑定为退化来源）。
 4. **`scope_lense_ads_is_pip` 晚一帧**：该值由渲染器每帧开头刷新（`compat::Tick`），比"本帧是否 PiP 瞄准"的评估结果晚一帧到达；MCM/脚本侧展示用途不受影响，做逐帧逻辑时不要依赖它的即时性。
 5. **部署方式**：整合包 `bin\AnomalyDX11AVX.exe` 的归属需玩家确认（MO2 覆盖 vs 拷入 `bin`）；可用日志启动戳的 `exeTime/exeSize` 判定实际运行的构建。
+6. **HDR10 下同帧 PiP 整体拒建（已评估，暂缓）**：镜头发布用 `CopyResource` 把镜头集的 `rt_Generic_0`（HDR10 下 A16B16G16R16F）拷入主集 `rt_secondVP`（A2R10G10B10），格式不匹配即拒建。直接把 `rt_secondVP` 改成 16F 能修这条拷贝，但会反过来弄断旧路径的交换链→viewport2 拷贝（HDR10 交换链是 10bit）；正确修法是把其中一处 `CopyResource` 改为 shader 化拷贝，需要 HDR10 显示器上的运行时验证后再动。
 
 ## 六、部署要求与运行时来源（配套归档：`dist/MT-CN/`）
 
