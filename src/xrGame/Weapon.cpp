@@ -3533,10 +3533,14 @@ void CWeapon::UpdateSecondVP()
 			// (65 / lensFov), so a sight that renders at the wrong power shows up as a mag that
 			// never moves across the zoom steps while lensFovMax/lensFovBase say it should, and
 			// ads= (the engine's own ADS FOV) says whether the power signal itself was usable.
+			// weapon= is the tracked section (aimSect), not the currently equipped one: on a
+			// wheel switch mid-aim the stats below belong to the weapon that was aiming. The
+			// scope= name on such a switched line is still the new weapon's - acceptable noise
+			// for a diagnostic.
 			const float magNow = (lensFov > 0.005f && g_fov > 0.005f) ? (g_fov / lensFov) : 0.0f;
 			Msg("* [PIP/scope] %s weapon='%s' scope='%s' lensFov=%.4f..%.4f mag=%.2f..%.2f ads=%.3f..%.3f frames=%u (last: magnifies=%d lensFov=%.4f mag=%.2f dyn=%d steps=%d fovMax=%.4f fovBase=%.4f end=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d)",
 				kind,
-				cNameSect().size() ? *cNameSect() : "(none)",
+				aimSect.size() ? *aimSect : "(none)",
 				GetScopeName().size() ? *GetScopeName() : "(none)",
 				aimFovLo, aimFovHi, aimMagLo, aimMagHi, aimAdsLo, aimAdsHi, aimFrames,
 				magnifies ? 1 : 0, lensFov, magNow,
@@ -3550,6 +3554,13 @@ void CWeapon::UpdateSecondVP()
 		const float magNow = (lensFov > 0.005f && g_fov > 0.005f) ? (g_fov / lensFov) : 0.0f;
 		if (magnifies)
 		{
+			if (aimActive && aimSect != cNameSect())
+			{
+				// a wheel switch mid-aim: close the tracked weapon's aim under its own
+				// name instead of dropping its stats silently (they would otherwise be
+				// attributed to whatever is equipped when the aim finally ends).
+				logScope("aim ended (weapon switched)");
+			}
 			if (!aimActive || aimSect != cNameSect())
 			{
 				aimActive = true;
