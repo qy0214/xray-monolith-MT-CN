@@ -439,6 +439,18 @@ static void svp_probe_resource(LPCSTR tag, ID3D11Resource* res)
 	D3D11_TEXTURE2D_DESC d = {};
 	tex->GetDesc(&d);
 
+	// The centre block below runs u32 loops over cy-8 .. cy+8: on a target
+	// smaller than 16 pixels the subtraction wraps, the loop body never runs and
+	// the summary line divides by zero. Nothing probed here is that small (this
+	// is a diagnostic), but refuse the size instead of crashing the session
+	// being diagnosed.
+	if (d.Width < 32 || d.Height < 32)
+	{
+		Msg("* [PIP] probe %s: refusing %ux%u (too small to sample)", tag, d.Width, d.Height);
+		_RELEASE(tex);
+		return;
+	}
+
 	D3D11_TEXTURE2D_DESC s = d;
 	s.Usage = D3D11_USAGE_STAGING;
 	s.BindFlags = 0;

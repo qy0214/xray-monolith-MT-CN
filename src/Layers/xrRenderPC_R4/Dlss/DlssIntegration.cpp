@@ -308,10 +308,14 @@ void BeginScene()
         static bool lastThermalOptic = false;
         if (thermalOptic != lastThermalOptic)
         {
+            // The guards mirror StableOverlaysActive(): BeginScene also runs on
+            // menu/main-menu frames where the game persistent state is gone.
+            const auto* constants = g_pGamePersistent ? g_pGamePersistent->m_pGShaderConstants : nullptr;
             Msg("* [PIP] thermal optic: unstable=%d svp=%d lensFov=%.2f ads=%.2f zoom=%.2f motionblur=%.2f img=%d",
                 stableOverlay ? 1 : 0, Device.m_SecondViewport.IsSVPActive() ? 1 : 0,
-                Device.m_SecondViewport.svp_lens_fov, g_pGamePersistent->m_pGShaderConstants->hud_params.x,
-                g_pGamePersistent->m_pGShaderConstants->hud_fov_params.x, ps_ssfx_motionblur.y,
+                Device.m_SecondViewport.svp_lens_fov,
+                constants ? constants->hud_params.x : -1.0f,
+                constants ? constants->hud_fov_params.x : -1.0f, ps_ssfx_motionblur.y,
                 Device.m_SecondViewport.svp_optic_image_type);
             lastThermalOptic = thermalOptic;
         }

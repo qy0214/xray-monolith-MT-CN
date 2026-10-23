@@ -497,6 +497,19 @@ void CRenderTarget::SetActive(bool force)
 	// while a lens pass is bound (see CSecondVPParams).
 	Device.m_SecondViewport.SetSVPPassExtent(Width, Height);
 
+	// P1-2 seam: publish the display extent from the main set only, so game-side
+	// readers can use Device.ScreenWidth/Height() without observing the lens
+	// pass's temporary rewrite of the device dimensions.
+	if (m_is_main_target)
+		Device.m_SecondViewport.SetMainPassExtent(Width, Height);
+
+	// Reachable, not dead: a PiP frame whose second set is missing (creation
+	// failed, or the deliberate HDR10 format refusal) still runs a lens pass
+	// slot whose passTarget is null, so the MAIN set's SetActive() - without
+	// force - lands here on every frame of that degraded mode. It re-applies
+	// only the $user$ remap and deliberately skips the viewport/RT rebinding
+	// and the Device dimension rewrite, which is why it must stay a separate
+	// half-applied path rather than falling through to the full body below.
 	if (!force && RImplementation.Target == this)
 	{
 		// the lens always samples the second viewport (see CRender::Render), so the
