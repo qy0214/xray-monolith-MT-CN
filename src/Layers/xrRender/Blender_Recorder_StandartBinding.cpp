@@ -1399,8 +1399,15 @@ static class scope_lense_live_effects : public R_constant_setup
 {
     void setup(R_constant* C) override
     {
-        // The live path samples the main view's effects buffer, which this engine
-        // does not provide yet; report it off so the shaders use their legacy path.
+        // Structurally unreachable in this engine, not merely unimplemented:
+        // pip_refresh_effects() (the pack's anthology_pip_temporal.h) lives only
+        // inside the scope_lense_motion.x > 0.5 branches - the temporal-reuse
+        // path for engines that capture the second view every other frame and
+        // refresh stale captures with `color - old_effects + current_effects`.
+        // This engine renders the lens every frame (same-frame PiP), reports
+        // motion.x = 0 on purpose (binder below), and so never enters the
+        // refresh path at all. The MCM knob stays inert until temporal reuse
+        // itself is ever implemented (plan doc Task 8 Step 2 sketches it).
         RCache.set_c(C, 0.0f, 0.0f, 0.0f, 0.0f);
     }
 } binder_scope_lense_live_effects;
