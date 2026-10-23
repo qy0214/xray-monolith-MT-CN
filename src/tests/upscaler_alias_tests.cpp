@@ -48,5 +48,19 @@ void run_upscaler_alias_tests()
 	CHECK(aliasQualityToFsr3(3) == 3 && fsr3QualityToAlias(3) == 3);
 	CHECK(fsr3QualityToAlias(9) == 3 && dlssQualityToAlias(9) == 3);
 
-	std::printf("[tests] upscaler_alias: MOD<->native method/quality mapping round trips\n");
+	// The sync direction table. The case that motivated it (P1-1): a user.ltx
+	// with ONLY a native selection must push native -> alias on the first sync,
+	// not have the alias default (off) wipe it.
+	using Dir = UpscalerSyncDirection;
+	CHECK(upscaler_sync_direction(true, false, true, true, true) == Dir::NativeToAlias);	// pipdlss-era ltx
+	CHECK(upscaler_sync_direction(true, true, true, true, true) == Dir::AliasToNative);	// both sides set: MCM wins
+	CHECK(upscaler_sync_direction(true, true, false, true, true) == Dir::AliasToNative);	// MCM only
+	CHECK(upscaler_sync_direction(true, false, false, true, true) == Dir::AliasToNative);	// fresh install: off defaults, as before
+	// steady state: whichever side changed, and only one side at a time
+	CHECK(upscaler_sync_direction(false, true, true, true, false) == Dir::AliasToNative);
+	CHECK(upscaler_sync_direction(false, true, true, false, true) == Dir::NativeToAlias);
+	CHECK(upscaler_sync_direction(false, false, false, true, true) == Dir::None);		// both changed: leave alone
+	CHECK(upscaler_sync_direction(false, false, false, false, false) == Dir::None);		// nothing changed
+
+	std::printf("[tests] upscaler_alias: MOD<->native mapping round trips + sync direction table\n");
 }

@@ -1579,19 +1579,11 @@ namespace compat
 		const bool nativeChanged = ps_r_upscaler != s_last_native_method || ps_r_dlss_quality != s_last_native_dlss_q
 			|| ps_r_fsr3_quality != s_last_native_fsr3_q || ps_r_dlss_sharpness != s_last_native_sharp;
 
-		// The first call is the startup one (before the targets are created), when
-		// the trackers are empty and both sides look "changed", so the change
-		// counters alone cannot pick a direction. The s_*_method_configured
-		// latches (CCC_TokenConfigured) say which side the user actually set:
-		//   alias configured        -> the MCM selection wins over a stale native
-		//                              value (the historical direction)
-		//   only native configured  -> a pipdlss-era user.ltx (r_upscaler dlss,
-		//                              no r4_* keys): keep the native value and
-		//                              mirror it into the MOD names. Pushing the
-		//                              alias default (off) here is what silently
-		//                              disabled DLSS/FSR3 for upgrading users.
-		//   neither configured      -> fresh install: push the (off) defaults,
-		//                              exactly as before this latch existed.
+		// The direction rule - including how the startup call resolves the
+		// empty-tracker "both changed" state through the s_*_method_configured
+		// latches (CCC_TokenConfigured), so a pipdlss-era native-only user.ltx
+		// keeps its selection instead of being wiped to the alias default - is
+		// upscaler_sync_direction (UpscalerAliasMap.h), unit tested in src/tests.
 		static bool s_firstSync = true;
 		const bool firstSync = s_firstSync;
 		s_firstSync = false;
@@ -1613,16 +1605,17 @@ namespace compat
 			r4_upscaler_sharpness = ps_r_dlss_sharpness;
 		};
 
-		if (firstSync && s_alias_method_configured)
+		switch (upscaler_sync_direction(firstSync, s_alias_method_configured, s_native_method_configured, aliasChanged, nativeChanged))
+		{
+		case UpscalerSyncDirection::AliasToNative:
 			pushAliasToNative();
-		else if (firstSync && s_native_method_configured)
+			break;
+		case UpscalerSyncDirection::NativeToAlias:
 			pushNativeToAlias();
-		else if (firstSync)
-			pushAliasToNative();	// fresh install: the off defaults, as before
-		else if (aliasChanged && !nativeChanged)
-			pushAliasToNative();
-		else if (nativeChanged && !aliasChanged)
-			pushNativeToAlias();
+			break;
+		default:
+			break;
+		}
 
 		s_last_alias_method = r4_upscaler;
 		s_last_alias_quality = r4_upscaler_quality;

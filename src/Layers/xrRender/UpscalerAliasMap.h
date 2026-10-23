@@ -107,4 +107,33 @@ namespace compat
 	}
 
 	static_assert(upscalerMethodsRoundTrip(), "upscaler method table must survive alias<->native round trips");
+
+	// Which way the alias/native sync pushes, as a pure decision so the unit
+	// tests can lock the rule that mattered (review P1-1): a user.ltx carrying
+	// only a native selection - a pipdlss-era config - must push native ->
+	// alias, never have the alias default (off) wipe it.
+	enum class UpscalerSyncDirection
+	{
+		None,
+		AliasToNative,
+		NativeToAlias,
+	};
+
+	constexpr UpscalerSyncDirection upscaler_sync_direction(
+		bool first_sync, bool alias_configured, bool native_configured,
+		bool alias_changed, bool native_changed)
+	{
+		if (first_sync)
+		{
+			// The trackers are empty, so both sides look "changed" and the change
+			// counters cannot pick a direction: the latches do. A fresh install
+			// (neither side set) keeps the historical off push.
+			if (alias_configured) return UpscalerSyncDirection::AliasToNative;
+			if (native_configured) return UpscalerSyncDirection::NativeToAlias;
+			return UpscalerSyncDirection::AliasToNative;
+		}
+		if (alias_changed && !native_changed) return UpscalerSyncDirection::AliasToNative;
+		if (native_changed && !alias_changed) return UpscalerSyncDirection::NativeToAlias;
+		return UpscalerSyncDirection::None;
+	}
 }
