@@ -247,7 +247,13 @@ void CRender::render_sun_cascade(u32 cascade_ind)
 				cull_xform.transform_dir(shift_proj);
 				m_viewport.transform_dir(shift_proj);
 
-				const float align_granularity = 4.f;
+				const float align_granularity = 1.f;
+				// 1-texel alignment (was 4): the cascade matrix used to jump in
+				// 4-texel steps whenever the camera rotated, and the temporal
+				// upscaler accumulated those jumps into large drifting tree
+				// shadows that appeared bound to the view direction. 1-texel
+				// keeps the same stabilization at the smallest step the map
+				// can express.
 				shift_proj.x = shift_proj.x > 0 ? align_granularity : -align_granularity;
 				shift_proj.y = shift_proj.y > 0 ? align_granularity : -align_granularity;
 				shift_proj.z = 0;
