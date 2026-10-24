@@ -7,9 +7,9 @@
 > - `zwork-followup.md` —— zwork 审查的处置明细（已修/调查不改/缓期+前置条件）
 >
 > 更新约定：任何新修复/新发现/状态变化，更新本文件对应行；细节写进对应明细文档。
-> 最后更新：2026-10-24（zwork 批次一之后）。
+> 最后更新：2026-10-24（上游全景对比之后）。
 
-## 0. 批次与提交索引（22 个本地提交未推送，origin 停在 2026-10-19）
+## 0. 批次与提交索引（origin 已同步：`HEAD=origin/all-in-one-vs2022-wpo-mt`）
 
 | 批次 | 提交 | 内容 |
 |---|---|---|
@@ -74,7 +74,7 @@
 | lua_parallel_gc 等 inert MCM 项 | ⏸️ 按需（用户要用 pack 自带性能模块时再做） |
 | T3 #9a 并行 RT 创建 | ❌ 有实测数据判定不值得做（串行 1042ms vs 并行 1721ms） |
 | imgui 字体资源化 | ⏸️ 阻断——用户手动跑提取脚本后可续（四步在档） |
-| **推送 22 个本地提交** | ⏸️ **待用户明示批准** |
+| **推送本地提交** | ✅ 已同步（origin = HEAD `bedb0c87c`） |
 | dist/MT-CN/appdata/user.ltx 测试残留（r4_upscaler 行已删） | ⏸️ 待用户决定恢复或入库 |
 | sections.ini（仓库根，本地已 exclude） | ⏸️ 待用户决定入库/移动/忽略 |
 
@@ -122,9 +122,12 @@
 
 六个上游修复全部搬运完成（`00c4c0897`…`19b19090a` + 适配 `627258e04`）：①读档后 DropItem 空指针（保留我方精细抛掷）②wallmark 崩溃防护两连（script 共享串 + 失效 Parent 守卫 + sampler 空态）③纹理加载竞态 ④物品池互斥（DetailManager.h 补 pool_mutex 声明）⑤PDA 地图缓存（我方 luabind 回调保留 + AddToCache 追加）⑥Discord RPC 移出主线程（rpc_info 数组化 + 互斥锁 + 专用 std::thread + 退出 join——不再在 pApp 销毁后跑回调，对准 12:30 无栈中断现象）。适配要点：不 spawn 上游通用 mt_Thread（我们的 MT 模型是 secondary_tasks/GameThread）。DX11-AVX 0 错误 + 89 测试全过，已部署（exe sha256=4808FD08…，28,665,688→28,665,888B 校准见清单），待真机验证。
 
-## 10. 上游全分支全景对比（2026-10-25，27 分支 + 全部标签）
+## 10. 上游全景对比（2026-10-24 复核，明细 `upstream-survey-2026-10-24.md`）
 
-- **血缘图**：上游 27 分支里 17 个为我们已完全包含（SSS 系列/BaS/master/sun_dir 等旧实验线，theirs-only=0）；5 个是我们的直系（-mt/wpo/153-merge）；**真正有内容差的是 5 条**：`pr`（33 提交，~21 个实质修复）、`grass-instancing-2`（17 个实质提交，**草实例化渲染**）、`grass-pre-instancing`/`grass-instancing-merge`（草线的前置/整合，含 4 个独立小修复）、`cmake`（构建系统改造，713 提交，不适用）、vs2022 系（历史构建迁移，已过时）。
-- **pr 分支候选**（多数 ≤13 行小改、零重叠）：幻影怪出生动画期被击不死亡（427b6981d+c8baff0f9）、PDA 排行榜 NPC 转非 stalker 后渲染崩溃（1ba7dc959）、浮动神器（0bd86fc17，OGSR 方案）、alt-tab 非对称暂停（a2021988e，碰 device.cpp 我们改过）、滚动条/列表拖拽两处 UI 修复（7b6d5549d/15d42e813）、azazel net 修复。
-- **grass 线候选**：ToCToU 治理（47583e80e）、骨骼动画 m_motions 判空（a809d8154）、CPHSimpleCharacter 判空（e6ca8bcf5）、视觉记忆判空（38efb138e）、CAgentManager 判空（3d41dfbc0）——全是小防护；**草实例化本身**（dd6de43ad 等）是我们的几何天花板问题的上游方案，但改动面大（渲染器核心）且 wpo-mt 未合入=上游自己也没敢合，缓期评估。
-- **决策**：不整线合并（除 -mt 主线外）；pr 分支的 8 个小修值得按 zwork 批次二的节奏 cherry-pick；grass 四个小防护顺路搬；草实例化单独立项评估（收益大=正好打我们的 85% flora 瓶颈，风险也大）。
+- **同步状态**：`HEAD` 已包含 `upstream/all-in-one-vs2022-wpo-mt`（10-21）与 `upstream/all-in-one-vs2022-wpo`（10-11）全部提交；`2026.10.11` 标签在线内；origin 已同步。27 分支里 **12 个 ahead=0**（SSS 系列/BaS_NEW/master/153-merge/hozar2002/wpo/wpo-mt 等），其余为旧主题线或实验线。
+- **唯一待并线 `upstream/pr`**（10-22，33 提交 / 21 真实）：Batch A 可低风险搬 5 项——GraviZone `exit_Zone`（悬浮物，`0bd86fc17`）、Phantom 出生期受击（只取 `427b6981d` 的最终 Hit 一行）、UI 滚动条两连（`7b6d5549d`/`15d42e813`）、纹理 `GetDeviceRemovedReason` 日志（`801b939f0`，需保留我方 `texture_gpu_lock`）；可选 `net_Relevant`（`4f7fa5b4e`）。功能项（env modifiers、加载 artwork、怪物目的地 API、camattach）暂不搬；camattach 已有 MT 版（PR #773）。`1ba7dc959`（PDA 排名 Lua）需先核对 Anthology 实际脚本。
+- **性能主项**：草/细节实例化 **PR #577**（MT 版，10 文件 +485/−144）/ #567 未合并；`grass-instancing-2` 为实验分支（10-11 后未同步）。需配套 5 个 grass shader，且与我们的 `deffer_grass.vs`（5710B 旧常量数组版 vs PR 7592B instance 版）及 `dx10DetailManager_VS.cpp` 冲突。建议独立 worktree 做 A/B，≥15% GPU 收益且无闪烁才考虑发布。
+- **纠正（勿搬）**：`grass-instancing-2` 里的 visual-memory 判空基于 `m_objectsShared`，该实现已被 `1b525d33a` revert；`cNameVisual` 自旋（`47583e80e`）已被 `1c0c5b5a0` 以“修 eye_pp_s2 崩溃”为由 revert；`CPHSimpleCharacter`/`CAgentManager` 判空在我们 HEAD 里**已经存在**。这四个“小防护”不是净收益，**禁止 cherry-pick**。
+- **两个小而值（开放 PR）**：**#777**（`xrsharedmem` → `xr_unordered_map`，加载期 O(1)，merge-tree 干净）、**#765**（雨湿度按 `fTimeDelta`，修高 FPS 干燥快 2.4×，顺带 `level.set_rain_wetness`）。
+- **不要碰**：`cmake`（2025-08 的平行构建线，713 提交）、`65534-loop-banish`（正则改写 mod 脚本、默认开启）、`cform_cache`（纯 revert）、旧 SSS/BaS/vs2022 线、`ubgl-grenade-class`（已检索整合包，无 `AddAmmoClass` 调用）。PR #368 是 `ui_options.script` 的本地化 MAV monkey-patch（draft），跑中文包前先复现 #367 再决定。
+- **部署提醒**：`MODS\MT-CN\bin` 已是 4808FD08（28.6MB），但游戏 `bin` 仍是 10-03 的 48MB exe / 旧 DLSS DLL；13:13 日志证明当时跑的是 MT 版，13:15 后 JSGME 已停用/还原，新构建尚未重挂。下次实机前停用→启用并清着色器缓存。
