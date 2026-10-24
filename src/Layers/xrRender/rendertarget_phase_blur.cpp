@@ -698,9 +698,16 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
         LightsSort.clear();
 		bool CheckPackage = true;
 
-		if (Device.dwFrame > sss_currentframe)
+		// REFILL EVERY PASS: a same-frame PiP frame renders two different
+		// cameras (the lens pass first, the main pass second). The old
+		// every-2-frames refill made the MAIN pass reuse the LENS view's
+		// light slots, which view-locked the omni screen-space shadows - the
+		// "second light source" radiating rays - to the aim direction, and
+		// the hip and the scope showed the same wrong shadows (player report
+		// 2026-10-25). The slot assignment below keeps stable lights in their
+		// slots, so a per-pass refill only applies what changed.
 		{
-			sss_currentframe = Device.dwFrame + 2;
+			sss_currentframe = Device.dwFrame;
 
 			xr_vector<light*>& source = LP.v_shadowed;
 
@@ -787,11 +794,6 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
 						L->sss_refresh = true;
 				}
 			}
-		}
-		else
-		{
-			// Don't check the sorted package when the frame is skipped
-			CheckPackage = false;
 		}
 
 		for (int slot = 0; slot < 8; slot++)
