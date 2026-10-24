@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "RenderDimensions.h"
+#include "../../xrEngine/console_registry.h"
 
 
 IC bool SortLights(light* i, light* j)
@@ -636,6 +637,16 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
 	static light* LightSlot[8];
 	static u32 sss_currentframe;
 
+	// SSS omni shadow diagnosis: dumps the 8 light slots (world/view positions,
+	// range, type) plus the camera, once a second while enabled. Identifies
+	// which light is the source of a wrong omni shadow set without guessing.
+	static int s_sssDumpLights = -1;
+	if (s_sssDumpLights < 0)
+	{
+		s_sssDumpLights = 0;
+		xr_console_register_int_cvar("r__sss_dump_lights", &s_sssDumpLights, 0, 1);
+	}
+
     static auto OnLightDestroy = [](light* l)
     {
         for (int i = 0; i < 8; i++)
@@ -856,6 +867,22 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
 					// ( Reminder ) The value is inverted ( 1.0 = Fadeout ~ 0.0 = Full Visible )
 					Lights_Array[slot].set(L_pos.x, L_pos.y, L_pos.z, std::max(MaxAtte, Atte));
 
+					// Diagnosis dump (r__sss_dump_lights 1): the omni shadow pass
+					// renders radial shadows from each slot light's VIEW-space
+					// position - this dump identifies which world light is behind
+					// a wrong shadow set without guessing.
+					if (s_sssDumpLights && (Device.dwFrame % 60) == 0)
+					{
+						Fvector wpos = LightSlot[slot]->position;
+						Msg("* [SSS-DUMP] slot=%d type=%s range=%.1f world=(%.1f, %.1f, %.1f) view=(%.2f, %.2f, %.2f) camera=(%.1f, %.1f, %.1f) frame=%d",
+							slot,
+							LightSlot[slot]->flags.type == IRender_Light::OMNIPART ? "omni" : "spot",
+							LightSlot[slot]->range,
+							wpos.x, wpos.y, wpos.z,
+							L_pos.x, L_pos.y, L_pos.z,
+							Device.vCameraPosition.x, Device.vCameraPosition.y, Device.vCameraPosition.z,
+							Device.dwFrame);
+					}
 				}
 			}
 		}
