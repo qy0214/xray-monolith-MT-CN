@@ -94,3 +94,11 @@
 - 测试：89 项检查全过；CI：unit-tests-job 已 gate release
 
 **上游同步**：remote `upstream`=themrdemonized/xray-monolith，血缘分支 `all-in-one-vs2022-wpo-mt`；已实测合并一次（零冲突）；策略=每批次开始 `fetch+merge`，不做重度拆分（详见 README 构建章节）。
+
+## 6. Mimosa 全库深度安全扫描（2026-10-24）
+
+- Scan ID `scan-2026-10-24T04-05-45.363Z-3b8e5ec0f968`，seal `sha256:6534d554…7e689`，产物目录 `C:\Users\Admin\.mimosa\security-scans\project-5a70021b0a0479efe6a16a4d\scan-…-3b8e5ec0f968`；深度 deep，静态边界（无运行时验证），6934/6934 文件解析。
+- 运行状态 **inconclusive**：调用图部分不完整（动态派发/规模），跨文件可达性可能不全；verdictEffect=none（不做安全/不安全的裁决）。
+- 依赖扫描：not_applicable（0 包）。
+- **Findings：5 条，全部 HIGH「命令注入」，且全部位于 `src/3rd party/optick-git/gui/Optick/*.cs`（vendored Optick 采样器 GUI 工具，C# 开发者侧）**：EditTaskTrackerListDialog.xaml.cs:77、FrameCapture.xaml.cs:195、TaskTracker.cs:101/122、SummaryViewerModel.cs:165——均为"用户输入拼接进系统命令"模式（开发者打开恶意 capture 文件的攻击面）。**引擎本体（src/ 引擎代码）0 条发现。**
+- 处置：vendored 第三方 GUI 工具，不随玩家 exe 分发（引擎仅静态链接 optick 采样核心）；按供应链项记录在案，暂不改第三方源（改了会被 submodule/vendor 更新冲掉）。若未来分发 Optick GUI 给第三方使用，需先评估这五处。
