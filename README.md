@@ -55,7 +55,7 @@
 3. **MCM 的 live effects 开关当前无效**（`scope_lense_live_effects`）：**结构性不可达，非单纯未实现**。已核对 pack 着色器源码（R.A.K PiP mod 的 `anthology_pip_temporal.h`）：`pip_refresh_effects()` 只存在于 `scope_lense_motion.x > 0.5` 的时间复用分支——那是"隔帧捕获 + 陈旧捕获刷新"架构（`color - old_effects + current_effects`）的机制。本引擎同帧 PiP 刻意令 `motion.x = 0`（每帧全新渲染镜头，无陈旧捕获），整条刷新路径不会进入。MCM 页可调但无效果是上述架构差异的结果；若未来实现时间复用（计划文档 Task 8），需同时提供 `s_pip_main_effects` 与 `s_pip_capture_effects` 两个效果层纹理。
 4. **`scope_lense_ads_is_pip` 晚一帧**：该值由渲染器每帧开头刷新（`compat::Tick`），比"本帧是否 PiP 瞄准"的评估结果晚一帧到达；MCM/脚本侧展示用途不受影响，做逐帧逻辑时不要依赖它的即时性。
 5. **部署方式**：整合包 `bin\AnomalyDX11AVX.exe` 的归属需玩家确认（MO2 覆盖 vs 拷入 `bin`）；可用日志启动戳的 `exeTime/exeSize` 判定实际运行的构建。
-6. **HDR10 下同帧 PiP（已修复，2026-10-24）**：原先 `rt_secondVP` 恒为 10bit，与镜头集 16F 场景图的发布 `CopyResource` 格式不匹配，整体拒建。现在 `rt_secondVP` 的格式跟随 `r__svp_same_frame`：同帧路径开启时在 HDR10 下建为 16F（发布拷贝合法），关闭时保持 10bit（旧路径的交换链拷贝合法）。两个守卫兜底：发布目的地的格式检查对准**主集**的 `rt_secondVP`（中途切换开关导致的失配会拒建而非静默黑镜），旧拷贝点遇到失配会跳过并打一次告警（HDR10 下切换开关需 `vid_restart`）。拒建告警已按"missing"路径的节奏节流（约 5 分钟一条）。
+6. **HDR10 下同帧 PiP（已修复并真机验证，2026-10-24）**：原先 `rt_secondVP` 恒为 10bit，与镜头集 16F 场景图的发布 `CopyResource` 格式不匹配，整体拒建。现在 `rt_secondVP` 的格式跟随 `r__svp_same_frame`：同帧路径开启时在 HDR10 下建为 16F（发布拷贝合法），关闭时保持 10bit（旧路径的交换链拷贝合法）。两个守卫兜底：发布目的地的格式检查对准**主集**的 `rt_secondVP`（中途切换开关导致的失配会拒建而非静默黑镜），旧拷贝点遇到失配会跳过并打一次告警（HDR10 下切换开关需 `vid_restart`）。拒建告警已按"missing"路径的节奏节流（约 5 分钟一条）。真机验证：HDR10 开启局 `r4_hdr10_on 1` 下 `second viewport target set ... created`、举镜 `lens=1`、零拒建零错误；SDR 局零变化。
 
 ## 六、部署要求与运行时来源（配套归档：`dist/MT-CN/`）
 
