@@ -50,6 +50,8 @@
 
 ## 五、已知问题
 
+> 完整的审查处置状态台账（已修复/未修复/缓期与前置条件、批次提交索引、验证与部署状态）统一维护在 **`docs/progress/STATUS.md`**；记忆与进度文件（三份计划、六份域审查原始报告、会话笔记）已全部收拢到 `docs/progress/`。
+
 1. **热成像镜快速转动时镜内出现一圈"光圈"**：**未解决**。已实测排除五条：镜片反射模型、上采样"屏幕锁定"判据、相机运动模糊、上采样器本身（关闭 DLSS 无效）、TAA 掩码路径。下一步建议：`r__svp_debug 2` 并在举镜扫视时抓取 `appdata\logs\pip_optics_screen.bmp`，按其形状定位。
 2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）尚未解析；目前以"瞄具是否真的放大 + PiP 模块是否存在"作为等价门槛。
 3. **MCM 的 live effects 开关当前无效**（`scope_lense_live_effects`）：**结构性不可达，非单纯未实现**。已核对 pack 着色器源码（R.A.K PiP mod 的 `anthology_pip_temporal.h`）：`pip_refresh_effects()` 只存在于 `scope_lense_motion.x > 0.5` 的时间复用分支——那是"隔帧捕获 + 陈旧捕获刷新"架构（`color - old_effects + current_effects`）的机制。本引擎同帧 PiP 刻意令 `motion.x = 0`（每帧全新渲染镜头，无陈旧捕获），整条刷新路径不会进入。MCM 页可调但无效果是上述架构差异的结果；若未来实现时间复用（计划文档 Task 8），需同时提供 `s_pip_main_effects` 与 `s_pip_capture_effects` 两个效果层纹理。

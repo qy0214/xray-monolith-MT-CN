@@ -1,0 +1,96 @@
+# 项目状态总台账（STATUS）
+
+> **本文件是所有审查发现与遗留事项的唯一权威索引。** 记忆与进度文件已全部统一到 `docs/progress/`：
+> - `plans/` —— 三份实施计划（DLSS/FSR3/PiP 移植、Tier2/3 性能、会话检查点）
+> - `reviews/` —— zwork run 372f0ebd 六份域审查原始报告
+> - `notes/` —— workbuddy 会话笔记
+> - `zwork-followup.md` —— zwork 审查的处置明细（已修/调查不改/缓期+前置条件）
+>
+> 更新约定：任何新修复/新发现/状态变化，更新本文件对应行；细节写进对应明细文档。
+> 最后更新：2026-10-24（zwork 批次一之后）。
+
+## 0. 批次与提交索引（22 个本地提交未推送，origin 停在 2026-10-19）
+
+| 批次 | 提交 | 内容 |
+|---|---|---|
+| 阶段 0/1（10-24 晨） | `f8a6d424` `11d9b4ce` `983b8efc` `748e6312` `4ae75fdc` `04c9bb3a` `3943bd1b` | P1-1 别名同步修复+映射表+测试；P1-2 短期接缝+游戏侧迁移；P2-1..P2-4/P2-6/P3-⑥ 小修；CI 接测试；文档；构建脚本入库 |
+| 阶段 2（10-24 午前） | `4fcd764a` `8bc85544` `f8b483fd8` | Xr_ini DLTX 拆分；HDR10 评估落档；瞄准日志归因 |
+| 阶段 3（10-24 午后） | `058c5d26d` `4798105d6` `b9b7e4306` `a8840c4bd` | 上游实测合并；同步方向决策表测试；上游策略文档；P1-3 定论 |
+| HDR10（10-24 晚） | `b172560be` `90b20ebc7` | HDR10 同帧 PiP 修复 + 真机验证通过 |
+| zwork 批次一（10-24 深夜） | `a1325cec4` `8e38ece5a` | 四个高危并发修复 + 吞异常补日志 + 卫生包 + 处置明细文档 |
+| 记忆统一（10-24 末） | （本提交） | 全部记忆/进度文件收拢到 docs/progress/ + 本台账 |
+
+## 1. 第一轮审查（用户出示的 P1/P2/P3 报告，2026-10-23 核验）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| **P1-1** 首帧别名同步冲掉原生上采样配置 | ✅ 已修复 + **真机验证** | `CCC_TokenConfigured` 锁存 + `upscaler_sync_direction` 纯函数决策表（8 用例）。真机：native-only user.ltx 下 DLSS 存活且 alias 正确回写 |
+| **P1-2** 镜头遍改写 Device 全局与游戏线程竞争 | ✅ 短期已修复（构建验证）／⏸️ 长期缓期 | 短期：`Device.ScreenWidth/Height()` 主集接缝 + xrGame 12 处迁移。长期（镜头遍不碰全局）需运行时验证后动 |
+| **P1-3** live_effects 恒 0 | ✅ 定论关闭（已文档化） | 读 mod 着色器源码证实**结构性不可达**：刷新路径在时间复用分支内，本引擎同帧设计 `motion.x=0` 恒不进入 |
+| P2-1 判空不一致 | ✅ 已修复 | 热成像诊断块两级判空，缺 game 时打 -1 |
+| P2-2 探针下标回绕 | ✅ 已修复（机制更正：除零而非越界读） | <32px RT 拒绝 |
+| P2-3 FDDA 健康值越界 | ✅ 已修复 | clamp 0..1；外骨骼屏实机确认仍待用户顺带观察 |
+| P2-4 日志归档同秒冲突 | ✅ 已修复 + **真机生效** | 毫秒 + 冲突计数 + 返回值检查；后续修复又根除了 close+dtor 双重归档（`_1` 副本不再产生） |
+| P2-5 双 token 顺序手工映射 | ✅ 已修复 | `UpscalerAliasMap.h` 单表 + static_assert + 单测；质量 token 有意不纳入（单调无换位风险） |
+| P2-6 SetActive"死分支" | ✅ 已按更正处置（非死代码，注释保留） | 降级模式每帧可达 |
+| P3-① lens_rendered 原子化 | ✅ 评估后不改 | atomic 破坏纯函数/可测试设计，单 bool 跨线程 x86 无实际撕裂 |
+| P3-② ads_is_pip 晚一帧 | ✅ 已文档化 | README 已知问题 |
+| P3-③ submodule 文档 | ✅ 早已存在（报告过时） | — |
+| P3-④ 零帧 aim ended | ✅ 已修复（真因与报告不同） | 归因到 aimSect + 切换时收尾行；真机日志可见生效 |
+| P3-⑤ svp_dump_rt Inf/NaN | ✅ 接受现状 | 诊断用途 |
+| P3-⑥ bloom 尾换行 | ✅ 已修复 | — |
+
+## 2. 第二轮质量评估（4.x 报告，2026-10-24 核验）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| 超大文件（imgui 1.4MB 等） | ⏸️ imgui 阻断／其余有意不做 | imgui 资源化被环境策略拦在二进制提取（手动恢复四步见会话记录）；Weapon/console_commands 拆分因上游合并策略**有意不做** |
+| 测试覆盖不足 | ✅ CI 已接（`unit-tests-job` 且 gate release） | 4 个测试文件 89 项检查；XR_ini 拆分附等价性验证 |
+| Borland 残留 | ✅ 已清理（更正后） | 仅删空体 cpp；FileSystem_borland.cpp 与头文件是活代码已注明 |
+| .cppX/.hX 机制 | ✅ 澄清不存在 | 报告有误 |
+| C++ 标准偏旧 | ✅ 澄清（v143/stdcpp17） | 是风格问题非标准问题 |
+| CI/CD 建议 | ✅ 已存在，补了测试 | 静态分析仍未做（可选） |
+| Discord/ICU 静态链接 | ✅ 澄清（动态，DLL 随 sdk/binaries） | 供应链关注点=钉住的旧版运行时 |
+| LuaJIT 2.1/64 位 | ⏸️ 长期（依赖整引擎 x64） | 非独立可做项 |
+| 网络协议审计 | ⏸️ 降级为已知边界 | 单机场景为主 |
+
+## 3. zwork 六域审查（run 372f0ebd）—— 明细见 `zwork-followup.md`，原始报告 `reviews/`
+
+| 类别 | 项 |
+|---|---|
+| ✅ 已修复（本批） | 粒子同步[高]、调度器自注销死锁[高]、日志器关闭路径[高]、r_spatial 锁配对[高]、视觉任务按值快照[中低]、三处吞异常补日志[中]、ttapi/xrstring/batch_build 卫生[低中] |
+| 🔍 调查后不改（有据） | shared_str 非原子计数（上游同款+本 fork 试过又 revert+析构顺序耦合）；StableOverlaysActive 整帧清史（设计如此） |
+| ⏸️ 缓期（前置条件在档） | seqParallel 并发模型[高]、ISpatial_DB 全局锁[高]、骨骼栅栏、LocatorAPI 锁、声音切换窗口、粒子 spatial/ps_active、rt_tempzb 拷贝尺寸、wallmark/Evict 锁粒度、o_trace 共享锁写条目、CEnemyManager 缓存失效、CollideIntoGroup 静态缓冲 |
+
+## 4. checkpoint / 计划文档遗留与用户决定项
+
+| 项 | 状态 |
+|---|---|
+| 热成像光圈伪影（README 五-1） | ❌ 开放——诊断流程在档（`r__svp_debug 2` + 抓 pip_optics_screen.bmp），需实机 |
+| 政策文件 scope_lense_enabled 解析（README 五-2） | ❌ 开放——需 token→段名映射规则 |
+| MT 读档崩溃率（README 五/上游已知） | ❌ 开放——zwork 批次一的修复可能改善，待长时游玩观察 |
+| FDDA 外骨骼屏实机确认（时钟/血条编码） | ⏸️ 待用户顺带验证（引擎侧已按推断实现+clamp） |
+| Tier-1 A/B 性能数据 | ⏸️ 待用户提供（FPS + uSheduler_L + queue 行） |
+| lua_parallel_gc 等 inert MCM 项 | ⏸️ 按需（用户要用 pack 自带性能模块时再做） |
+| T3 #9a 并行 RT 创建 | ❌ 有实测数据判定不值得做（串行 1042ms vs 并行 1721ms） |
+| imgui 字体资源化 | ⏸️ 阻断——用户手动跑提取脚本后可续（四步在档） |
+| **推送 22 个本地提交** | ⏸️ **待用户明示批准** |
+| dist/MT-CN/appdata/user.ltx 测试残留（r4_upscaler 行已删） | ⏸️ 待用户决定恢复或入库 |
+| sections.ini（仓库根，本地已 exclude） | ⏸️ 待用户决定入库/移动/忽略 |
+
+## 5. 验证与部署状态
+
+**真机已验证**（2026-10-24，日志在 `appdata\logs\`）：
+- P1-1（native-only 配置 DLSS 存活 + alias 回写）；
+- HDR10 同帧 PiP（`r4_hdr10_on 1` 下目标集创建、lens=1、零拒建）；
+- SDR 零回归（对照局干净）；
+- P2-4 归档毫秒时间戳；P3-④ 瞄准行归因；P2-1 诊断行正常。
+
+**待验证**：zwork 批次一（长时游玩：粒子密集+多怪视觉+存读档；观察无新崩溃、无 `_1` 双归档、留意 `[script_binder]`/`[PHCommander]`/`[alife]` 行）。
+
+**当前部署**（`MODS\MT-CN\bin\AnomalyDX11AVX.exe`，校验清单 26 条已同步）：
+- 构建：DX11-AVX，2026-10-24，`exeSize=28665856`
+- SHA256：`8A0171A94EE06EB26A1B71D6E5D9B47241545A9271EC4F0AF4448128070570DC`
+- 测试：89 项检查全过；CI：unit-tests-job 已 gate release
+
+**上游同步**：remote `upstream`=themrdemonized/xray-monolith，血缘分支 `all-in-one-vs2022-wpo-mt`；已实测合并一次（零冲突）；策略=每批次开始 `fetch+merge`，不做重度拆分（详见 README 构建章节）。
