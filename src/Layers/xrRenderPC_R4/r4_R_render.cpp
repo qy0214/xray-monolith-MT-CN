@@ -1411,6 +1411,28 @@ void CRender::RenderToTarget(RRT target)
 
 	ID3DTexture2D* pBuffer = nullptr;
 	HW.m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBuffer);
+	// Guard: rt_secondVP's format follows the same-frame switch under HDR10 (see
+	// its creation), so a toggle without vid_restart makes this copy a silent
+	// E_INVALIDARG and the lens would go stale with no symptom. Skip it and say
+	// so once instead - the copy is legal again after a vid_restart.
+	if (pBuffer && (*RT) && (*RT)->pSurface)
+	{
+		D3D11_TEXTURE2D_DESC bd = {}, rd = {};
+		pBuffer->GetDesc(&bd);
+		(*RT)->pSurface->GetDesc(&rd);
+		static bool s_warnedCopyMismatch = false;
+		if (bd.Format != rd.Format)
+		{
+			if (!s_warnedCopyMismatch)
+			{
+				s_warnedCopyMismatch = true;
+				Msg("! [PIP] legacy viewport copy skipped: format mismatch (r__svp_same_frame toggled under HDR10? vid_restart required)");
+			}
+			pBuffer->Release();
+			return;
+		}
+	}
+
 	HW.pContext->CopyResource((*RT)->pSurface, pBuffer);
 	pBuffer->Release();
 }

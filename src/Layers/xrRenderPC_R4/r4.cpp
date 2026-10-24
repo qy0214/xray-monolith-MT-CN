@@ -644,23 +644,35 @@ void CRender::EnsureTargetSVP()
 	// CHK_DX is a no-op, so a VRAM-exhausted creation fails silently: never keep a
 	// half-built target (the whole PiP path keys off TargetSVP being valid, and a
 	// missing set simply falls back to the legacy behaviour and the scope override).
-	// PiP also publishes the lens image with CopyResource into the main set's
-	// $user$viewport2, which Direct3D only performs when the two textures share a format:
-	// rt_Generic_0 is A16B16G16R16F with HDR10 on while rt_secondVP is A2R10G10B10, so under
-	// HDR10 the copy would fail silently and the lens would show a stale image. Rather than
-	// half working, the set is refused with a message.
+	// PiP also publishes the lens image with CopyResource into the MAIN set's
+	// $user$viewport2, which Direct3D only performs when the two textures share a
+	// format: rt_secondVP is created 16F under HDR10 while the same-frame path owns
+	// the lens (matching rt_Generic_0). The check compares the publish DESTINATION
+	// (the main set's rt_secondVP), not the second set's own copy - toggling the
+	// switch mid-session under HDR10 leaves the main texture in the other format,
+	// and that mismatch must refuse the set rather than silently stale the lens.
+	const CRenderTarget* mainSet = TargetMain ? TargetMain : Target;
 	const bool svp_rt_ok = TargetSVP->rt_secondVP && TargetSVP->rt_secondVP->pSurface
 		&& TargetSVP->rt_baseRT && TargetSVP->rt_baseRT->pRT
 		&& TargetSVP->rt_baseZB && TargetSVP->rt_baseZB->pZRT
 		&& TargetSVP->rt_Color && TargetSVP->rt_Color->pRT
 		&& TargetSVP->rt_Position && TargetSVP->rt_Position->pRT
 		&& TargetSVP->rt_Generic_0 && TargetSVP->rt_Generic_0->pSurface
-		&& TargetSVP->rt_Generic_0->fmt == TargetSVP->rt_secondVP->fmt;
+		&& mainSet && mainSet->rt_secondVP && mainSet->rt_secondVP->pSurface
+		&& TargetSVP->rt_Generic_0->fmt == mainSet->rt_secondVP->fmt;
 	if (!svp_rt_ok)
 	{
-		Msg("! [PIP] second viewport target creation FAILED (out of VRAM, or the HDR10 lens formats do not match: scene %u vs viewport2 %u), lens pass disabled",
-			TargetSVP->rt_Generic_0 ? u32(TargetSVP->rt_Generic_0->fmt) : 0u,
-			TargetSVP->rt_secondVP ? u32(TargetSVP->rt_secondVP->fmt) : 0u);
+		// Throttled like the "set missing" line above: this fires again on every
+		// aim while the set cannot be built, and an unthrottled failure once left
+		// ~300 identical lines in one short session's log.
+		static u32 s_nextFailLog = 0;
+		if (Device.dwFrame >= s_nextFailLog)
+		{
+			s_nextFailLog = Device.dwFrame + 18000;	// five minutes at 60 fps
+			Msg("! [PIP] second viewport target creation FAILED (out of VRAM, or the publish formats do not match: scene %u vs main viewport2 %u), lens pass disabled",
+				TargetSVP->rt_Generic_0 ? u32(TargetSVP->rt_Generic_0->fmt) : 0u,
+				(mainSet && mainSet->rt_secondVP) ? u32(mainSet->rt_secondVP->fmt) : 0u);
+		}
 		xr_delete(TargetSVP);
 		return;
 	}
