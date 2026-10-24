@@ -121,3 +121,10 @@
 ## 9. v0.2.2 cherry-pick 批次（2026-10-25）
 
 六个上游修复全部搬运完成（`00c4c0897`…`19b19090a` + 适配 `627258e04`）：①读档后 DropItem 空指针（保留我方精细抛掷）②wallmark 崩溃防护两连（script 共享串 + 失效 Parent 守卫 + sampler 空态）③纹理加载竞态 ④物品池互斥（DetailManager.h 补 pool_mutex 声明）⑤PDA 地图缓存（我方 luabind 回调保留 + AddToCache 追加）⑥Discord RPC 移出主线程（rpc_info 数组化 + 互斥锁 + 专用 std::thread + 退出 join——不再在 pApp 销毁后跑回调，对准 12:30 无栈中断现象）。适配要点：不 spawn 上游通用 mt_Thread（我们的 MT 模型是 secondary_tasks/GameThread）。DX11-AVX 0 错误 + 89 测试全过，已部署（exe sha256=4808FD08…，28,665,688→28,665,888B 校准见清单），待真机验证。
+
+## 10. 上游全分支全景对比（2026-10-25，27 分支 + 全部标签）
+
+- **血缘图**：上游 27 分支里 17 个为我们已完全包含（SSS 系列/BaS/master/sun_dir 等旧实验线，theirs-only=0）；5 个是我们的直系（-mt/wpo/153-merge）；**真正有内容差的是 5 条**：`pr`（33 提交，~21 个实质修复）、`grass-instancing-2`（17 个实质提交，**草实例化渲染**）、`grass-pre-instancing`/`grass-instancing-merge`（草线的前置/整合，含 4 个独立小修复）、`cmake`（构建系统改造，713 提交，不适用）、vs2022 系（历史构建迁移，已过时）。
+- **pr 分支候选**（多数 ≤13 行小改、零重叠）：幻影怪出生动画期被击不死亡（427b6981d+c8baff0f9）、PDA 排行榜 NPC 转非 stalker 后渲染崩溃（1ba7dc959）、浮动神器（0bd86fc17，OGSR 方案）、alt-tab 非对称暂停（a2021988e，碰 device.cpp 我们改过）、滚动条/列表拖拽两处 UI 修复（7b6d5549d/15d42e813）、azazel net 修复。
+- **grass 线候选**：ToCToU 治理（47583e80e）、骨骼动画 m_motions 判空（a809d8154）、CPHSimpleCharacter 判空（e6ca8bcf5）、视觉记忆判空（38efb138e）、CAgentManager 判空（3d41dfbc0）——全是小防护；**草实例化本身**（dd6de43ad 等）是我们的几何天花板问题的上游方案，但改动面大（渲染器核心）且 wpo-mt 未合入=上游自己也没敢合，缓期评估。
+- **决策**：不整线合并（除 -mt 主线外）；pr 分支的 8 个小修值得按 zwork 批次二的节奏 cherry-pick；grass 四个小防护顺路搬；草实例化单独立项评估（收益大=正好打我们的 85% flora 瓶颈，风险也大）。
