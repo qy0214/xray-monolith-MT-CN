@@ -74,7 +74,7 @@
 | 6 | `801b939f0` | 纹理创建失败时打印 `HRESULT` + `GetDeviceRemovedReason()` | 已有 `_hr` + `texture_gpu_lock`，但没有设备移除原因日志 | **搬日志部分**（保留我们的锁） | 手工 ~5 行 |
 | 7 | `a2021988e` | 删掉退出时不对称的 `Pause(TRUE…)` 和 DEBUG `CheckPrivilegySlowdown` | 两段都在 | 低优先/可不动；不是已证实的崩溃源，且 `x_ray.cpp` 有冲突 | 手工 |
 | 8 | `98df21101` | camattach FOV | **已有 MT 版**（`set_cam_attached_fov` / PR #773） | 跳过 | — |
-| 9 | `1ba7dc959` | PDA 排名跳过“id 已属于非 stalker”的行 | `gamedata/scripts/aaaa_script_fixes_mp.script` 在本仓库未入库；需核对 Anthology 实际脚本 | 先核对再决定 | 脚本层 |
+| 9 | `1ba7dc959` | PDA 排名跳过“id 已属于非 stalker”的行 | 源文件 `gamedata/scripts/aaaa_script_fixes_mp.script` 已入库，补丁干净；但部署走 `db/mods/00_modded_exes_gamedata.db0`，当前 db0 解包副本**没有**这层保护 | **值得搬**：改源码后重打 db0 | 脚本 + 打包 |
 | 10 | `2669ff5f1` / `cfdb8faa9` / `f80f99b2c` | 从 .ltx 读环境 modifier + `env_mods_reload` 命令 + 文档/模板 | 无 | 功能项，暂不搬（等主线合并） | 中 |
 | 11 | `36ac5b9b3` / `6b4906da7` / `626b0b95e` / `17f4c27bd` | 加载画面按目的地显示 artwork，可开关 | 无 | 功能项，暂不搬；与 gamedata/测试脚本绑定 | 大 |
 | 12 | `0eca23321` | 怪物逐对象移动目的地覆盖（8 文件 Lua API） | 无 | 功能项，暂不搬；整合包未调用 | 中 |
