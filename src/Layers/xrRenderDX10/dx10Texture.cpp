@@ -545,6 +545,13 @@ _DDS:
 			       );
 			texture_gpu_lock.Leave();
 			R_CHK2(_hr, fn);
+			if (FAILED(_hr))
+			{
+				// upstream v0.2.2/pr 801b939f0: a plain HRESULT is not enough to
+				// tell "bad file" from "device gone" - ask the device why.
+				HRESULT deviceRemovedReason = HW.pDevice->GetDeviceRemovedReason();
+				Msg("! Texture load HRESULT: 0x%08X; GetDeviceRemovedReason: 0x%08X (%s)", (u32)_hr, (u32)deviceRemovedReason, fn);
+			}
 #else
 			texture_gpu_lock.Enter();
 			HRESULT _hr = D3DX10CreateTextureFromMemory
@@ -557,6 +564,11 @@ _DDS:
 			       );
 			texture_gpu_lock.Leave();
 			R_CHK2(_hr, fn);
+			if (FAILED(_hr))
+			{
+				HRESULT deviceRemovedReason = HW.pDevice->GetDeviceRemovedReason();
+				Msg("! Texture load HRESULT: 0x%08X; GetDeviceRemovedReason: 0x%08X (%s)", (u32)_hr, (u32)deviceRemovedReason, fn);
+			}
 #endif
 			FS.r_close(S);
 			mip_cnt = IMG.MipLevels;
