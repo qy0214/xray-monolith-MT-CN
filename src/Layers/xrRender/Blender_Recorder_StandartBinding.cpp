@@ -162,12 +162,17 @@ static cl_VPtexgen binder_VPtexgen;
 #ifndef _EDITOR
 class cl_fog_plane : public R_constant_setup
 {
-	u32 marker;
 	Fvector4 result;
 
 	virtual void setup(R_constant* C)
 	{
-		if (marker != Device.dwFrame)
+		// NO per-frame caching: a same-frame PiP frame renders TWO cameras (the
+		// lens pass first, the main pass second). The fog plane is derived from
+		// the CURRENT camera's full transform, so caching by frame made the MAIN
+		// pass reuse the fog plane of the LENS camera - the distance fog pattern
+		// became view-locked (brightness/shading anomalies that move with the
+		// view; player report 2026-10-25). The math is trivial - recompute per
+		// bind so every pass gets the fog plane of its own camera.
 		{
 			// Plane
 			Fvector4 plane;
