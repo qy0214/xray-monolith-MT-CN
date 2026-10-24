@@ -585,19 +585,22 @@ static cl_sun0_dir_w binder_sun0_dir_w;
 
 class cl_sun0_dir_e : public R_constant_setup
 {
-	u32 marker;
 	Fvector4 result;
 
 	virtual void setup(R_constant* C)
 	{
-		if (marker != Device.dwFrame)
-		{
-			Fvector D;
-			CEnvDescriptor& desc = *g_pGamePersistent->Environment().CurrentEnv;
-			Device.mView.transform_dir(D, desc.sun_dir);
-			D.normalize();
-			result.set(D.x, D.y, D.z, 0);
-		}
+		// NO per-frame caching: a same-frame PiP frame renders TWO cameras (the
+		// lens pass first, the main pass second). Caching by frame made the MAIN
+		// pass reuse the sun direction transformed by the LENS camera, which
+		// view-locked the SSS screen-space foliage shadows to the aim direction
+		// (player report: "a second light source bound to the view", 2026-10-25,
+		// screenshots). The transform is trivial - recompute per bind so every
+		// pass gets the sun direction in its own eye space.
+		Fvector D;
+		CEnvDescriptor& desc = *g_pGamePersistent->Environment().CurrentEnv;
+		Device.mView.transform_dir(D, desc.sun_dir);
+		D.normalize();
+		result.set(D.x, D.y, D.z, 0);
 		RCache.set_c(C, result);
 	}
 };
