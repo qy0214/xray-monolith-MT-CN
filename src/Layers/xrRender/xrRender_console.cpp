@@ -454,6 +454,8 @@ Fvector4 ps_ssfx_bloom_2 = { 3.0f, 1.5f, 1.5f, 1.0f }; // Blur Radius, Vibrance,
 Fvector4 ps_ssfx_sss_quality = { 12.0f, 4.0f, 1.0f, 1.0f }; // Dir Samples, Omni Samples, Dir Enable, Omni Enable
 Fvector4 ps_ssfx_sss = { 1.0f, 1.0f, 1.0f, 0.0f }; // Dir Len, Omni Len, Grass shadows, -
 
+int ps_ssfx_sss_dump_lights = 0; // SSS-ext omni light slot diagnosis dump (r__sss_dump_lights)
+
 float ps_ssfx_hud_hemi = 0.15f; // HUD Hemi Offset
 
 int ps_ssfx_il_quality = 32; // IL Samples
@@ -1946,6 +1948,7 @@ void xrRender_initconsole()
 	CMD4(CCC_Vector4, "ssfx_bloom_1", &ps_ssfx_bloom_1, Fvector4().set(1, 1, 0, 0), Fvector4().set(10, 100, 100, 10));
 	CMD4(CCC_Vector4, "ssfx_bloom_2", &ps_ssfx_bloom_2, Fvector4().set(1, 0, 0, 0), Fvector4().set(5, 10, 10, 10));
 	CMD4(CCC_Vector4, "ssfx_sss_quality", &ps_ssfx_sss_quality, Fvector4().set(1, 1, 0, 0), Fvector4().set(24, 12, 1, 1));
+	CMD4(CCC_Integer, "r__sss_dump_lights", &ps_ssfx_sss_dump_lights, 0, 1);
 	CMD4(CCC_Vector4, "ssfx_sss", &ps_ssfx_sss, Fvector4().set(0, 0, 0, 0), Fvector4().set(3, 3, 1, 1));
 
 	CMD4(CCC_Float, "ssfx_hud_hemi", &ps_ssfx_hud_hemi, 0.0f, 1.0f);
