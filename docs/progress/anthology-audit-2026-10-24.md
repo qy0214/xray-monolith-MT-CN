@@ -38,3 +38,11 @@ JSGME 当前唯一启用 mod = MT-CN；挂载发生在启用时刻，之后更�
 - 备份链：`_last_engine_backup.txt` 指向的目录及 checkpoint 所载三个备份目录均已不在磁盘（疑被清理腾空间）。现行可用回退：JSGME 停用（`MODS\!BACKUP` 已确认含原版 bin/appdata/db/gamedata）、git 历史、`MODS\MT-CN.rar`。风险可接受，但"known_good 快照"已无独立副本——如需可从 git 重建。
 - translation_audit（273M）：db 解包脚本审计工作区（mod 契约真值来源之一），静态资料，无运行时影响。
 - 游戏 `appdata\user.ltx` 与 payload 的 512/上采样键一致；P1-1 修复后的 alias 回写痕迹在案。
+
+## 5. 玩家报告：佩戴手表无效（2026-10-24，已定位）
+
+**原因（mod 设计，非引擎缺陷）**：乌尔曼的手表（wd_metro_watch，Wearable Devices mod）经 `wd_attach.attach()` 挂载为**护腕（wd_bracer）附件的子物体**——脚本在 `parent` 附件不存在时静默 `return nil`（无提示、无脚本错误，与日志 0 错误一致）。引擎侧附件 API（`CGameObject::add_attachment` 等）在我们构建中完好；手表数字屏为脚本换贴图，不依赖引擎 FDDA 常量。**解法：先佩戴"护腕"，再"使用"手表切换佩戴**；外骨骼状态下 LED 按设计熄灭。
+
+## 6. 性能设置快照与建议基准（2026-10-24）
+
+当前：草距（SSFX inter_grass max_distance）= **2000**、r__detail_density = **0.72**、几何 LOD 满、SSAO 引擎侧关/SSFX AO quality2@150m、DLSS performance（960x600@1920x1200）、vsync 关、scheduler_batch_size 512、spawn_antifreeze 8（引擎默认生效）、mt 大部开/mt_task_manager 0/mt_level_call 0。锚点数据（checkpoint 实测）：几何 ~9M verts、~85% 为 flora＝真瓶颈，DLSS 仅 ~1.5x。建议见会话报告；不建议开 mt_task_manager/mt_level_call（对应 zwork 8-[高] 未解并发面）。
