@@ -109,3 +109,5 @@
 - **MT-CN 载荷 25/25 完整**；⚠️ **游戏挂载的仍是 HDR10 修复版 exe，zwork 批次一未上机**——待用户 JSGME 重挂（停用→启用→清着色器缓存）。
 - ⚠️ Standart profile 双 3DSS 变体同时启用（PiP 实际生效，但依赖 MO2 行序，建议禁用普通变体）；HARD profile 无 PiP（引擎按设计降级，需知情）。
 - ⚠️ checkpoint 所载三个 `_engine_backup_*` 目录已不在磁盘；现行回退=JSGME !BACKUP（在位）+ git + MT-CN.rar。
+
+> **2026-10-24 12:21 更新**：玩家已重新挂载 JSGME——当前运行会话 exeSize=28665856（zwork 批次一已上机，SDR，0 错误）。第 7 节"挂载版本落后"项已解除。另按玩家指示，user.ltx 基线已改为 `r4_hdr10_on 1` 并恢复 `r4_upscaler dlss`（`735d194b7`，载荷已同步）——下次 JSGME 重挂即默认 HDR10 + 同帧 PiP。
