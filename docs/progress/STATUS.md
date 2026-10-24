@@ -117,3 +117,7 @@
 - 血缘：与我们于 `1132a3f68`（2025-12-30）分叉；`v0.2.2`=主线 2026-01-11 发布（含我们没有的 422 提交/342 动 src，+85K/−33K 行、490 文件）；我们的 `-mt` 线含其没有的 3334+ 提交（wpo/-mt 十个月演进 + 我们的适配层）。**整线合并不做**（与其 delta 重叠我们近批 49 文件中的 19 个，含全部渲染热点）。
 - **高价值 cherry-pick 候选**（多数零冲突）：`6a39149e2` 读档后 Inventory::DropItem 空指针崩溃（正对"MT 读档崩溃率"已知项）；`a60a10b9d`+`755b95238` wallmark 失效崩溃防护（zwork 缓期项相关）；`c5d151c70` 纹理加载竞态；`90ac23f4e` 物品销毁/插入互斥；`3172ccb1d` PDA 地图缓存治卡顿（碰 UIMap.cpp，小冲突）；`5f0f6b701` Discord 移出主线程（碰 device.cpp/Actor.cpp，中度冲突——关联我们 12:30 局在 Discord 销毁行突然消失的现象）。
 - 观察项（不搬）：真 PiP 阴影 WIP、草渲染滚动缓冲（已 revert）、视觉优化做了又部分撤销（印证 9-AI 审查的复杂性判断）、AI CPU 6.5→1.5ms 与 PDA 缓存值得后续评估搬运。
+
+## 9. v0.2.2 cherry-pick 批次（2026-10-25）
+
+六个上游修复全部搬运完成（`00c4c0897`…`19b19090a` + 适配 `627258e04`）：①读档后 DropItem 空指针（保留我方精细抛掷）②wallmark 崩溃防护两连（script 共享串 + 失效 Parent 守卫 + sampler 空态）③纹理加载竞态 ④物品池互斥（DetailManager.h 补 pool_mutex 声明）⑤PDA 地图缓存（我方 luabind 回调保留 + AddToCache 追加）⑥Discord RPC 移出主线程（rpc_info 数组化 + 互斥锁 + 专用 std::thread + 退出 join——不再在 pApp 销毁后跑回调，对准 12:30 无栈中断现象）。适配要点：不 spawn 上游通用 mt_Thread（我们的 MT 模型是 secondary_tasks/GameThread）。DX11-AVX 0 错误 + 89 测试全过，已部署（exe sha256=4808FD08…，28,665,688→28,665,888B 校准见清单），待真机验证。
