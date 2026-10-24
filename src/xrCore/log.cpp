@@ -299,11 +299,12 @@ void xrLogger::InternalCloseLog()
 {
 	// Idempotent: CloseLog() at engine shutdown and the destructor can both
 	// reach this; a second run used to archive the session log twice (the
-	// "_1" duplicate archives came from exactly that).
+	// "_1" duplicate archives came from exactly that). The goodbye line goes
+	// out BEFORE flipping bIsAlive - enqueued after it, SimpleMessage would
+	// drop it and the log would end without the close marker.
+	SimpleMessage("[xrLogger] InternalCloseLog called, terminating thread");
 	if (!bIsAlive.exchange(false))
 		return;
-
-	SimpleMessage("[xrLogger] InternalCloseLog called, terminating thread");
 
 	// Producers check bIsAlive inside logDataGuard (SimpleMessage), so setting
 	// it false under the same guard guarantees no enqueue+SetEvent can start
