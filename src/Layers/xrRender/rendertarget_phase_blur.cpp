@@ -869,18 +869,34 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
 					if (ps_ssfx_sss_dump_lights && (Device.dwFrame % 60) == 0)
 					{
 						Fvector wpos = LightSlot[slot]->position;
-						Msg("* [SSS-DUMP] slot=%d type=%s range=%.1f world=(%.1f, %.1f, %.1f) view=(%.2f, %.2f, %.2f) camera=(%.1f, %.1f, %.1f) frame=%d",
+						Msg("* [SSS-DUMP] slot=%d type=%s range=%.1f world=(%.1f, %.1f, %.1f) view=(%.2f, %.2f, %.2f) frame=%d",
 							slot,
 							LightSlot[slot]->flags.type == IRender_Light::OMNIPART ? "omni" : "spot",
 							LightSlot[slot]->range,
 							wpos.x, wpos.y, wpos.z,
 							L_pos.x, L_pos.y, L_pos.z,
-							Device.vCameraPosition.x, Device.vCameraPosition.y, Device.vCameraPosition.z,
 							Device.dwFrame);
 					}
 				}
 			}
 		}
+	}
+
+	// Diagnosis dump (r__sss_dump_lights 1): runs regardless of the slot
+	// occupancy - an EMPTY slot list while the anomaly is visible is itself
+	// the decisive datum (it clears the omni layer of suspicion).
+	if (ps_ssfx_sss_dump_lights && (Device.dwFrame % 60) == 0)
+	{
+		int occupied = 0;
+		for (int slot = 0; slot < 8; slot++)
+			if (LightSlot[slot])
+				occupied++;
+
+		Msg("* [SSS-DUMP] summary slots-occupied=%d/8 sss-frame-gate=%u camera=(%.1f, %.1f, %.1f) frame=%d",
+			occupied,
+			sss_currentframe,
+			Device.vCameraPosition.x, Device.vCameraPosition.y, Device.vCameraPosition.z,
+			Device.dwFrame);
 	}
 
 	RCache.set_Geometry(g_combine);
