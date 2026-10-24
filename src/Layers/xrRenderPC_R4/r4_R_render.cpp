@@ -1020,39 +1020,63 @@ void CRender::Render()
 			}
 		}
 
-		if (RImplementation.o.ssfx_sss && !Device.m_SecondViewport.m_render_pass_is_svp)
+		if (RImplementation.o.ssfx_sss)
 		{
 			static bool sss_rendered, sss_extended_rendered;
 
-			// SSS Shadows
-			if (ps_ssfx_sss_quality.z > 0)
+			if (Device.m_SecondViewport.m_render_pass_is_svp)
 			{
-				Target->phase_ssfx_sss();
-				sss_rendered = true;
-			}
-			else
-			{
-				if (sss_rendered) // Clear buffer
+				// Same-frame PiP: the SSS screen-space buffers hold the MAIN view's
+				// screen-space shadows (they are rendered main-pass-only below). The
+				// lens pass must not sample that data with its own screen coordinates
+				// - doing so drew view-locked foliage shadows inside the scope,
+				// worse the higher the zoom (player report, 2026-10-25 screenshots).
+				// Clear to neutral (1 = unshadowed) for the lens pass instead.
+				if (ps_ssfx_sss_quality.z > 0 || sss_rendered)
 				{
-					sss_rendered = false;
 					FLOAT ColorRGBA[4] = { 1,1,1,1 };
 					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss->pRT, ColorRGBA);
+					sss_rendered = false;
 				}
-			}
-
-			if (ps_ssfx_sss_quality.w > 0)
-			{
-				// Extra lights
-				Target->phase_ssfx_sss_ext(RImplementation.LP_normal);
-				sss_extended_rendered = true;
+				if (ps_ssfx_sss_quality.w > 0 || sss_extended_rendered)
+				{
+					FLOAT ColorRGBA[4] = { 1,1,1,1 };
+					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, ColorRGBA);
+					sss_extended_rendered = false;
+				}
 			}
 			else
 			{
-				if (sss_extended_rendered) // Clear buffer
+				// SSS Shadows
+				if (ps_ssfx_sss_quality.z > 0)
 				{
-					sss_extended_rendered = false;
-					FLOAT ColorRGBA[4] = { 1,1,1,1 };
-					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, ColorRGBA);
+					Target->phase_ssfx_sss();
+					sss_rendered = true;
+				}
+				else
+				{
+					if (sss_rendered) // Clear buffer
+					{
+						sss_rendered = false;
+						FLOAT ColorRGBA[4] = { 1,1,1,1 };
+						HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss->pRT, ColorRGBA);
+					}
+				}
+
+				if (ps_ssfx_sss_quality.w > 0)
+				{
+					// Extra lights
+					Target->phase_ssfx_sss_ext(RImplementation.LP_normal);
+					sss_extended_rendered = true;
+				}
+				else
+				{
+					if (sss_extended_rendered) // Clear buffer
+					{
+						sss_extended_rendered = false;
+						FLOAT ColorRGBA[4] = { 1,1,1,1 };
+						HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, ColorRGBA);
+					}
 				}
 			}
 		}
