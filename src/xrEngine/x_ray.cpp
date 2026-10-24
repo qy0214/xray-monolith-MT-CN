@@ -618,11 +618,8 @@ void Init_Discord()
 	discord_core->SetLogHook(discord::LogLevel::Error, DiscordLog);
 	Msg("[Discord RPC] Created successfully!");
 
-  discord_core->SetLogHook(discord::LogLevel::Error, DiscordLog);
-  Msg("[Discord RPC] Created successfully!");
-
-  // Set up basic RPC
-  StartTime = time(0);
+	// Set up basic RPC
+	StartTime = time(0);
   discordPresence.SetType(discord::ActivityType::Playing);
   discordPresence.GetTimestamps().SetStart(StartTime);
   discordPresence.GetAssets().SetLargeImage("gamelogo");
@@ -730,7 +727,14 @@ void Startup()
 
 	Device.Run();
 
-	// Discord
+	// Discord: stop the RPC thread BEFORE destroying pApp/discord_core - the
+	// old flow killed the app object under a thread that could still be inside
+	// RunCallbacks (the 12:30 session ended right at "[Discord] pApp
+	// destroyed").
+	discord_thread_running = false;
+	discord_cv.notify_one();
+	if (discord_thread.joinable())
+		discord_thread.join();
 	clearDiscordPresence();
 
 	//Reshade

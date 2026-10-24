@@ -635,7 +635,9 @@ void CRenderDevice::Run()
 
 	// Start extra threads
 	thread_spawn(mt_FreezeThread, "Freeze detecting thread", 0, 0);
-	thread_spawn(mt_Thread, "X-RAY Secondary thread", 0, this);
+	// upstream v0.2.2 spawns its generic mt_Thread here for Discord RPC; our
+	// MT frame model uses secondary_tasks/GameThread instead, and Discord runs
+	// in its own std::thread started from Init_Discord (x_ray.cpp).
 	// Message cycle
 	seqAppStart.Process(rp_AppStart);
 

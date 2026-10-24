@@ -207,6 +207,9 @@ public:
 	int cache_cz;
 
 	PSS poolSI; // pool из которого выделяются SlotItem
+	// upstream v0.2.2: serializes SlotItem pool destruction against the cache
+	// task and the visible-list update (both may run concurrently now)
+	xrCriticalSection pool_mutex;
 
 	void UpdateVisibleM();
 	void UpdateVisibleS();
