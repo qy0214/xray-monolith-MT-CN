@@ -133,3 +133,5 @@
 - **部署提醒**：`MODS\MT-CN\bin` 已是 4808FD08（28.6MB），但游戏 `bin` 仍是 10-03 的 48MB exe / 旧 DLSS DLL；13:13 日志证明当时跑的是 MT 版，13:15 后 JSGME 已停用/还原，新构建尚未重挂。下次实机前停用→启用并清着色器缓存。
 
 > **§10 独立复核（2026-10-25）**：对 survey 全部论断逐项实证，全部成立。决定性证据：`47583e80e` 的补丁内容就是把 `m_p_tasks_count` 自旋等待加回 `cNameVisual_set`/`net_Destroy`——正是 `1c0c5b5a0`（"revert changes to fix eye_pp_s2 crash"，在祖先链内）移除的代码；`38efb138e` 对我方树直接 apply 失败（VMM 已分叉）；`CAgentManager` 我方 ：48 的守卫比上游补丁更严（多 memoryPtr 判空）。Batch A 五项 dry-run：四项零冲突，`a2021988e` 在 x_ray.cpp:330 失败（与其"低优先"结论一致）。PR #777 对我方树 apply 干净、基线 -mt 成立。仓库面实证：modded-exes 非 fork、最后推送 2024-09-29、~634MB；ixray-1.6-stcop 是 ixray-team 同名库的 fork（不同代码库）。部署提醒再次确认：**游戏 `bin` 当前是 48,067,584B 原版 exe（JSGME 已停用），4808FD08 尚未挂载**。复核结论：survey 可作为批次 A/B/C 的执行依据。
+
+> **批次 A+B 执行完毕（2026-10-25）**：A=6 提交（GraviZone `exit_Zone` 治悬浮物 `374947615`、UI 滚动条/列表两连 `d0c52dd1b`/`8c0765647`、azazel `net_Relevant` `74fcc33fe`、幻影出生期受击+纹理设备移除日志 `78493c8b2`）；B=2 提交（雨湿度按帧时间 `45498135f`、sharedmem 哈希 `58b9960da`）。DX11-AVX 0 错误 + 89 测试全过，已部署（exe sha256=71CB423D…）并推送。**待真机**：悬浮物落体、幻影可被击杀、PDA/背包 UI 拖拽手感、读档（azazel）、高帧率下雨后地面干燥速度、加载耗时（#777 需冷/热各一次记录）。
