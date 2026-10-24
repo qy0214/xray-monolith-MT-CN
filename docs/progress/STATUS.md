@@ -102,3 +102,10 @@
 - 依赖扫描：not_applicable（0 包）。
 - **Findings：5 条，全部 HIGH「命令注入」，且全部位于 `src/3rd party/optick-git/gui/Optick/*.cs`（vendored Optick 采样器 GUI 工具，C# 开发者侧）**：EditTaskTrackerListDialog.xaml.cs:77、FrameCapture.xaml.cs:195、TaskTracker.cs:101/122、SummaryViewerModel.cs:165——均为"用户输入拼接进系统命令"模式（开发者打开恶意 capture 文件的攻击面）。**引擎本体（src/ 引擎代码）0 条发现。**
 - 处置：vendored 第三方 GUI 工具，不随玩家 exe 分发（引擎仅静态链接 optick 采样核心）；按供应链项记录在案，暂不改第三方源（改了会被 submodule/vendor 更新冲掉）。若未来分发 Optick GUI 给第三方使用，需先评估这五处。
+
+## 7. 游戏安装+MOD 全量审查（2026-10-24，明细 `anthology-audit-2026-10-24.md`）
+
+- **cvar 契约零缺口**：169 个 MCM 脚本引用的 19 个引擎命令全部已注册（比对工具链假象已记录在案）。
+- **MT-CN 载荷 25/25 完整**；⚠️ **游戏挂载的仍是 HDR10 修复版 exe，zwork 批次一未上机**——待用户 JSGME 重挂（停用→启用→清着色器缓存）。
+- ⚠️ Standart profile 双 3DSS 变体同时启用（PiP 实际生效，但依赖 MO2 行序，建议禁用普通变体）；HARD profile 无 PiP（引擎按设计降级，需知情）。
+- ⚠️ checkpoint 所载三个 `_engine_backup_*` 目录已不在磁盘；现行回退=JSGME !BACKUP（在位）+ git + MT-CN.rar。
