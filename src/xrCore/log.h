@@ -46,8 +46,16 @@ public:
 
 private:
 	void InternalCloseLog();
-	volatile bool bIsAlive;
+	std::atomic<bool> bIsAlive { true };
 	ThreadID hLogThread;
+	// Joinable worker handle (thread_spawn_ex); InternalCloseLog waits on it
+	// before touching the writer, so the worker can never be mid-record while
+	// the file is closed underneath it.
+	HANDLE hLogWorker = nullptr;
+	// Whether hLogThread (the wake event) is still open. Guarded by
+	// logDataGuard together with every SetEvent decision, so no producer can
+	// signal a handle the worker has already closed.
+	bool bLogThreadOpen = true;
 
 	void InternalOpenLogFile();
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ISheduled.h"
+#include <atomic>
 
 class ENGINE_API CSheduler
 {
@@ -33,6 +34,11 @@ private:
 	xrSRWLock ItemsLock;
 
 	volatile ISheduled* m_current_step_obj;
+
+	// Thread id currently inside UpdateDeferred's processing loop (0 = none).
+	// Unregister() must not spin on m_current_step_obj when called from that
+	// same thread - see the self-unregister note in Unregister().
+	std::atomic<DWORD> m_processing_thread = { 0 };
 
 	bool m_processing_now;
 	bool m_processing_nowRT;

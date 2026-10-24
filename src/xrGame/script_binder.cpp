@@ -150,6 +150,10 @@ BOOL CScriptBinder::net_Spawn(CSE_Abstract* DC)
 		}
 		catch (...)
 		{
+			// Swallowed on purpose (a broken script must not abort the spawn
+			// pass), but silently: the object simply never materializes and no
+			// log ever said why (zwork run 372f0ebd, planner #4).
+			Msg("! [script_binder] net_Spawn threw for '%s' - script state cleared, object may not spawn correctly", *object->s_name);
 			clear();
 		}
 	}
@@ -228,6 +232,10 @@ void CScriptBinder::save(NET_Packet& output_packet)
 		}
 		catch (...)
 		{
+			// Same policy as net_Spawn above, but this one eats SAVE data:
+			// the packet for this object is silently incomplete and the loss
+			// only shows up on load. Say it happened.
+			Msg("! [script_binder] save() threw - script state cleared, this object's save packet is incomplete");
 			clear();
 		}
 	}

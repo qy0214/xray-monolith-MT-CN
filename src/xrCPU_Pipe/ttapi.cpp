@@ -187,6 +187,13 @@ DWORD ttapi_GetWorkersCount()
 // Assume that caller is smart enough to use ttapi_GetWorkersCount() to get number of available slots
 VOID ttapi_AddWorker(LPPTTAPI_WORKER_FUNC lpWorkerFunc, LPVOID lpvWorkerFuncParams)
 {
+	// The params array holds exactly ttapi_workers_count slots (allocated in
+	// init) and the one current caller fills exactly that many. Keep the
+	// "caller is smart" speed assumption, but fail loudly for a future caller
+	// that isn't, instead of writing past the array (zwork run 372f0ebd,
+	// engine-core #5).
+	VERIFY(lpWorkerFunc && ttapi_assigned_workers < ttapi_workers_count);
+
 	// Assigning parameters
 	ttapi_worker_params[ttapi_assigned_workers].lpWorkerFunc = lpWorkerFunc;
 	ttapi_worker_params[ttapi_assigned_workers].lpvWorkerFuncParams = lpvWorkerFuncParams;
@@ -196,6 +203,11 @@ VOID ttapi_AddWorker(LPPTTAPI_WORKER_FUNC lpWorkerFunc, LPVOID lpvWorkerFuncPara
 
 VOID ttapi_RunAllWorkers()
 {
+	// With zero added workers the index math below degenerates to (DWORD)-1
+	// and reads out of bounds; that is a caller bug, so say it rather than
+	// run garbage pointers.
+	VERIFY(ttapi_assigned_workers > 0);
+
 	DWORD ttapi_thread_workers = (ttapi_assigned_workers - 1);
 	//unsigned __int64 Start,Stop;
 

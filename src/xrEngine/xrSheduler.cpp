@@ -248,14 +248,21 @@ void CSheduler::Unregister(ISheduled* A)
 	VERIFY(Registered(A));
 #endif
 
-	// wait until done with m_current_step_obj
-	if (m_current_step_obj == A)
+	// wait until done with m_current_step_obj - but never spin when this IS the
+	// processing thread: an object unregistering itself from inside its own
+	// shedule_Update would be waiting for itself, because the loop clears the
+	// pointer only after that very call returns (zwork run 372f0ebd, game-logic
+	// finding #2 - the spin was reachable from the processing thread and could
+	// never exit, freezing GameThread and the main thread's wait() with it).
+	// The deferral below already handles the same-thread case.
+	if (m_current_step_obj == A &&
+		m_processing_thread.load(std::memory_order_relaxed) != GetCurrentThreadId())
 	{
 		// Loop until the worker releases the object
         xrSpinWait w;
 		while (m_current_step_obj == A)
 		{
-            w();
+			w();
 		}
 	}
 
@@ -548,7 +555,9 @@ void CSheduler::UpdateDeferred()
 
 	// Normal (sheduled)
 	m_processing_now = true;
+	m_processing_thread.store(GetCurrentThreadId(), std::memory_order_relaxed);
 	ProcessStep();
+	m_processing_thread.store(0, std::memory_order_relaxed);
 	m_processing_now = false;
 }
 

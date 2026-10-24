@@ -264,38 +264,47 @@ void Vision::o_trace(Fvector& P, float dt, float vis_threshold)
 				}
 			}
 			// Log("Vis",feel_params.vis);
-			g_SpatialSpace->q_ray(r_spatial, 0, STYPE_VISIBLEFORAI, P, D, f);
-
-			RD.flags = CDB::OPT_ONLYFIRST;
-
-			bool collision_found = false;
-
-			for (ISpatialShared Ptr : r_spatial)
+			// r_spatial is shared with feel_vision_query (the s01 step), which
+			// writes it under lock_query. The trace used to fill and walk it
+			// under lock_visible - a different lock entirely, so an overlapped
+			// s01 could rewrite the vector mid-walk (zwork run 372f0ebd, AI #2).
+			// Take the query lock for the fill AND the walk; the ray tests in
+			// the loop are bounded, and lock ordering stays visible->query.
 			{
-				CObject const* object = Ptr->dcast_CObject();
+				xrSRWLockGuard guard(&lock_query, false);
+				g_SpatialSpace->q_ray(r_spatial, 0, STYPE_VISIBLEFORAI, P, D, f);
 
-				if (object == m_owner)
-					continue;
+				RD.flags = CDB::OPT_ONLYFIRST;
 
-				if (object == I->O)
-					continue;
+				bool collision_found = false;
+
+				for (ISpatialShared Ptr : r_spatial)
+				{
+					CObject const* object = Ptr->dcast_CObject();
+
+					if (object == m_owner)
+						continue;
+
+					if (object == I->O)
+						continue;
 
 #ifdef SPATIAL_CHANGE
-				if (object->SpatialComponent->spatial.type & STYPE_FEELVISIONIGNORE)
-					/* See through objects that have the flag. */
-					continue;
+					if (object->SpatialComponent->spatial.type & STYPE_FEELVISIONIGNORE)
+						/* See through objects that have the flag. */
+						continue;
 #endif
-				
-				RQR.r_clear();
-				if (object && object->collidable.model && !object->collidable.model->_RayQuery(RD, RQR))
-					continue;
 
-				collision_found = true;
-				break;
+					RQR.r_clear();
+					if (object && object->collidable.model && !object->collidable.model->_RayQuery(RD, RQR))
+						continue;
+
+					collision_found = true;
+					break;
+				}
+
+				if (collision_found)
+					feel_params.vis = 0.f;
 			}
-
-			if (collision_found)
-				feel_params.vis = 0.f;
 
 			if (feel_params.vis < feel_params.vis_threshold)
 			{

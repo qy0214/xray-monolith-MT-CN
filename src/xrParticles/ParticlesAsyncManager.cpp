@@ -7,6 +7,8 @@
 
 static CParticlesAsync Instance;
 
+xrCriticalSection CParticlesAsync::UpdateLock;
+
 void CParticlesAsync::Play()
 {
 	if (DevicePtr && !Device.ParticleWorkerCallback)
@@ -20,8 +22,13 @@ void CParticlesAsync::Play()
 
 void CParticlesAsync::Start()
 {
-	Instance.IsStarted = true;
+	Instance.IsStarted.store(true, std::memory_order_release);
 
+	// One (recursive) critical section over both loops: ForceUpdate() from the
+	// game thread takes the same section, so a particle played mid-run can
+	// never be OnFrame'd twice concurrently. Recursive, because a particle's
+	// own Update can spawn another effect (Play -> ForceUpdate) on this thread.
+	xrCriticalSectionGuard guard(UpdateLock);
 	{
 		PROF_EVENT("Particle Update");
         for (intrusive_ptr<CPS_Instance>& particle: g_pGamePersistent->ps_active)
@@ -35,11 +42,11 @@ void CParticlesAsync::Start()
 
     PROF_EVENT("Particle Shedule");
     for (intrusive_ptr<CPS_Instance>& particle : g_pGamePersistent->ps_active)
-	{
+    {
 		particle->Update(Device.dwTimeDelta);
 	}
 
-	Instance.IsStarted = false;
+	Instance.IsStarted.store(false, std::memory_order_release);
 }
 
 void CParticlesAsync::Wait()
@@ -48,16 +55,23 @@ void CParticlesAsync::Wait()
 	{
 		PROF_EVENT("Particles Wait");
         xrSpinWait w;
-		while (Instance.IsStarted)
+		while (Instance.IsStarted.load(std::memory_order_acquire))
 		{
-            w();
+			w();
 		}
 	}
 }
 
 void CParticlesAsync::ForceUpdate(intrusive_ptr<CPS_Instance> Obj)
 {
-	if (!Instance.IsStarted)
+	if (!Instance.IsStarted.load(std::memory_order_acquire))
+		return;
+
+	// Serialize with the worker's whole update section (see Start): the flag
+	// was checked before the lock, so re-check under it - the worker may have
+	// finished while this thread waited.
+	xrCriticalSectionGuard guard(UpdateLock);
+	if (!Instance.IsStarted.load(std::memory_order_acquire))
 		return;
 
 	Instance.UpdateParticle(Obj);
@@ -65,7 +79,7 @@ void CParticlesAsync::ForceUpdate(intrusive_ptr<CPS_Instance> Obj)
 
 bool CParticlesAsync::NeedForceUpdate()
 {
-	return Instance.IsStarted;
+	return Instance.IsStarted.load(std::memory_order_acquire);
 }
 
 CParticlesAsync::CParticlesAsync()

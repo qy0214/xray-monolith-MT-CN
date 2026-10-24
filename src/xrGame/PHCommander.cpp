@@ -90,6 +90,10 @@ void CPHCommander::update()
 		}
 		catch (...)
 		{
+			// The removal stays (a throwing physics command must not kill the
+			// frame), but it used to vanish silently - "physics weirdly does
+			// not work" with nothing in the log (zwork run 372f0ebd, #5).
+			Msg("! [PHCommander] physics command '%s' threw an exception and was removed", typeid(*m_calls[i]).name());
 			remove_call(m_calls.begin() + i);
 			i--;
 			continue;

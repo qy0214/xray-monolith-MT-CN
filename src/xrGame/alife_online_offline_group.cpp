@@ -89,7 +89,10 @@ void CSE_ALifeOnlineOfflineGroup::update()
     }
     catch (...)
     {
-
+        // Empty on purpose upstream; a group whose member update throws would
+        // otherwise desync silently. Keep the swallow, lose the silence
+        // (zwork run 372f0ebd, planner #6).
+        Msg("! [alife] online/offline group update threw (swallowed), group members may desync");
     }
 }
 

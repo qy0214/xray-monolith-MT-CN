@@ -130,6 +130,9 @@ void str_container::verify()
 void str_container::dump()
 {
 	FILE* F = fopen("d:\\$str_dump$.txt", "w");
+	if (!F)
+		return;	// d: may not exist on this machine; fprintf(nullptr) crashed here (zwork engine-core #8)
+
 	xrSRWLockGuard guard(&rwlock, true);
 	for (const auto& list : buffer)
 	{

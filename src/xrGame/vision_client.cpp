@@ -64,12 +64,21 @@ void vision_client::eye_pp_s2()
 	u32 dwTime = Device.dwTimeGlobal;
 	u32 dwDT = dwTime - m_time_stamp;
 	m_time_stamp = dwTime;
-	static DWORD this_thread_id = 0;
-	this_thread_id = GetCurrentThreadId();
+
+	// Snapshot everything the task reads that the main thread keeps writing:
+	// the task runs inside the render window, and the next frame's eye_pp_s01
+	// can already have rewritten m_position while this one is still queued
+	// (zwork run 372f0ebd, AI #4; CustomMonster.cpp does the same by value).
+	Fvector position = m_position;
+	const float transparency_threshold = visual().transparency_threshold();
+	const DWORD this_thread_id = GetCurrentThreadId();
 	Device.secondary_tasks.run([=]()
 	{
 		if (this_thread_id != GetCurrentThreadId()) { PROF_THREAD("X-Ray PPL Thread") }
-		feel_vision_update(m_position, float(dwDT) / 1000.f, visual().transparency_threshold());
+		// By-value captures are const inside the lambda body and
+		// feel_vision_update takes Fvector& - hand it a local copy.
+		Fvector pos = position;
+		feel_vision_update(pos, float(dwDT) / 1000.f, transparency_threshold);
 	});
 
 	Device.Statistic->AI_Vis_RayTests.End();

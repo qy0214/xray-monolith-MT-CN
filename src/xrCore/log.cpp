@@ -167,7 +167,14 @@ void xrLogger::UnpauseLogging()
     if (bImmediateMode)
         InternalPrintAllRecords();
     else
-	    SetEvent(hLogThread);
+	{
+		// SetEvent is only legal while the worker owns the event handle. Take
+		// the same guard the worker uses to close it, so a late FlushLog()
+		// cannot signal an already-closed (or reused) handle.
+		xrCriticalSectionGuard guard(&logDataGuard);
+		if (bLogThreadOpen)
+			SetEvent(hLogThread);
+	}
 }
 
 void xrLogger::SimpleMessage(LPCSTR Message, u32 MessageSize /*= 0*/)
@@ -237,8 +244,8 @@ void xrLogger::InitLog()
 	{
 		theLogger = new xrLogger;
 		xrLogger::logData = new xr_queue <xrLogger::LogRecord>;
-		thread_spawn(LogThreadEntryStartup, "X-Ray Log Thread", 0, nullptr);
-	}	
+		theLogger->hLogWorker = thread_spawn_ex(LogThreadEntryStartup, "X-Ray Log Thread", 0, nullptr);
+	}
 }
 
 void xrLogger::InternalFlushLog()
@@ -290,8 +297,32 @@ namespace { void ArchiveLogFile(LPCSTR path, bool move); }	// defined below
 
 void xrLogger::InternalCloseLog()
 {
+	// Idempotent: CloseLog() at engine shutdown and the destructor can both
+	// reach this; a second run used to archive the session log twice (the
+	// "_1" duplicate archives came from exactly that).
+	if (!bIsAlive.exchange(false))
+		return;
+
 	SimpleMessage("[xrLogger] InternalCloseLog called, terminating thread");
-	bIsAlive = false;
+
+	// Producers check bIsAlive inside logDataGuard (SimpleMessage), so setting
+	// it false under the same guard guarantees no enqueue+SetEvent can start
+	// after this point.
+	{
+		xrCriticalSectionGuard guard(&logDataGuard);
+		bIsAlive = false;
+	}
+
+	// Wake the worker: it drains everything, flushes if asked, then exits and
+	// closes the event handle. Join it before touching the writer below - the
+	// old code freed logFile while the worker could still be mid-record.
+	UnpauseLogging();
+	if (hLogWorker)
+	{
+		WaitForSingleObject(hLogWorker, INFINITE);
+		CloseHandle(hLogWorker);
+		hLogWorker = nullptr;
+	}
 
 	InternalPrintAllRecords();
 	InternalFlushLog();
@@ -305,8 +336,6 @@ void xrLogger::InternalCloseLog()
 	// Keep a dated copy of this session (the plain log stays for tools that read it;
 	// the next launch archives the plain one onto the same dated name).
 	ArchiveLogFile(logFileName, false);
-
-	UnpauseLogging();
 }
 
 xrLogger::xrLogger()
@@ -501,10 +530,17 @@ void xrLogger::LogThreadEntry()
 	{
 		if (!bIsAlive)
 		{
+			// Mark the event handle as gone under the same guard every
+			// SetEvent path checks, then close it: after this point no
+			// producer can signal a dead handle.
+			{
+				xrCriticalSectionGuard guard(&logDataGuard);
+				bLogThreadOpen = false;
+			}
 			CloseHandle(hLogThread);
 			return;
 		}
-		
+
 		WaitForSingleObject(hLogThread, INFINITE);
 		{
 			PROF_EVENT("Log Frame");
