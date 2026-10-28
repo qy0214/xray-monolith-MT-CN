@@ -834,8 +834,11 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
 				if (!LightSlot[slot]->flags.bActive || Remove)
 				{
                     // demonized: keep the light pointer for some frames to eliminate flicker, but also check if its actually been disabled
-                    LightSlot[slot]->sss_remove_latency++;
-                    if (!LightSlot[slot]->flags.bActive || LightSlot[slot]->sss_remove_latency > 5)
+                    // FIX: lights not in the current package (e.g. leftover from PiP lens view) are removed immediately
+                    // instead of waiting 5 frames - otherwise their stale view-space positions produce
+                    // misplaced screen-space omni shadows ("second light source").
+                    bool RemoveByPackage = (CheckPackage && Remove);
+                    if (RemoveByPackage || !LightSlot[slot]->flags.bActive)
                     {
                         if (LightSlot[slot]->flags.type == IRender_Light::OMNIPART)
                             LightSlot[slot]->sss_refresh = true;
@@ -843,6 +846,19 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
                         LightSlot[slot]->sss_id = -1;
                         LightSlot[slot]->sss_on_light_destroy.clear();
                         LightSlot[slot] = NULL;
+                    }
+                    else
+                    {
+                        LightSlot[slot]->sss_remove_latency++;
+                        if (LightSlot[slot]->sss_remove_latency > 5)
+                        {
+                            if (LightSlot[slot]->flags.type == IRender_Light::OMNIPART)
+                                LightSlot[slot]->sss_refresh = true;
+
+                            LightSlot[slot]->sss_id = -1;
+                            LightSlot[slot]->sss_on_light_destroy.clear();
+                            LightSlot[slot] = NULL;
+                        }
                     }
 				}
 				else
