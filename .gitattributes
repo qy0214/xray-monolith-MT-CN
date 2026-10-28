@@ -10,3 +10,7 @@
 **/*.gs linguist-language=HLSL
 **/*.vs linguist-language=HLSL
 **/*.cs linguist-language=HLSL
+
+# Keep git-generated patches byte-for-byte (core.autocrlf=true would otherwise
+# normalise their line endings and break git apply against a CRLF tree).
+*.patch -text

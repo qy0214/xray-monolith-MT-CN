@@ -1,0 +1,2355 @@
+diff --git a/docs/progress/STATUS.md b/docs/progress/STATUS.md
+index 4d1ab4630..5f33fa2f6 100644
+--- a/docs/progress/STATUS.md
++++ b/docs/progress/STATUS.md
+@@ -151,3 +151,67 @@
+ > **"第二光源"根因修复（2026-10-25 深夜，e318abb95）**：10-19 基线测试（玩家实测复现）把窗口收敛到 MT 分支自身演进（DLSS/PiP 移植期）；玩家形态描述（"点状放射圆形四射光线、自行旋转"的 omni 屏幕空间影）+ S2 反转（关 DLSS 无效）+ 腰射/镜内影子同步 → 定位到 **`phase_ssfx_sss_ext` 的静态光源槽填充门控**（`sss_currentframe = dwFrame + 2`，每 2 帧才刷新）。同帧 PiP 下：镜头遍先填充（镜头视图的阴影光源集），主遍跳过刷新复用 → 主视口 omni 影子按镜头视图光源集计算 = 视绑定的"第二光源"（与上采样器无关，两视图影子同步一致）。修复：每次调用（每视图）都刷新，槽位稳定性由既有匹配逻辑保持，CheckPackage 门控随 else 分支一并移除。DX11-AVX 0 错误+89 测试，已部署（exe sha256=43769B23…）并推送。**待真机**：腰射+举镜转身，"第二光源"（放射光线光晕+错误树影）应消失。同源修复合计三件：SSS 镜头遍清空（ad1c786d2）、L_sun_dir_e 按绑定重算（5e32c09a8）、本件（e318abb95）——全部是"同帧双相机 × 按帧/跨帧缓存的渲染状态"这一类缺陷的不同表现。
+ 
+ > **SSS omni 光源槽诊断转储（2026-10-25 深夜，ebb5537a2）**：四个假设修复全部无效 + 玩家关 DLSS 也无效 + 10-19 基线也复现 → 静态分析穷尽，转为数据驱动。新增 `r__sss_dump_lights` 诊断 cvar（0/1）：开启后每秒转储一次 SSS-ext 的 8 个光源槽（世界/视空间坐标、范围、类型、相机位置）——"第二光源"的 omni 阴影射线从槽内光源的视空间位置放射，dump 的世界坐标可直接对照地图上的灯具/电筒/月亮定位错误光源的真身。已部署（exe sha256=AF2B5A7A…，28,662,272B）并推送。**待玩家**：正常游玩至异常出现 → `r__sss_dump_lights 1`（控制台）→ 异常明显时等几秒 → 发日志；dump 数据回来后按光源世界坐标定位真身并修复。
++
++> **影子方向再归因 + 视角绑定待测（2026-10-26 凌晨）**：屏幕空间层全关 + 冻风后地面暗斑仍在 → 是 CSM 树冠影，不是叠加层；静态相机 8 s 对比证明"会动"的部分是风动枝叶影。玩家提出新假设：**错位影子可能绑定在角色视角上**。02:31 dump 拿到引擎相机 `(-1.000,-0.009,-0.023)` 与 `sun_dir=(-0.656,-0.639,0.402)`：太阳在相机**背后偏左**（仰角 40°、离视线 130°）；对 02:14 视图那条细长直影，引擎预测地面影子 +16.1°，实测影带 +28.9°（同象限右上，差 12.8°≈路面横坡+时间差），即影子背离太阳、投影物在相机背后。**已部署诊断构建**（02:42，28,667,392 B，md5 `729eb8a6…`）：新增 `dbg_position.bmp`（G-Buffer 视空间位置/法线）与 `dbg_color_sun.bmp`（原始帧上按相机+`E.sun_dir` 画黄色太阳十字），日志输出 `sun screen ndc/uv`。**明天实测**：①同位置只转 ~50° 连做两次 `r__dump_shadow_buffers 1`+F12，退出刷日志 → 用 rt_Position 对同一世界地面点比对明暗，直接判定是否"视角绑定"；②黄色十字 vs 可见太阳圆盘 → 判定天空烘焙太阳是否不跟随动态太阳（"第二光源"候选）；③光柱锚定为独立问题，待太阳完整入画+光柱可见的截图量汇聚点。详见 `docs/progress/notes/2026-10-26-mt-shadow-direction.md`。
++
++> **相机验证：太阳位置 1.4px 吻合 + 双视角影子方向（2026-10-26 08:49）**：玩家同位置两视角各做 `r__dump_shadow_buffers 1`+F12（相机相差 72°），日志给出两帧相机与 `E.sun_dir`。视角 1 可见太阳圆盘过曝质心 `(576.8, 62.8)`，引擎投影 `(575.4, 63.5)` → **误差 1.4px**，据此否定"天空烘焙太阳不跟随动态太阳"假设；两视角的平地影子方向场与实际阴影一致（视角 1 太阳在画面上方偏左、卡车左侧亮/车影朝右；视角 2 太阳在左缘外、灌木左上亮/影子朝右上），屏幕方向随视角改变 → 未见屏幕锁定。**注意**：本次跑的是游戏自带 `bin` 里的旧 exe（10-25 23:30），未产出 `dbg_position`/`dbg_color_sun`，且两次 dump 旧文件名互相覆盖；新构建（08:54，28,666,368B，md5 `7bb53dd4…`，dump 文件名带 `_<n>` 序号）已放 `MODS\MT-CN\bin`，需启动器停用→启用 MT-CN 挂载后再做一次双视角测试，完成 rt_Position 世界点比对。详见 `docs/progress/notes/2026-10-26-mt-shadow-direction.md` §7。
++
++> **09:04 双视角实测结果（2026-10-26）**：新构建已挂载并跑出 `dbg_*_1/_2`。视角 1 相机 `(-48.57 5.24 -97.44)`、`dir=(-0.960 -0.097 -0.261)`、`sun_dir=(-0.8840 -0.4399 0.1581)`（太阳在背后 148°，仰角 26.1°）。① 画面中心偏左的长暗带在 `dbg_accum_1.bmp`（原始太阳 pass）里同样存在 → **暗带是 CSM 太阳阴影本身**，屏幕空间层（AO/SSS/IL/雾/光柱）对新证据可以排除。② 平地影子方向灭点 dump `(1056,381)`（右上）；暗带反投影世界轴向 `(0.743,0.669)`，与 `L_h` 夹角 127.9°（把下端当根部则 52.1°）；暗带位于左陡坡脚，45–60° 坡面可把同一条太阳影扭成屏幕向下，故单帧**不能**判定 CSM 方向错。③ 08:49 平地卡车对照仍与太阳一致 → 不是全局翻转。④ **世界点 A/B 仍未完成**：第二视角转了约 100°、无共享地面；dump 2 相机行被刷盘截断（日志尾 `* [DBG] ca`）；`dbg_position` 因 16F 钳位+RT 复用不可用。**下一轮**：平地+干净投影物（根部与影子同框）、原转 40–60° 保留同一片地面，各 F12+dump；平地仍 >20° 偏差才确诊 CSM 方向。下一版构建把相机/太阳写进 dump 文件名 + 增加深度专用灰度转储。详见 notes §8。
++
++> **更正 + 三轮技能审查结果（2026-10-26 下午）**：§8 的"暗带在 accum 里所以是 CSM"**是错的**。SSFX 的 `accum_sun_near/far.ps` 结尾把太阳乘上 `s_ssfx_sss.b`；`.b` 不是常量，而是 `ssfx_sss_blur.ps` 两遍模糊后的**屏幕空间直接 SSS 遮罩**（`rendertarget_phase_blur.cpp` 的 blur_setup `(0,1,0,0)`→`(1,0,2,0)`），主视口 `ssfx_issvp.x=0`。09:04 日志显示该会话 `ssfx_sss(1,1,0,0)`、`ssfx_sss_quality(12,4,1,1)`、风也开着 → 暗带是 CSM+SSS 混合，不能单独归因 CSM。SSS 遮罩按 `-L_sun_dir_e` 做屏幕空间 march、0.95 时间累积、两遍模糊，天然视角绑定——这正是"树影跟着视角走"的真实机制。两轮独立子代理复核一致：CSM 渲染/采样同源（`X.D.combine=cascade.xform`、`m_shadow=TexelAdjust·combine·mInvView`、`gbd.P` 视空间），符号/手性/矩阵顺序/正交/深度翻转全对，**CSM 方向在数学上不可能旋转**。另查出两个真实 CSM 缺陷：FAR 级联体积用 `xform_prev`（`:569-572`）；无投影物时 `phase_smap_direct` 不清空但累加照跑（`R_sun.cpp:311-317/357-365`）→ 旧阴影图配当前矩阵采样，运动中产生视角漂移错影。修复方案：A) 引擎开关把 SSS Dir Len 置 0（一帧内分离 SSS 影，先做）；B) 清空移出条件；C) FAR 体积改用 `xform`。详见 notes §9。
++
++> **两个 CSM 真缺陷已修（2026-10-26 09:56 构建）**：① `R_sun.cpp` 把 `phase_smap_direct`（bind+clear）与阴影 pass 的 view/project 设置移出"有投影物"条件——每个级联无条件清空；② `r4_rendertarget_accum_direct.cpp` 恢复 `R2FLAGEXT_SUN_ZCULLING` 条件（默认 flag 关闭 → FAR 用自身 `xform`，不再用中景 `xform_prev`）。`build_mtcn.cmd AVX NOPAUSE` 0 错误，exe 28,666,368 B，md5 `2ba29c96eb2ab559d8cb98034728477b`。**已按玩家要求暂存到 `MODS\MT-CN\bin\AnomalyDX11AVX.exe`**，旧诊断构建保留为同目录 `AnomalyDX11AVX_diag0854.exe` 作回滚。**当前游戏 `bin` 是原版 exe（48,067,584 B / 10-03 / `f983ce27…`），MT-CN 未挂载**——测试前需在启动器启用 MT-CN，确认 `bin\AnomalyDX11AVX.exe` 变为 28,666,368 B / `2ba29c96…`。SSS 层（方案 A）未动。详见 notes §10。
++
++> **配置修正（2026-10-26）**：截图键 `kADD → kF12`（删除重复的 `bind_sec`），解决与 MCM `beef_nvg/keybind_nv_up = 78`（小键盘 +）的撞键；F12 未被其他键位占用。MCM `ssfx_module/sss/enable_dir_mcm` 与 `ssfx_sss_quality.z` 同步关闭（屏幕空间直接 SSS 影，§9 证实的视角绑定来源；omni 保留），使本次真机测试只验证 CSM 修复。MOD 副本与游戏当前生效的 user.ltx/axr_options.ltx 同步修改；并把 `anthology_runtime_seasons/style = 6` 补进 MOD 的 MCM 副本。风/光柱/雾/光晕/AO/IL 未动。详见 notes §11。
++
++> **暗屏修复 + 太阳光柱门控（2026-10-26 10:22）**：玩家关 SSS 后全屏变暗——根因是 `r4_R_render.cpp` 关闭路径只在"本进程渲染过 SSS"后清 `rt_ssfx_sss`；从启动起禁用时该 RT 保持创建值 0，太阳 accum 乘 `.b=0` → 太阳贡献全黑。修复：禁用时无条件清成 `(1,1,1,1)`（主视口+PiP 两支）。同时给体积太阳光柱加可见性门控：`need_to_render_sunshafts()` 用 `sun_adapted->direction` 经 `Device.mView` 转到视空间，`vs.z<=0.05`（太阳在视平面后）时整层不渲染，`accum_direct_volumetric()` 同步调用该门控。构建 10:22，28,665,856 B，md5 `4f46cd1849542467d429dcf5789a4e9d`，已暂存 `MODS\MT-CN\bin\AnomalyDX11AVX.exe`；备份 `AnomalyDX11AVX_csmfix0956.exe`（09:56）、`AnomalyDX11AVX_sssclear1019.exe`（10:19）、`AnomalyDX11AVX_diag0854.exe`。待重启/重挂验证：亮度恢复、太阳在画面内才有光柱；若仍有随视角宽带，先关 `ssfx_fog_scattering`（该层不读太阳方向）。详见 notes §13。
++
++> **引擎侧太阳锚定光柱 + 级联真值转储（2026-10-26 11:33）**：新增引擎自有 `csm_sunmask.ps` + `CBlender_sunmask` + `apply_sun_volumetric_mask()`，在远景太阳体积光绘制后按太阳屏幕位置做径向遮罩 → 体积光柱只在太阳处出现（跟随视角的 SSFX 体积光被绑定到太阳）；太阳在画面外/背后时光柱为 0。`r2_sunshafts_mode` 改回 `volumetric`。`r__dump_shadow_buffers 1` 新增输出三条 `* [DBG] cascadeN r0..r3` 级联矩阵。构建 11:33，28,669,952 B，md5 `dbd8116bee108449ba6dd37bf7034017`，已暂存 `MODS\MT-CN\bin`（11:09 备份为 `AnomalyDX11AVX_jitter1109.exe`），新 shader 已在 `MODS\MT-CN\gamedata\shaders\r3`。DLSS 未改。详见 notes §17。
++
++> **逐级联阴影图捕获（2026-10-26 12:35 构建）**：`r__dump_shadow_buffers 1` 后**下一帧**在 `render_sun_cascade()` 内逐级联读回 `rt_smap_depth`（`dbg_smap_c0/1/2.bmp`，D24S8/D32 正确灰度化）并输出 `* [DBG] smap c=N ...` + 该级联矩阵 + 该级联的 `probe ... mode=N` 行（`mode=0/1/2` 分别对应近/中/远）。帧末探针只剩 `mode=2`（FAR），不再产生无意义的 c0/c1 行。构建 12:35，28,676,608 B，md5 `d10bbfe719f1bd9e77258568c1d2d6d8`，已暂存 `MODS\MT-CN\bin`；12:03 构建备份 `AnomalyDX11AVX_probe1203.exe`。判读要点：`side` 在与矩阵自洽时恒正，不作为方向证据；看 `occ` 世界坐标/高度、`dm-dp` 差、`sh` vs `lum`、以及不同朝向同一 `pw` 的 `sh` 稳定性。详见 notes §20。
++
++> **12:45 最终诊断构建**：探针网格 40 px；`r__dump_shadow_buffers` 新增 `* [DBG] layers sss_q/ao_q/il_q/fog_scatter/shafts_mode/wind_tree` 自述行（MCM 会重新打开 AO/IL，必须记录当帧真值）。28,676,608 B，md5 `cbe68c7b060bc9f7dc5f15105b4c1cfd`，已覆盖 `MODS\MT-CN\bin\AnomalyDX11AVX.exe`，12:35 构建备份 `AnomalyDX11AVX_percascade1235.exe`。详见 notes §20–§21。
++
++> **12:49 最终构建**：`dbg_smap_d<seq>_c<N>.bmp` 按 dump 序号命名（两次朝向的阴影图都保留）。28,676,608 B，md5 `0d4a2a6e690943c8dea099f062efbff0`，已覆盖 `MODS\MT-CN\bin\AnomalyDX11AVX.exe`；12:45 构建备份 `AnomalyDX11AVX_probe1245.exe`。测试必须重新挂载 MT-CN，日志 `[MT-CN] engine build ... exeSize=28676608` 为新构建。
++
++> **12:59 两组 dump 判读（2026-10-26）**：近级联光轴与 `sun_dir` 一致到 <0.0005；细影带 x≈520,y≈520–600 的阴影图遮挡物为竖直细杆 `occ≈(-58.3,1.7–4.0,-95.8)`（相机前 10m），同列 G-buffer 只见 14–16m 处地面 → 疑似“无物体的影子”。两次 dump 朝向差 94°，地面不重叠，跨视角 A/B 未完成。新构建 13:28 `d5fa352c…` 增加 `dOcc`（遮挡物投影处可见面与 occ 的距离）+ 过滤 `dp>1` 越界样本，已暂存 `MODS\MT-CN\bin`；12:49 构建备份 `AnomalyDX11AVX_cascadeprobe1249.exe`。详见 notes §23。
++
++> **13:47 dOcc 轮 / 14:01 修正构建**：dOcc 结果暴露探针自身缺陷——`occ` 被投影到镜像的屏幕 x（例子：距接收点 0.78m 的 caster 应投到 u≈0.62，日志 cv.u=0.379），因此 dOcc 全部无效，不能作为阴影结论。新构建 `a843041c…`（28,679,168 B）改为本地组合 `mProject*mView`、每行输出 `rcv` 自检、逐级联捕获只对主目标执行。已暂存 `MODS\MT-CN\bin`；13:28 备份 `AnomalyDX11AVX_docc1328.exe`。详见 notes §24。
++
++> **14:34 轮结论：探针自身镜像，dOcc 作废**：`rcv` 与采样像素在 u 上系统性互为镜像（平均误差 0.509，v 仅 0.00025），例 (0,0)→rcv(1.000,0.001)。因此该轮 `caster_near/far` 全部无效。已改为“重建公式的解析逆”做正投影，并把 `p11/ht/vt/view/target` 写进日志；判据改为“树冠 caster 的 dOcc 应普遍变小”作为独立验证。构建 14:5x md5 `879b40b893b2d5c2ed3e38e335bc0547`（28,679,168 B）已暂存，14:01 备份 `AnomalyDX11AVX_rcv1401.exe`。详见 notes §25。
++
++> **14:54 轮：探针自检通过，抓到同一根“无主遮挡物”**：`rcv` 误差 ≤0.00046，dOcc 可信。c0 的 38 个可投影阴影样本中，遮挡物全部比接收点更靠近相机；`up<1m` 类 22/32 判为可见（探针判读正确）。x=480 列三次采到同一世界位置 `(-58.2, 2.5–5.9, -95.5)`（相机前约 10 m），该处可见面差 `dOcc=6.4/21.7/90.8 m`，与 12:59 轮细影带 caster `(-58.3,1.7–4.0,-95.8)` 同点 → 阴影图里有 colour pass 不画的竖直遮挡物。新构建 15:0x `764b9760…`（28,684,800 B）加 `nearvis` 列表（相机 35 m 内全部静态 visual 的 .ogf 名/包围盒），用于判定该点是“被剔除”还是“根本不在静态层级”。已暂存 `MODS\MT-CN\bin`。详见 notes §26。
++
++> **15:16 轮：无主遮挡物对上静态模型**：`rcv` 误差 ≤0.00046（探针可信）。`mode=0` 中 `dOcc>3` 的三点 `(-58.5,2.2–5.1,-95.9)`（相机前约 10 m，dOcc 4.6/13.9/111.1 m）全部落在静态 visual **#0（type=11 MT_TREE_PM，box 高 0.4→33.2 m）** 的 AABB 内 → 这棵树被 colour pass 漏画、却进了阴影图，正是"影子没有对应物体"。其余 far 行只被地形 visual 包住，属贴地台阶正常情形。新构建 `ddf595c0…`（28,685,312 B）在 nearvis 行里输出 `ssa/frust/hom/fdrej` 四项可见 pass 判定，用来在 HOM 误剔、全细节剔除不一致、视锥、progressive LOD 四种成因之间一次定案。已暂存 `MODS\MT-CN\bin`；15:04 备份 `AnomalyDX11AVX_nearvis1504.exe`。详见 notes §27。
++
++> **15:33 轮：三条剔除全部排除**：93 个静态 visual 的判定为 92×(frust=1,hom=1,fdrej=0)，`r_ssaDISCARD=0.000`（SSA 丢弃未开）。ghost 树 `#0 (MT_TREE_PM, box y 0.4→33.2)` 在 d1/d2 三次采样里稳定出现（`occ≈(-58.3,2.6–5.1,-95.2)`，`dOcc=59.7/7.1/6.6 m`），却没被任何剔除解释。只剩"没进颜色队列"或"进了队列但没画出来"两种。新构建 `9a2707d2…`（28,687,360 B）在 `nearvis` 行加 `subC/subS`（按帧记录的入队集合）一次定案，已暂存 `MODS\MT-CN\bin`。详见 notes §28。
++
++> **15:49 轮 + 截图**：ghost 树 #0（`MT_TREE_PM`，AABB 4.6×32.8×5.2 m，相机前 ~10 m）在 `frust/hom/fdrej` 全通过、`subC=subS=1` 的情况下仍无像素；其预测位置 (468,459)/(474,562) 内部像素上 G-buffer 是 27–39 m 的地面。截图里影带"指向"的是另一棵 24–27 m 处的暗树干 → 影子与可见树对不上，与玩家描述一致。发现并修掉仪表缺陷：`subC` 原先在 pass 循环之前打标记（passes 全 null 也记 1，等于没证明）；现改为**入队 pass 计数**并附 `se/npass/prio/vs/ps`。构建 `888994c5…`（28,689,920 B）已暂存。详见 notes §29。
++
++> **新增 `r__sun_shadow_casters`（0 all / 1 no_trees / 2 terrain_only / 3 none）+ `shoffset` 数值量测**：开关只过滤太阳阴影级联的投影物（颜色 pass 不动，所以它不会让物体消失，只会让影子消失），dump 行 `sun casters mode/kept/skipped` 自证生效；`shoffset` 对每个 >8 m 高的静态物体量"影子带中心横向偏移 dlat"和"沿太阳方位的影子起止 along"，正确值应为 `dlat≈0`、`along≈0..L`。构建 `be19e90d…`（28,696,576 B）已暂存。测试协议与恢复命令见 notes §30 及对话内说明。
++
++> **17:23 轮 A/B 定档（模式 1/2/3/0）**：`kept/skipped` = 560/1124、100/1574、0/1654、mode 0 未计数（已修）。c0 阴影样本 `sh1` = 32 / 22 / **0** / 50（c1 54/43/0/155，c2 68/60/0/187）→ 细影带与树冠斑点由**树**投影，右侧大片暗区由**地形**投影，`3 none` 时太阳阴影为零。开关本身工作正常，影子完全来自 CSM 深度图。截图序 17:19:13/17:19:48/17:20:19/17:21:21 = 1/2/3/0。
++
++> **17:47 轮：shoffset v2 成立但不能定案，改仪器**。`groundY=` 出现（量法生效），c1/c2 一致的 `dlat=0.20~4.60`、`along` 起点 0.0~20.3 —— 但森林窗口里邻树的影子能占同一段，`dlat` 无法区分"错位"与"邻树"。离线读 `dbg_smap_d1_c*.bmp` 复核：树顶处 `dm-dp≈+0.11`（=62 m 光线长度，即该列只剩地面）说明图里"这棵树不在它该在的列"，但 8 位灰度每级 2.0~2.6 m 不足以给可信纹素偏移，且 c1 `dm=1.0000` 是地面被远平面夹住而非空。**新增 `r__sun_shadow_casters 4`（图里只留一棵树）+ `svp_single_caster_blob`（用完整 24 位深度输出 `centroid/predict/dtex`）**，把"影子相对物体挪了多少"变成唯一可归属的数字。构建 `b0024a5d…`（28,700,160 B）已暂存 `MODS\MT-CN\bin`，上一版备份 `AnomalyDX11AVX_shoffset2_1735.exe`。测试协议见 notes §31。
++
++> **18:24 轮：mode 4 空转，两个原因已修**。（1）扇区根列表给的树指针与级联插入路径收到的不是同一层对象（组 vs 部件），`kept=0 skipped=1640/1700` → 改为**在过滤器内部记录候选并锁定**（`R_dsgraph_pick_single_sun_caster()`，`single caster picked ... from N candidates`）。（2）`R_sun.cpp:336` 的草阴影 `Details->Render()` 绕过投影物过滤，kept=0 时图里仍有 28569/4463 个非清除纹素 → 实测用现成命令 `r__enable_grass_shadow off` 排除，blob 行加 `grass=` 自证。另用同相机四张 A/B 截图逐像素相减定量：全部 CSM 改变 62.9% 像素、平均暗 20.6 亮度；树单独贡献 51.0% 像素（远大于"细影带+斑点"的定性描述）。构建 `56ffe07c…`（28,701,696 B）已暂存。详见 notes §32。
++
++> **19:18 mFullTransform 顺序修复构建**：`svpcam::DeriveZoom`（r4_R_render.cpp:292/317）把 `mFullTransform` 建成 `mView·mProject`，而 `device.cpp:434`（ApplyDevice）是 `mProject·mView`——列向量 `transform()` 约定下反序等于把投影矩阵喂给世界坐标，镜头遍所有 `Device.mFullTransform.transform()`（累加遍深度裁剪 d_Z、enable_scissor、draw_rain）拿到垃圾裁剪坐标。已改为正确顺序，全库 full-transform 构建点统一。`build_mtcn.cmd AVX NOPAUSE` 1m17s 0 错误；28,701,696 B，md5 `66308bafdf8f79c1e11d06fb48190ce8`。真机确认：镜内亮度/光影正常（无副作用），但**不是树影错位的解药**。详见 notes §33。
++
++> **19:40 静态闭环深挖（全世界影子错位 + DLSS 关闭也错位）**：日志确认 19:36 测试构建含 mFullTransform 修复、`[Upscaler] Off` 运行时生效（DLSS 真关）、`ssfx_sss_quality z=0`（SSS 方向层真关）→ DLSS/SSS/TAA/omni(0/8)/rain/sun_original 全部洗清，影子 100% 来自 CSM 深度图（`r__sun_shadow_casters 3` 时影子全无）。按用户要求全文（非片段）重读整条太阳阴影链：`R_sun.cpp`、`accum_direct_cascade`、`blender_light_direct.cpp`、`CameraManager::ApplyDevice`+调用树、`r__dsgraph_render` 矩阵序列、`u_compute_texgen_screen`、`pos_decompress` binder、缓存 CRC 机制、`accum_sun_near.ps`（整合包两 mod 版）、`gbuffer_stage.h`、`shadow.h` 全。**「影子绑视角」的每种代码机制逐一排除**（mInvView 失步/smap 内容污染/矩阵顺序/双重逆变换/FOV 不同源/PCSS 屏幕半径/sunfilter 旁路/旧缓存/对齐单侧/shadow_bias）。静态链 100% 闭环 → 收敛为两种可能：A「自有引擎无问题」前提（用户已实测验证成立）；B 运行时 binder 值错误。CCCC 目录文件为 OGSR 游戏数据，不可代表 Anomaly（用户指正）。详见 notes §33。
++
++> **19:54 `r__shadow_probe` 数值见证仪器构建（B 计划）**：新增 cvar `r__shadow_probe 0/1` + `r__shadow_probe_step 1..600`（默认 30 帧）。实现于 `accum_direct_cascade`（m_shadow 送着色器之后，纯只读）：对固定世界点 P 每 step 帧每级联打印 `A=m_shadow·mInvView·P`（着色器实际采样坐标）与 `B=TexelAdjust·combine·P`（相机无关正确值）及 `dUV`（=错位量，sm UV 单位），附 cam/invT/xf_t/p22/rsw/fov/sun。判据：dUV 随旋转增长→mInvView 旋转陈旧；随平移增长→mInvView 平移陈旧（ApplyDevice 时机）；xf_t 不随相机→盒未重拟合；A≈B→采样链数值正确，转查 smap 内容。`build_mtcn.cmd AVX NOPAUSE` 1m02s 0 错误；28,704,256 B，md5 `c269fb397ecedfadff00acbed5c4cf68`，已覆盖 `MODS\MT-CN\bin\AnomalyDX11AVX.exe`；mFullTransform 修复版备份 `AnomalyDX11AVX_mtfx1918_1954.exe`。测试前需 JSGME 停用→启用 MT-CN。测试协议与判据表见 notes §34。
++
++> **20:09 probe v2 构建（v1 判读后升级）**：v1（19:54 构建 c269fb39）真机 175 行数据结论——**引擎矩阵链数值体检通过**（invT 恒等于 cam 且随相机同步 → mInvView 无陈旧/ApplyDevice 每帧正常；xf_t 随太阳合理微动；p22 与 FOV 自洽）；v1 的 dUV 巨大（6.4/2.1/0.8 UV）经数量级分析证实是**仪器自身 bug**（把世界点喂给 mInvView 得到 cam+R·P_world 模 ~127 的伪向量；正确为 m_shadow·mView·P，而与 B 数学恒等——A/B 对比设计不独立）。jitter 链（binder 逻辑全文复现）排除。v2 三指标：①dUV 自检（mView 版）②**gbrErr——复现 gbuffer_stage.h 位置重建（uv+tan+RenderScreenWidth+jitter → gbd.P vs 真实 mView·P）**，攻唯一未数值化的运行时链 ③三方尺寸对账（RenderScreen vs RT 对象 vs Device 显示）。构建 1m00s 0 错误；28,705,280 B，md5 `0fd1961ef556508ee5c3cf2b2676ac2c`，已覆盖 `MODS\MT-CN\bin`；v1 备份 `AnomalyDX11AVX_probev1_1954.exe`。测试前需再次 JSGME 停用→启用。详见 notes §35。
++
++> **21:39 轮：根因找到并修复 —— R4 `pos_decompression_params.HorzTan` 符号反了（x 轴镜像）**。probe v2 的 144 行给出 `dUV=0`（矩阵链无暗伤）而 `gbrErr` 逐条精确 = `2×Pview.x`（站定屏幕中心 0.016 m 只剩 jitter；Pview.x=-14.21 → 28.4295；-23.18 → 46.3680）→ 着色器重建出的视空间 x 是真值的镜像。三方对齐：三份 `gbuffer_stage.h`（SSFX/热成像/R.A.K）同为 `P.z*(pos2d*zw - xy)`；R2/R3 binder 的 `HorzTan` 为正（`-VertTan/fASPECT`），R4 被改成 `-1/_11`＝负，而 `_11=_22*fASPECT` 说明正确等价形是 `+1/_11` —— 只差符号，y 两版一致故只有 x 镜像。git 证据：初始 `d404b95d9`、DLSS 移植 `9dc5a5b58` 均正号，`8710b80c4 fix(pip)...derive the position decompression from the projection` 直译时翻错。这解释了 §33"静态全文闭环却症状仍在"（跨层符号约定错，且镜像对往返自检不可见——14:0x 我把它当仪器约定绕开，反而掩盖了它）。修复三处：`r4.cpp` 取正号、probe 同步并改 `uvy=0.5-0.5*ndc.y` 与去掉重复 jitter 减法、诊断侧 `r4_R_render.cpp` 同步。构建 `bc0f2568…`（28,705,280 B）已暂存，probe v2 备份 `AnomalyDX11AVX_probev2_2009.exe`。单机位仪器本轮起有效（`kept=1`、`blob c=2 dtex=(115.4,71.8)`，选优需加"距相机 <25 m"）。详见 notes §36。
++
++> **22:0x 真机验收：影子错位已修复**（构建 `bc0f2568…`，HorzTan 符号修正）。用户实机确认"影子正常了"。根因与证据链见 notes §36；该修复尚未提交，工作树内。
++
++> **22:52 轮（M82A1M 准星 / 外骨骼手表 / Promin 黑屏）**：`r__dump_section` 一次拿到 603 行解析后配置，绕开 `.xdb` 字典压缩。① M82A1M 与 M82 的放大键**完全相同**，只多 `s3ds_reticle_type=5`（+`ms_count/ms_colors`）；3DSS 脚本缺省 0 → M82 用贴图准星、M82A1M 用按角度绘制的程序化准星，故放大后变粗。② 外骨骼手表黑屏：`wd_exo.script:51` 把 `blocked` 作用到**全部**设备屏幕，而 BHS 补丁的 `promin_screen=false` 正是 blocked 的来源 → 以 MT-CN 覆盖 `wd_exo.script` 收窄到 `spec.id=="promin"`，带载入标记自证生效。③ Promin 黑屏门槛为 `is_worn and is_powered and not hidden`，且 `wd_battery` 用**物品耐久**当电量（`power_critical=0.05`，戴着持续掉）→ 交付 `zzz_mtcn_promin_probe.script` 直接把三道门打进日志。裸手臂穿模是 BHS 对 `_none` 判 `mode=unsupported`，非引擎问题。详见 notes §37。
++
++> **23:30 轮**：MT-CN 的 `wd_exo.script` 散件覆盖确认生效（标记行打印、无 Lua 报错，散件压过 `db\scripts\*.xdb`）。同时**推翻上一条"耐久当电量"推断**：本轮设备为新刷（`powered=1`），且 `mode=builtin` 按 `zzzz_wd_gfy_exo_screen.script:160` 的语义就是"Promin 未穿戴"→ 那次黑屏属预期。待判病例收敛为"门全开时是否仍无内容"（22:52 出现过 `worn=1 powered=1 hidden=0` + `mode=promin`）。探针 v2 修掉 `printf` 只认 `%s` 导致的丢值，并加 `attached/uiModule/uiGet/watch hidden/exo`；覆盖脚本内加 `wd_exo hide:` 逐设备打印。详见 notes §38。
++
++> **23:46 轮**：探针 v2 读数完整。覆盖确认生效（`kind=blocked` 下手表 `screen=false`、只有 promin/vektor 被屏蔽）。**症状 1 改判**：外骨骼下手表消失的主因是 `apply_hide_flags()` 里对所有设备的 `set_model_hidden(name, worn)`（日志 `model=true` 全部设备），screen 屏蔽只是次要一半 —— 是否同样收窄待用户定。Promin 五道门全通过（`worn=1 powered=1 hidden=0 ratio=1.000 attached=1 uiModule=d_promin_ui uiGet=true lit=1`）→ 无内容嫌疑收敛到外骨骼材质链与 mode 选择。穿模原因查明：非外骨骼手臂只有一套 `DEFAULTS` 偏移、BHS 的 per-model profiles 只覆盖外骨骼视觉（并更正 `PATCHES[community]` 是阵营贴花不是变换）。详见 notes §39。
++
++> **10-27 00:2x**：热成像搁置（用户决定）。为继续查 PDA/手表屏幕内容，加 `r__dump_file <fs_root> <path>`：走引擎 FS 取覆盖胜出者、落盘到 `appdata\logs\dbg_file_*`，并用 `file::vfs` + `m_archives` 报出**是哪个归档给的**（`-1`=散件）。目标已由脚本确定：Promin 屏幕着色器 `r3\wd\crt.ps/.s`、Vektor `r3\wd\crt_vektor.ps/.s`、通用 `r3\wd\ui`；这些在磁盘上不存在，只在 `.xdb` 里。构建 `2fc55ba6…`（28,717,568 B）已暂存。详见 notes §40。
+diff --git a/src/Layers/xrRender/Light_DB.cpp b/src/Layers/xrRender/Light_DB.cpp
+index e15f39fdb..5bbd2c34d 100644
+--- a/src/Layers/xrRender/Light_DB.cpp
++++ b/src/Layers/xrRender/Light_DB.cpp
+@@ -54,7 +54,7 @@ void CLight_DB::Load(IReader* fs)
+ 				// directional (base)
+ 				sun_original = L;
+ 				L->set_type(IRender_Light::DIRECT);
+-				L->set_shadow(true);
++				L->set_shadow(false);
+ 				L->set_rotation(Ldata.direction, tmp_R);
+ 
+ 				// copy to env-sun
+@@ -77,7 +77,7 @@ void CLight_DB::Load(IReader* fs)
+ 				L->set_range(Ldata.range);
+ 				L->set_color(Ldata.diffuse);
+ 				L->set_active(true);
+-				//				R_ASSERT			(L->spatial.sector	);
++				//			R_ASSERT			(L->spatial.sector	);
+ 			}
+ 		}
+ 
+@@ -146,9 +146,9 @@ void CLight_DB::LoadHemi()
+ 						L->set_color(Ldata.diffuse.x, Ldata.diffuse.y, Ldata.diffuse.z);
+ 						L->set_active(true);
+ 						L->set_attenuation_params(Ldata.attenuation0, Ldata.attenuation1, Ldata.attenuation2,
+-						                          Ldata.falloff);
++												  Ldata.falloff);
+ 						L->SpatialComponent->spatial.type = STYPE_LIGHTSOURCEHEMI;
+-						//				R_ASSERT			(L->spatial.sector	);
++						//			R_ASSERT			(L->spatial.sector	);
+ 					}
+ 				}
+ 
+@@ -253,8 +253,8 @@ void CLight_DB::Update()
+ 		sun_adapted->set_rotation(AD, _sun_adapted->right);
+ 		sun_adapted->set_position(AP);
+ 		sun_adapted->set_color(E.sun_color.x * ps_r2_sun_lumscale * ps_r2_sun_lumscale_color.x,
+-                               E.sun_color.y * ps_r2_sun_lumscale * ps_r2_sun_lumscale_color.y,
+-		                       E.sun_color.z * ps_r2_sun_lumscale * ps_r2_sun_lumscale_color.z);
++							   E.sun_color.y * ps_r2_sun_lumscale * ps_r2_sun_lumscale_color.y,
++							   E.sun_color.z * ps_r2_sun_lumscale * ps_r2_sun_lumscale_color.z);
+ 		sun_adapted->set_range(600.f);
+ 
+ 		if (!::Render->is_sun_static())
+diff --git a/src/Layers/xrRender/R_sun.cpp b/src/Layers/xrRender/R_sun.cpp
+index 7b624b195..90dedc5c8 100644
+--- a/src/Layers/xrRender/R_sun.cpp
++++ b/src/Layers/xrRender/R_sun.cpp
+@@ -5,6 +5,19 @@
+ 
+ #include "R_sun_support.h"
+ 
++#if RENDER == R_R4
++// Set by the frame-end dump block in r4_R_render.cpp; true only on the frame after a
++// r__dump_shadow_buffers request, so each cascade's map is captured while it is current.
++extern bool g_svpDumpSmap;
++#endif
++
++// r__sun_shadow_casters bookkeeping (r__dsgraph_build.cpp).
++extern void R_dsgraph_reset_sun_caster_counters();
++extern void R_dsgraph_pick_single_sun_caster();
++extern int ps_r__sun_shadow_casters;
++extern u32 g_sun_caster_kept, g_sun_caster_skipped;
++extern dxRender_Visual* g_sun_caster_only;
++
+ constexpr float tweak_COP_initial_offs = 1200.f;
+ 
+ float OLES_SUN_LIMIT_27_01_07 = 100.f;
+@@ -66,6 +79,8 @@ void CRender::init_cacades()
+ 
+ void CRender::render_sun_cascades()
+ {
++	R_dsgraph_reset_sun_caster_counters();
++
+ 	bool b_need_to_render_sunshafts = Target->need_to_render_sunshafts();
+ 	bool last_cascade_chain_mode = m_sun_cascades.back().reset_chain;
+ 	if (b_need_to_render_sunshafts)
+@@ -76,6 +91,11 @@ void CRender::render_sun_cascades()
+ 
+ 	if (b_need_to_render_sunshafts)
+ 		m_sun_cascades[m_sun_cascades.size() - 1].reset_chain = last_cascade_chain_mode;
++
++	R_dsgraph_pick_single_sun_caster();
++	if (ps_r__sun_shadow_casters == 4)
++		Msg("* [DBG] sun casters mode=4 frame=%u kept=%u skipped=%u locked=%p",
++			Device.dwFrame, g_sun_caster_kept, g_sun_caster_skipped, (void*)g_sun_caster_only);
+ }
+ 
+ void CRender::render_sun_cascade(u32 cascade_ind)
+@@ -308,12 +328,18 @@ void CRender::render_sun_cascade(u32 cascade_ind)
+         {
+             bool bDeffered_Shadows = cascade.GMCascade.RGraph.mapStaticPasses[0][0].size() || cascade.GMCascade.RGraph.mapDynamicPasses[0][0].size();
+             bool bForward_Shadows = cascade.GMCascade.RGraph.mapStaticPasses[1][0].size() || cascade.GMCascade.RGraph.mapDynamicPasses[1][0].size() || cascade.GMCascade.RGraph.mapStaticSorted.Sorted.size() || cascade.GMCascade.RGraph.mapDynamicSorted.Sorted.size();
++
++            // The accumulator below samples this cascade's map every frame, so the map must be
++            // reset even when the cascade captured no casters. Otherwise the previous cascade's
++            // depth survives and is read through this cascade's matrix: stale shadows that drift
++            // with the camera. Bind and clear unconditionally; only the caster draw is conditional.
++            Target->phase_smap_direct(fuckingsun, SE_SUN_FAR);
++            RCache.set_xform_world(Fidentity);
++            RCache.set_xform_view(Fidentity);
++            RCache.set_xform_project(fuckingsun->X.D.combine);
++
+             if (bDeffered_Shadows || bForward_Shadows)
+             {
+-                Target->phase_smap_direct(fuckingsun, SE_SUN_FAR);
+-                RCache.set_xform_world(Fidentity);
+-                RCache.set_xform_view(Fidentity);
+-                RCache.set_xform_project(fuckingsun->X.D.combine);
+                 cascade.GMCascade.r_dsgraph_render_graph(0);
+ 
+                 if (psDeviceFlags2.test(rsGrassShadow) && cascade_ind <= ps_ssfx_grass_shadows.x)
+@@ -364,6 +390,13 @@ void CRender::render_sun_cascade(u32 cascade_ind)
+ 		Target->accum_direct_cascade(SE_SUN_FAR, cascade.xform,
+ 		                             m_sun_cascades[cascade_ind - 1].xform, cascade.bias);
+ 
++#if RENDER == R_R4
++	// The single smap still holds this cascade; the next cascade resets it before its
++	// casters draw. Read it back here so the probe sees the map the accum just sampled.
++	if (g_svpDumpSmap)
++		DumpShadowMapCascade(cascade_ind);
++#endif
++
+ 	// Restore XForms
+ 	RCache.set_xform_world(Fidentity);
+ 	RCache.set_xform_view(Device.mView);
+diff --git a/src/Layers/xrRender/r__dsgraph_build.cpp b/src/Layers/xrRender/r__dsgraph_build.cpp
+index 2cc87dacb..7dcac870e 100644
+--- a/src/Layers/xrRender/r__dsgraph_build.cpp
++++ b/src/Layers/xrRender/r__dsgraph_build.cpp
+@@ -59,6 +59,115 @@ ICF bool R4FullDetailRejectStatic(dxRender_Visual* pVisual, bool normalPhase)
+ #endif
+ }
+ 
++extern int ps_r__sun_shadow_casters;
++u32 g_sun_caster_kept = 0, g_sun_caster_skipped = 0;
++
++// Mode 4 keeps a single, named caster. With one object in the map, the blob it leaves
++// has an unambiguous owner, so its position relative to the projected world box is a
++// direct measurement of the shadow pass's registration error - no neighbouring canopy
++// can be mistaken for it, which is what made the multi-caster bands unreadable.
++dxRender_Visual* g_sun_caster_only = nullptr;
++
++// The single caster must be chosen from the pointers this filter actually receives. The
++// sector root list hands out a different visual for a tree than the cascade insert path
++// does (group vs item), and a pick taken from there matches nothing: r__sun_shadow_casters 4
++// then behaves like mode 3 and the map holds no caster at all.
++struct SvpSunCasterCand
++{
++	dxRender_Visual* v;
++	float h;
++};
++static xr_vector<SvpSunCasterCand> g_sun_cand;
++
++void R_dsgraph_pick_single_sun_caster()
++{
++	if (ps_r__sun_shadow_casters != 4)
++	{
++		g_sun_caster_only = nullptr;
++		g_sun_cand.clear();
++		return;
++	}
++	if (!g_sun_caster_only)
++	{
++		dxRender_Visual* pick = nullptr;
++		float best = 0.f;
++		for (const SvpSunCasterCand& c : g_sun_cand)
++			if (c.h > best)
++			{
++				best = c.h;
++				pick = c.v;
++			}
++		if (pick)
++		{
++			g_sun_caster_only = pick;
++			Msg("* [DBG] single caster picked v=%p h=%.1f from %u candidates (box %.1f %.1f %.1f - %.1f %.1f %.1f)",
++				(void*)pick, best, u32(g_sun_cand.size()),
++				pick->vis.box.min.x, pick->vis.box.min.y, pick->vis.box.min.z,
++				pick->vis.box.max.x, pick->vis.box.max.y, pick->vis.box.max.z);
++		}
++	}
++	else if (g_sun_caster_kept == 0)
++	{
++		// The locked object is no longer traversed (camera moved away): scout again.
++		Msg("* [DBG] single caster v=%p not traversed this frame, re-scouting", (void*)g_sun_caster_only);
++		g_sun_caster_only = nullptr;
++	}
++	g_sun_cand.clear();
++}
++
++void R_dsgraph_reset_sun_caster_counters()
++{
++	g_sun_caster_kept = 0;
++	g_sun_caster_skipped = 0;
++}
++
++// r__sun_shadow_casters filters the SUN shadow casters only: the colour pass keeps
++// drawing everything, so the switch cannot hide an object, it can only remove its
++// shadow. That is what makes the A/B readable - a shadow that survives the filter is
++// not cast by the geometry the filter removed.
++bool CDSGraphManager::sun_caster_allowed(dxRender_Visual* pVisual, ShaderElement* sh)
++{
++	const bool sun_cascade = i_mask[CDSGraphManager::fl_shmap] && !i_mask[CDSGraphManager::fl_normal];
++	if (!sun_cascade)
++		return true;
++	if (ps_r__sun_shadow_casters == 0)
++	{
++		++g_sun_caster_kept;   // baseline mode still counts, so kept/skipped is comparable
++		return true;
++	}
++
++	const bool tree = (pVisual->Type == MT_TREE_ST || pVisual->Type == MT_TREE_PM);
++	bool landscape = sh && (sh->flags.isLandscape || sh->flags.bLandscape);
++	if (!landscape && pVisual->shader && pVisual->shader->E[0])
++		landscape = pVisual->shader->E[0]->flags.isLandscape;
++
++	bool keep;
++	switch (ps_r__sun_shadow_casters)
++	{
++	case 1: keep = !tree; break;
++	case 2: keep = landscape; break;
++	case 4:
++		if (g_sun_caster_only)
++			keep = (pVisual == g_sun_caster_only);
++		else if (tree)
++		{
++			// scouting: every tree passes for one frame so the tallest can be named
++			SvpSunCasterCand c;
++			c.v = pVisual;
++			c.h = pVisual->vis.box.max.y - pVisual->vis.box.min.y;
++			g_sun_cand.push_back(c);
++			keep = true;
++		}
++		else
++			keep = false;
++		break;
++	default: keep = false; break;
++	}
++
++	if (keep) ++g_sun_caster_kept; else ++g_sun_caster_skipped;
++	return keep;
++}
++
+ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix* xform)
+ {
+ 	Fvector Center;
+@@ -110,6 +219,8 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
+ 
+ 	if (0==sh)
+ 		return;
++	if (!sun_caster_allowed(pVisual, sh))
++		return;
+ 	u32 shader_priority = sh->flags.iPriority/2;
+ 	if (!i_mask[shader_priority])
+ 		return;
+@@ -260,6 +371,51 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
+ 
+ extern float ps_r__ssaDISCARD_exp;
+ extern float ps_r__ssaDISCARD_fade_k;
++// Diagnostic bookkeeping: which static visuals each pass actually submitted this frame.
++// The colour pass (fl_normal) and the shadow cascade (fl_shmap, fl_normal==false) run the
++// same insert function with different masks, so a shadow whose caster is missing from the
++// picture can be pinned down to "never submitted to the colour pass" vs "submitted but not
++// drawn" without touching any rendering behaviour.
++#include <unordered_map>
++static xr_unordered_map<dxRender_Visual*, u32> g_submitted_colour;
++static xr_unordered_map<dxRender_Visual*, u32> g_submitted_shadow;
++static u32 g_submitted_frame = 0;
++
++static void r_dsgraph_note_submission(CDSGraphManager* mgr, dxRender_Visual* pVisual)
++{
++	u32 frame = Device.dwFrame;
++	if (frame != g_submitted_frame)
++	{
++		g_submitted_frame = frame;
++		g_submitted_colour.clear();
++		g_submitted_shadow.clear();
++	}
++	// Count, do not just mark: an item can reach the queue loop and still contribute zero
++	// passes, which is exactly the case that draws nothing in the colour pass.
++	if (mgr->i_mask[CDSGraphManager::fl_normal])
++		++g_submitted_colour[pVisual];
++	else if (mgr->i_mask[CDSGraphManager::fl_shmap])
++		++g_submitted_shadow[pVisual];
++}
++
++static u32 r_dsgraph_submission_count(const xr_unordered_map<dxRender_Visual*, u32>& m, dxRender_Visual* pVisual)
++{
++	if (Device.dwFrame != g_submitted_frame)
++		return 0;
++	auto it = m.find(pVisual);
++	return it == m.end() ? 0u : it->second;
++}
++
++u32 R_dsgraph_colour_submitted(dxRender_Visual* pVisual)
++{
++	return r_dsgraph_submission_count(g_submitted_colour, pVisual);
++}
++
++u32 R_dsgraph_shadow_submitted(dxRender_Visual* pVisual)
++{
++	return r_dsgraph_submission_count(g_submitted_shadow, pVisual);
++}
++
+ void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
+ {
+ 	if (m_static_seen.find(pVisual) != m_static_seen.end())
+@@ -335,6 +491,8 @@ void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
+ 
+ 	if (0 == sh)
+ 		return;
++	if (!sun_caster_allowed(pVisual, sh))
++		return;
+ 	u32 shader_priority = sh->flags.iPriority / 2;
+ 	if (!i_mask[shader_priority])
+ 		return;
+@@ -379,6 +537,7 @@ void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
+ 
+ 		SPass& pass	= *sh->passes[iPass];
+ 
++		r_dsgraph_note_submission(this, pVisual);
+ 		AddToRenderQueue(RGraph.mapStaticPasses[shader_priority][iPass], { 0, SSA, nullptr, pVisual, nullptr, nullptr, false }, pass);
+ 	}
+ }
+diff --git a/src/Layers/xrRender/r__dsgraph_manager.h b/src/Layers/xrRender/r__dsgraph_manager.h
+index f23bf34d3..7284a7424 100644
+--- a/src/Layers/xrRender/r__dsgraph_manager.h
++++ b/src/Layers/xrRender/r__dsgraph_manager.h
+@@ -66,6 +66,8 @@ public:
+ 	void add_leafs_Static(xr_vector<dxRender_Visual*>& children);
+ 	void add_leafs_Static(xr_vector<IRenderVisual*>& children);
+ 	void r_dsgraph_insert_static(dxRender_Visual* pVisual);
++	// r__sun_shadow_casters gate, applied to the sun cascade graph managers only.
++	bool sun_caster_allowed(dxRender_Visual* pVisual, ShaderElement* sh);
+ 
+ 	virtual void add_Dynamic(IRenderVisual* piVisual, Fmatrix* xform);
+ 	void add_Dynamic(dxRender_Visual* pVisual, Fmatrix* xform);
+diff --git a/src/Layers/xrRender/rendertarget_phase_blur.cpp b/src/Layers/xrRender/rendertarget_phase_blur.cpp
+index ccde31206..8fe33db1d 100644
+--- a/src/Layers/xrRender/rendertarget_phase_blur.cpp
++++ b/src/Layers/xrRender/rendertarget_phase_blur.cpp
+@@ -834,8 +834,11 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
+ 				if (!LightSlot[slot]->flags.bActive || Remove)
+ 				{
+                     // demonized: keep the light pointer for some frames to eliminate flicker, but also check if its actually been disabled
+-                    LightSlot[slot]->sss_remove_latency++;
+-                    if (!LightSlot[slot]->flags.bActive || LightSlot[slot]->sss_remove_latency > 5)
++                    // FIX: lights not in the current package (e.g. leftover from PiP lens view) are removed immediately
++                    // instead of waiting 5 frames - otherwise their stale view-space positions produce
++                    // misplaced screen-space omni shadows ("second light source").
++                    bool RemoveByPackage = (CheckPackage && Remove);
++                    if (RemoveByPackage || !LightSlot[slot]->flags.bActive)
+                     {
+                         if (LightSlot[slot]->flags.type == IRender_Light::OMNIPART)
+                             LightSlot[slot]->sss_refresh = true;
+@@ -843,6 +846,19 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
+                         LightSlot[slot]->sss_id = -1;
+                         LightSlot[slot]->sss_on_light_destroy.clear();
+                         LightSlot[slot] = NULL;
++                    }
++                    else
++                    {
++                        LightSlot[slot]->sss_remove_latency++;
++                        if (LightSlot[slot]->sss_remove_latency > 5)
++                        {
++                            if (LightSlot[slot]->flags.type == IRender_Light::OMNIPART)
++                                LightSlot[slot]->sss_refresh = true;
++
++                            LightSlot[slot]->sss_id = -1;
++                            LightSlot[slot]->sss_on_light_destroy.clear();
++                            LightSlot[slot] = NULL;
++                        }
+                     }
+ 				}
+ 				else
+diff --git a/src/Layers/xrRender/xrRender_console.cpp b/src/Layers/xrRender/xrRender_console.cpp
+index 7a470fc8b..408c59efe 100644
+--- a/src/Layers/xrRender/xrRender_console.cpp
++++ b/src/Layers/xrRender/xrRender_console.cpp
+@@ -455,6 +455,20 @@ Fvector4 ps_ssfx_sss_quality = { 12.0f, 4.0f, 1.0f, 1.0f }; // Dir Samples, Omni
+ Fvector4 ps_ssfx_sss = { 1.0f, 1.0f, 1.0f, 0.0f }; // Dir Len, Omni Len, Grass shadows, -
+ 
+ int ps_ssfx_sss_dump_lights = 0; // SSS-ext omni light slot diagnosis dump (r__sss_dump_lights)
++int ps_r__dump_shadow_buffers = 0; // one-shot dump of the shading buffers (r__dump_shadow_buffers)
++// Which geometry may reach the sun shadow map (r__sun_shadow_casters):
++// 0 all, 1 no_trees, 2 terrain_only, 3 none, 4 only_one_tree. Diagnostic A/B only: it
++// separates a caster-class fault from a fault in the transform every caster shares, and
++// mode 4 leaves a single blob in the map whose position can be measured unambiguously.
++int ps_r__sun_shadow_casters = 0;
++// Numeric witness of the sun sampling chain (r__shadow_probe). Every probe step it
++// prints, per cascade, the coordinate the shader will sample for a fixed world point
++// (A = m_shadow * mInvView * P) next to the camera-independent correct coordinate
++// (B = TexelAdjust * combine * P). The distance dUV between them IS the shadow
++// misalignment in shadow-map UV units; its behaviour under translation/rotation
++// names the broken link. See the probe block in accum_direct_cascade.
++int ps_r__shadow_probe = 0;
++int ps_r__shadow_probe_step = 30; // frames between probe lines (1..600)
+ 
+ float ps_ssfx_hud_hemi = 0.15f; // HUD Hemi Offset
+ 
+@@ -1949,6 +1963,10 @@ void xrRender_initconsole()
+ 	CMD4(CCC_Vector4, "ssfx_bloom_2", &ps_ssfx_bloom_2, Fvector4().set(1, 0, 0, 0), Fvector4().set(5, 10, 10, 10));
+ 	CMD4(CCC_Vector4, "ssfx_sss_quality", &ps_ssfx_sss_quality, Fvector4().set(1, 1, 0, 0), Fvector4().set(24, 12, 1, 1));
+ 	CMD4(CCC_Integer, "r__sss_dump_lights", &ps_ssfx_sss_dump_lights, 0, 1);
++	CMD4(CCC_Integer, "r__dump_shadow_buffers", &ps_r__dump_shadow_buffers, 0, 1);
++	CMD4(CCC_Integer, "r__sun_shadow_casters", &ps_r__sun_shadow_casters, 0, 4);
++	CMD4(CCC_Integer, "r__shadow_probe", &ps_r__shadow_probe, 0, 1);
++	CMD4(CCC_Integer, "r__shadow_probe_step", &ps_r__shadow_probe_step, 1, 600);
+ 	CMD4(CCC_Vector4, "ssfx_sss", &ps_ssfx_sss, Fvector4().set(0, 0, 0, 0), Fvector4().set(3, 3, 1, 1));
+ 
+ 	CMD4(CCC_Float, "ssfx_hud_hemi", &ps_ssfx_hud_hemi, 0.0f, 1.0f);
+diff --git a/src/Layers/xrRenderPC_R4/blender_ss_sunshafts.cpp b/src/Layers/xrRenderPC_R4/blender_ss_sunshafts.cpp
+index 9f33afd75..3ef58f5cf 100644
+--- a/src/Layers/xrRenderPC_R4/blender_ss_sunshafts.cpp
++++ b/src/Layers/xrRenderPC_R4/blender_ss_sunshafts.cpp
+@@ -65,3 +65,25 @@ void CBlender_sunshafts::Compile(CBlender_Compile& C)
+ 		break;
+ 	}
+ }
++
++CBlender_sunmask::CBlender_sunmask() { description.CLS = 0; }
++
++CBlender_sunmask::~CBlender_sunmask()
++{
++}
++
++void CBlender_sunmask::Compile(CBlender_Compile& C)
++{
++	IBlender::Compile(C);
++
++	switch (C.iElement)
++	{
++	case 0:
++		C.r_Pass("ssss_notransform", "csm_sunmask", FALSE, FALSE, FALSE);
++		C.r_dx10Texture("s_vol", r2_RT_ssfx_accum);
++		C.r_dx10Sampler("smp_linear");
++		C.r_dx10Sampler("smp_nofilter");
++		C.r_End();
++		break;
++	}
++}
+diff --git a/src/Layers/xrRenderPC_R4/blender_ss_sunshafts.h b/src/Layers/xrRenderPC_R4/blender_ss_sunshafts.h
+index 9fc6c9d43..ff31a9e5c 100644
+--- a/src/Layers/xrRenderPC_R4/blender_ss_sunshafts.h
++++ b/src/Layers/xrRenderPC_R4/blender_ss_sunshafts.h
+@@ -12,3 +12,18 @@ public:
+ 	CBlender_sunshafts();
+ 	virtual ~CBlender_sunshafts();
+ };
++
++// Masks the sun's volumetric contribution around the sun's screen position so the
++// screen-space shaft pattern is anchored to the sun instead of the view.
++class CBlender_sunmask : public IBlender
++{
++public:
++	virtual LPCSTR getComment() { return "engine: sun volumetric mask"; }
++	virtual BOOL canBeDetailed() { return FALSE; }
++	virtual BOOL canBeLMAPped() { return FALSE; }
++
++	virtual void Compile(CBlender_Compile& C);
++
++	CBlender_sunmask();
++	virtual ~CBlender_sunmask();
++};
+diff --git a/src/Layers/xrRenderPC_R4/r4.cpp b/src/Layers/xrRenderPC_R4/r4.cpp
+index 2a8867a6a..4ab9ef46a 100644
+--- a/src/Layers/xrRenderPC_R4/r4.cpp
++++ b/src/Layers/xrRenderPC_R4/r4.cpp
+@@ -140,15 +140,24 @@ static class cl_pos_decompress_params : public R_constant_setup
+ 		// two FOVs - the mask the player reported.
+ 		const float VertTan = (fabsf(Device.mProject._22) > 1e-6f)
+ 			? (-1.0f / Device.mProject._22) : (-1.0f * tanf(deg2rad(Device.fFOV / 2.0f)));
++		// POSITIVE, like R2/R3 (`-VertTan/fASPECT`). _11 = _22 * fASPECT, so the projection
++		// derived form of that expression is +1/_11. When this line was switched to the
++		// projection it was written as -1/_11, which keeps the magnitude but flips x, and
++		// gbuffer_stage.h builds the ray as `pos2d*zw - xy`: every R4 screen-space position
++		// reconstruction (and the CSM lookup that starts from it) came out mirrored about the
++		// vertical centre line - zero at the middle of the screen, up to 2*z*tan(hfov/2) at the
++		// edges, and it moved whenever the view moved.
+ 		const float HorzTan = (fabsf(Device.mProject._11) > 1e-6f)
+-			? (-1.0f / Device.mProject._11) : (-VertTan / Device.fASPECT);
++			? (1.0f / Device.mProject._11) : (-VertTan / Device.fASPECT);
+ 
+-		// Scene-space texel size at the render resolution, plus the upscaler's
+-		// raster jitter (zero when the upscaler is inactive).
++		// Scene-space texel size at the render resolution. The raster jitter is NOT added
++		// here: gbuffer_stage.h already removes it from the pixel coordinate before using
++		// this constant to turn that coordinate into a ray. Adding it here as well shifted
++		// every screen-space world position (and the CSM shadow lookup that starts from it)
++		// by one raster sample.
+ 		const float sx = 2.0f * HorzTan / RenderScreenWidth();
+ 		const float sy = 2.0f * VertTan / RenderScreenHeight();
+-		const auto jitter = dlss::RasterJitter();
+-		RCache.set_c(C, HorzTan + jitter.x * sx, VertTan + jitter.y * sy, sx, sy);
++		RCache.set_c(C, HorzTan, VertTan, sx, sy);
+ 	}
+ } binder_pos_decompress_params;
+ 
+diff --git a/src/Layers/xrRenderPC_R4/r4.h b/src/Layers/xrRenderPC_R4/r4.h
+index 71c971268..eb6e187e9 100644
+--- a/src/Layers/xrRenderPC_R4/r4.h
++++ b/src/Layers/xrRenderPC_R4/r4.h
+@@ -242,6 +242,9 @@ public:
+ 	void render_sun_cascade(u32 cascade_ind);
+ 	void init_cacades();
+ 	void render_sun_cascades();
++	void DumpShadowMapCascade(u32 cascade_ind);
++	void DumpNearbyVisuals(float radius, u32 maxLog);
++	void CollectNearbyVisuals(float radius, xr_vector<dxRender_Visual*>& out);
+ 
+ public:
+ 	ShaderElement* rimp_select_sh_static(dxRender_Visual* pVisual, float cdist_sq);
+diff --git a/src/Layers/xrRenderPC_R4/r4_R_render.cpp b/src/Layers/xrRenderPC_R4/r4_R_render.cpp
+index 6faf245e0..898b403de 100644
+--- a/src/Layers/xrRenderPC_R4/r4_R_render.cpp
++++ b/src/Layers/xrRenderPC_R4/r4_R_render.cpp
+@@ -7,6 +7,9 @@
+ #include "../../xrEngine/customhud.h"
+ #include "../../xrEngine/xr_object.h"
+ #include "../xrRender/SkeletonCustom.h"
++#include "../xrRender/FHierrarhyVisual.h"
++#include "../xrRender/flod.h"
++#include "../xrRender/r__sector.h"
+ #include "../../xrParticles/ParticlesAsyncManager.h"
+ 
+ #include "../xrRender/QueryHelper.h"
+@@ -14,6 +17,14 @@
+ #include	"../xrRender/dxRenderDeviceRender.h"
+ #include	"../xrRender/dxStatsRender.h"
+ 
++extern int ps_r__dump_shadow_buffers;
++
++// One-shot per-cascade shadow map capture requested by r__dump_shadow_buffers.
++// Set at the end of the dump frame, consumed at the start of the next frame's
++// cascade loop while each cascade's own map is still bound and valid.
++bool g_svpDumpSmap = false;
++u32 g_svpDumpSmapSeq = 0;
++
+ void CRender::render_menu()
+ {
+ 	PIX_EVENT(render_menu);
+@@ -271,7 +282,14 @@ namespace svpcam
+ 			const float aspect = (m.mProject._22 > 1e-6f) ? (m.mProject._11 / m.mProject._22) : 1.0f;
+ 			z.mProject._11 = aspect * cot;
+ 			z.mProject._22 = cot;
+-			z.mFullTransform.mul(z.mView, z.mProject);
++			// Full transform = PROJECTION * VIEW, the order device.cpp:434 (ApplyDevice) uses.
++			// Fmatrix::transform() is a column-vector product (dest.x = v.x*_11 + v.y*_21 + ...),
++			// so a point must be taken through the view first and the projection second:
++			// full.transform(p) == mProject * (mView * p). Deriving it as mView * mProject here
++			// fed every Device.mFullTransform.transform() in the lens pass a matrix that applies
++			// the projection to world-space input - the accum depth-clip d_Z, enable_scissor and
++			// draw_rain all read garbage clip positions while the scope is up.
++			z.mFullTransform.mul(z.mProject, z.mView);
+ 			// The FOV this view is rendered with, published so the FOV derived quantities in the
+ 			// lens pass (see View::mFov) describe the lens camera and not the main view.
+ 			z.mFov = s_fovSmooth;
+@@ -294,7 +312,9 @@ namespace svpcam
+ 		{
+ 			z.mProject._11 *= mag;
+ 			z.mProject._22 *= mag;
+-			z.mFullTransform.mul(z.mView, z.mProject);
++			// Same order as ApplyDevice (device.cpp:434) and the authored-FOV branch above:
++			// full = mProject * mView for the column-vector transform() convention.
++			z.mFullTransform.mul(z.mProject, z.mView);
+ 			// Same as the authored-FOV branch above: this view renders at the divided FOV.
+ 			z.mFov = (m.mFov > 0.5f) ? (m.mFov / mag) : Device.fFOV;
+ 		}
+@@ -312,7 +332,10 @@ void SvpRegisterLensCvars()
+ // Dump a render target as a BMP so the lens image can be looked at directly instead of
+ // being inferred from log numbers. 8 bit BGRA targets go out as 24 bit BMP; 16F targets are
+ // clamped to 0..1 and scaled, which is enough to see whether an image contains a scene.
+-static void svp_dump_rt(LPCSTR path, ref_rt& rt)
++// mark_u/mark_v (0..1, top-left origin) draw a crosshair into the dumped image. Used to put
++// the engine's own sun projection into the same picture as the visible sky sun and the ground
++// shadows, so "light from the wrong side" can be decided by pixels instead of by eye.
++static void svp_dump_rt(LPCSTR path, ref_rt& rt, float mark_u = -1.f, float mark_v = -1.f)
+ {
+ 	if (!rt || !rt->pSurface)
+ 		return;
+@@ -346,6 +369,10 @@ static void svp_dump_rt(LPCSTR path, ref_rt& rt)
+ 	if (SUCCEEDED(HW.pContext->Map(stg, 0, D3D11_MAP_READ, 0, &m)))
+ 	{
+ 		const bool float16 = (d.Format == DXGI_FORMAT_R16G16B16A16_FLOAT);
++		const bool depthD24 = (d.Format == DXGI_FORMAT_R24G8_TYPELESS ||
++			d.Format == DXGI_FORMAT_D24_UNORM_S8_UINT || d.Format == DXGI_FORMAT_R24_UNORM_X8_TYPELESS);
++		const bool depthF32 = (d.Format == DXGI_FORMAT_D32_FLOAT || d.Format == DXGI_FORMAT_R32_FLOAT ||
++			d.Format == DXGI_FORMAT_R32_TYPELESS);
+ 		const u32 bpp = float16 ? 8u : 4u;
+ 		const u32 rowBytes = ((d.Width * 3u) + 3u) & ~3u;
+ 
+@@ -394,11 +421,30 @@ static void svp_dump_rt(LPCSTR path, ref_rt& rt)
+ 						g = (u8)clampr(int(gf * 255.f), 0, 255);
+ 						b = (u8)clampr(int(bf * 255.f), 0, 255);
+ 					}
++					else if (depthD24)
++					{
++						const u32 raw = *(const u32*)(src + size_t(x) * bpp);
++						const float dv = float(raw & 0x00FFFFFFu) / 16777215.0f;
++						r = g = b = (u8)clampr(int(dv * 255.f), 0, 255);
++					}
++					else if (depthF32)
++					{
++						const float dv = *(const float*)(src + size_t(x) * bpp);
++						r = g = b = (u8)clampr(int(clampr(dv, 0.f, 1.f) * 255.f), 0, 255);
++					}
+ 					else
+ 					{
+ 						const u8* p = src + size_t(x) * bpp;
+ 						b = p[0]; g = p[1]; r = p[2];
+ 					}
++					if (mark_u >= 0.f)
++					{
++						const float mx = mark_u * float(d.Width - 1);
++						const float my = mark_v * float(d.Height - 1);
++						const bool hLine = fabsf(float(y) - my) <= 1.5f && fabsf(float(x) - mx) <= 26.f;
++						const bool vLine = fabsf(float(x) - mx) <= 1.5f && fabsf(float(y) - my) <= 26.f;
++						if (hLine || vLine) { r = 255; g = 255; b = 0; }
++					}
+ 					row[x * 3 + 0] = b;
+ 					row[x * 3 + 1] = g;
+ 					row[x * 3 + 2] = r;
+@@ -414,6 +460,732 @@ static void svp_dump_rt(LPCSTR path, ref_rt& rt)
+ 	_RELEASE(tex);
+ }
+ 
++// Numeric CSM ground truth: read the G-buffer position, the sun accumulator and the
++// shadow map back, reconstruct the world point of a screen pixel and the world point
++// stored in the shadow map under it, then log both. This answers "is the dark pixel a
++// CSM shadow, and where is the caster the map placed it from" without any image reading.
++static float svp_h2f(u16 h)
++{
++	const u32 sign = (h >> 15) & 1u, exp = (h >> 10) & 0x1Fu, man = h & 0x3FFu;
++	float v;
++	if (exp == 0) v = man ? ldexpf(float(man), -24) : 0.f;
++	else if (exp == 31) v = man ? 1.f : 1.f;
++	else v = ldexpf(float(man) + 1024.f, int(exp) - 25);
++	return sign ? -v : v;
++}
++
++static bool svp_read_rt_full(ref_rt& rt, xr_vector<u8>& data, u32& w, u32& h, u32& pitch, DXGI_FORMAT& fmt)
++{
++	if (!rt || !rt->pSurface) return false;
++	ID3D11Texture2D* tex = nullptr;
++	if (FAILED(rt->pSurface->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex)) || !tex) return false;
++	D3D11_TEXTURE2D_DESC d = {};
++	tex->GetDesc(&d);
++	D3D11_TEXTURE2D_DESC s = d;
++	s.Usage = D3D11_USAGE_STAGING;
++	s.BindFlags = 0;
++	s.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
++	s.MiscFlags = 0;
++	s.ArraySize = 1;
++	s.MipLevels = 1;
++	s.SampleDesc.Count = 1;
++	s.SampleDesc.Quality = 0;
++	ID3D11Texture2D* stg = nullptr;
++	if (FAILED(HW.pDevice->CreateTexture2D(&s, nullptr, &stg)) || !stg) { _RELEASE(tex); return false; }
++	HW.pContext->CopyResource(stg, tex);
++	_RELEASE(tex);
++	D3D11_MAPPED_SUBRESOURCE m = {};
++	if (FAILED(HW.pContext->Map(stg, 0, D3D11_MAP_READ, 0, &m)))
++	{
++		stg->Release();
++		return false;
++	}
++	w = d.Width; h = d.Height; pitch = m.RowPitch; fmt = d.Format;
++	data.resize(size_t(pitch) * h);
++	memcpy(data.data(), m.pData, data.size());
++	HW.pContext->Unmap(stg, 0);
++	stg->Release();
++	return true;
++}
++
++static void svp_probe_shadow_numeric(CRenderTarget* T, const xr_vector<sun::cascade>& cascades, u32 dumpSeq, int onlyCascade)
++{
++	if (!T)
++		return;
++	xr_vector<u8> pos, acc, smap;
++	u32 pw = 0, ph = 0, pp = 0, aw = 0, ah = 0, ap = 0, sw = 0, sh = 0, sp = 0;
++	DXGI_FORMAT pf = DXGI_FORMAT_UNKNOWN, af = DXGI_FORMAT_UNKNOWN, sf = DXGI_FORMAT_UNKNOWN;
++	if (!svp_read_rt_full(T->rt_Position, pos, pw, ph, pp, pf) ||
++		!svp_read_rt_full(T->rt_Accumulator, acc, aw, ah, ap, af) ||
++		!svp_read_rt_full(T->rt_smap_depth, smap, sw, sh, sp, sf))
++	{
++		Msg("* [DBG] probe: readback failed (pos=%ux%u fmt=%u accum=%ux%u fmt=%u smap=%ux%u fmt=%u)",
++			pw, ph, pf, aw, ah, af, sw, sh, sf);
++		return;
++	}
++	Msg("* [DBG] probe: d=%u mode=%d pos=%ux%u fmt=%u accum=%ux%u fmt=%u smap=%ux%u fmt=%u",
++		dumpSeq, onlyCascade, pw, ph, pf, aw, ah, af, sw, sh, sf);
++	if (pf != DXGI_FORMAT_R16G16B16A16_FLOAT || af != DXGI_FORMAT_R16G16B16A16_FLOAT)
++		return;
++
++	const float VertTan = -1.f / Device.mProject._22;
++	const float HorzTan = 1.f / Device.mProject._11;   // positive, as in R2/R3 and in the fixed
++	                                                   // pos_decompression_params binder (r4.cpp)
++	const float sx = 2.f * HorzTan / float(pw);
++	const float sy = 2.f * VertTan / float(ph);
++	// Screen projection = the exact algebraic inverse of the reconstruction below, driven by
++	// Device.mView only. Before r4.cpp's HorzTan sign was corrected, projecting through
++	// mFullTransform disagreed with the reconstruction by a mirror in u ("the caster of a
++	// sample 0.78 m from its receiver landed 330 px away") - that was the engine defect, not
++	// the instrument, and adopting the mirrored relation hid it. rcv=(u,v) below is still the
++	// round-trip proof, but a mirror is round-trip invisible, so it only proves self-consistency.
++	auto svp_screen_uv = [&](const Fvector& P, float& outU, float& outV) -> bool {
++		Fvector Pv2;
++		Device.mView.transform_tiny(Pv2, P);
++		if (Pv2.z < 0.05f || _abs(HorzTan) < 1e-6f || _abs(VertTan) < 1e-6f)
++			return false;
++		outU = 0.5f * (1.f + Pv2.x / (Pv2.z * HorzTan));
++		outV = 0.5f * (1.f + Pv2.y / (Pv2.z * VertTan));
++		return true;
++	};
++	Msg("* [DBG] probe cam p11=%.4f p22=%.4f ht=%.4f vt=%.4f view=(%.4f %.4f %.4f) target=%s",
++		Device.mProject._11, Device.mProject._22, HorzTan, VertTan,
++		Device.mView._11, Device.mView._22, Device.mView._33,
++		(T == RImplementation.Target) ? "active" : "other");
++
++	// Does the caster the shadow map reports actually exist in the visible image?
++	// Project the reconstructed occluder through the camera and compare it with the
++	// G-buffer surface at that pixel: a real trunk sits within its own thickness of the
++	// projected point; a shadow-only / wrongly transformed caster projects onto ground
++	// many metres behind. This is the numeric version of "the shadow has no object".
++	u32 nCasterNear = 0, nCasterFar = 0, nCasterOff = 0, nShadowed = 0;
++
++	Fvector to_sun;
++	to_sun.set(g_pGamePersistent->Environment().CurrentEnv->sun_dir).invert().normalize();
++
++	Fmatrix inv[4];
++	bool invok[4] = { false, false, false, false };
++	for (u32 c = 0; c < cascades.size() && c < 4; ++c)
++	{
++		inv[c].invert(cascades[c].xform);
++		invok[c] = true;
++	}
++
++	for (u32 y = 0; y < ph; y += 40)
++	{
++		for (u32 x = 0; x < pw; x += 40)
++		{
++			const u16* hp = (const u16*)(pos.data() + size_t(y) * pp + size_t(x) * 8);
++			const float pz = svp_h2f(hp[2]);
++			if (pz < 0.2f)
++				continue;
++
++			Fvector Pv;
++			Pv.set(pz * ((x + 0.5f) * sx - HorzTan), pz * ((y + 0.5f) * sy - VertTan), pz);
++			Fvector Pw;
++			Device.mInvView.transform(Pw, Pv);
++
++			const u16* ap0 = (const u16*)(acc.data() + size_t(y) * ap + size_t(x) * 8);
++			const float lum = (svp_h2f(ap0[0]) + svp_h2f(ap0[1]) + svp_h2f(ap0[2])) / 3.f;
++
++			const u32 c0 = (onlyCascade >= 0) ? u32(onlyCascade) : 0u;
++			const u32 c1 = (onlyCascade >= 0) ? u32(onlyCascade + 1) : u32(cascades.size());
++			for (u32 c = c0; c < c1 && c < 4; ++c)
++			{
++				const Fmatrix& X = cascades[c].xform;
++				const float cx = Pw.x * X._11 + Pw.y * X._21 + Pw.z * X._31 + X._41;
++				const float cy = Pw.x * X._12 + Pw.y * X._22 + Pw.z * X._32 + X._42;
++				const float cz = Pw.x * X._13 + Pw.y * X._23 + Pw.z * X._33 + X._43;
++				const float cw = Pw.x * X._14 + Pw.y * X._24 + Pw.z * X._34 + X._44;
++				if (cw <= 1e-4f)
++					continue;
++				const float u = 0.5f + 0.5f * cx / cw;
++				const float v = 0.5f - 0.5f * cy / cw;
++				const float dp = cz / cw;
++				if (u < 0.f || u > 1.f || v < 0.f || v > 1.f)
++					continue;
++
++				const int ix = clampr(int(u * sw), 0, int(sw) - 1);
++				const int iy = clampr(int(v * sh), 0, int(sh) - 1);
++				const u32 raw = *(const u32*)(smap.data() + size_t(iy) * sp + size_t(ix) * 4);
++				float dm = -1.f;
++				if (sf == DXGI_FORMAT_D32_FLOAT || sf == DXGI_FORMAT_R32_FLOAT)
++					dm = *(const float*)&raw;
++				else if (sf == DXGI_FORMAT_R24G8_TYPELESS || sf == DXGI_FORMAT_D24_UNORM_S8_UINT)
++					dm = float(raw & 0x00FFFFFFu) / 16777215.0f;
++				// dp outside [0,1] means the receiver is outside this cascade's ortho
++				// volume; the lighting pass is clipped to that volume, so such a sample is
++				// not rendered and must not count as a shadow of this cascade.
++				const bool shadowed = (dp >= 0.f && dp <= 1.f) && dm >= 0.f && dm < dp - 0.001f;
++
++				Fvector occ;
++				occ.set(0, 0, 0);
++				if (invok[c])
++				{
++					Fvector clip;
++					clip.set(2.f * u - 1.f, 1.f - 2.f * v, dm);
++					inv[c].transform(occ, clip);
++				}
++				const float offx = occ.x - Pw.x;
++				const float offz = occ.z - Pw.z;
++				const float side = offx * to_sun.x + offz * to_sun.z;
++
++				float ru = -1.f, rv = -1.f;
++				svp_screen_uv(Pw, ru, rv);
++
++				float cu = -1.f, cv = -1.f, dOcc = -1.f;
++				if (shadowed)
++				{
++					++nShadowed;
++					svp_screen_uv(occ, cu, cv);
++					if (cu >= 0.f && cu <= 1.f && cv >= 0.f && cv <= 1.f)
++					{
++						const int vx = clampr(int(cu * pw), 0, int(pw) - 1);
++						const int vy = clampr(int(cv * ph), 0, int(ph) - 1);
++						const u16* vp = (const u16*)(pos.data() + size_t(vy) * pp + size_t(vx) * 8);
++						const float vz = svp_h2f(vp[2]);
++						if (vz >= 0.2f)
++						{
++							Fvector Pvv;
++							Pvv.set(vz * ((vx + 0.5f) * sx - HorzTan), vz * ((vy + 0.5f) * sy - VertTan), vz);
++							Fvector Pvis;
++							Device.mInvView.transform(Pvis, Pvv);
++							dOcc = _sqrt((Pvis.x - occ.x) * (Pvis.x - occ.x) +
++								(Pvis.y - occ.y) * (Pvis.y - occ.y) +
++								(Pvis.z - occ.z) * (Pvis.z - occ.z));
++							if (dOcc <= 3.f) ++nCasterNear; else ++nCasterFar;
++						}
++						else
++						{
++							++nCasterOff;
++						}
++					}
++					else
++					{
++						++nCasterOff;
++					}
++				}
++
++				Msg("* [DBG] probe d=%u x=%u y=%u z=%.1f pw=(%.2f %.2f %.2f) c=%u u=%.3f v=%.3f dm=%.5f dp=%.5f sh=%d lum=%.3f occ=(%.1f %.1f %.1f) side=%.1f rcv=(%.3f %.3f) cv=(%.3f %.3f) dOcc=%.1f",
++					dumpSeq, x, y, pz, Pw.x, Pw.y, Pw.z, c, u, v, dm, dp, shadowed ? 1 : 0, lum, occ.x, occ.y, occ.z, side, ru, rv, cu, cv, dOcc);
++			}
++		}
++	}
++
++	Msg("* [DBG] probe summary d=%u mode=%d sh1=%u caster_near=%u caster_far=%u caster_off=%u",
++		dumpSeq, onlyCascade, nShadowed, nCasterNear, nCasterFar, nCasterOff);
++}
++
++// Name every static visual near the camera. The numeric probe can say "the shadow map
++// holds a caster at world P that the colour pass does not draw"; only the level's own
++// visual list can then say whether a model exists at P at all, and which .ogf it is.
++static void svp_collect_near_visuals(dxRender_Visual* V, u32 depth, const Fvector& cam, float radius, xr_vector<dxRender_Visual*>& out)
++{
++	if (!V || depth > 10 || out.size() > 4000)
++		return;
++
++	if (V->Type == MT_HIERRARHY)
++	{
++		FHierrarhyVisual* H = (FHierrarhyVisual*)V;
++		for (IRenderVisual* C : H->children)
++			svp_collect_near_visuals((dxRender_Visual*)C, depth + 1, cam, radius, out);
++		return;
++	}
++	if (V->Type == MT_LOD)
++	{
++		FLOD* L = (FLOD*)V;
++		for (IRenderVisual* C : L->children)
++			svp_collect_near_visuals((dxRender_Visual*)C, depth + 1, cam, radius, out);
++		return;
++	}
++	if (V->Type == MT_SKELETON_ANIM || V->Type == MT_SKELETON_RIGID || V->Type == MT_PARTICLE_GROUP)
++		return; // their vis is object-local, not world
++
++	const float d = V->vis.sphere.P.distance_to(cam) - V->vis.sphere.R;
++	if (d < radius)
++		out.push_back(V);
++}
++
++void CRender::CollectNearbyVisuals(float radius, xr_vector<dxRender_Visual*>& out)
++{
++	const Fvector& cam = Device.vCameraPosition;
++	for (IRender_Sector* S : Sectors)
++	{
++		if (!S)
++			continue;
++		CSector* sec = (CSector*)S;
++		if (sec->root())
++			svp_collect_near_visuals(sec->root(), 0, cam, radius, out);
++	}
++	std::sort(out.begin(), out.end(), [&cam](dxRender_Visual* a, dxRender_Visual* b) {
++		return a->vis.sphere.P.distance_to_sqr(cam) < b->vis.sphere.P.distance_to_sqr(cam);
++	});
++}
++
++void CRender::DumpNearbyVisuals(float radius, u32 maxLog)
++{
++	extern float r_ssaDISCARD;
++	extern u32 R_dsgraph_colour_submitted(dxRender_Visual* pVisual);
++	extern u32 R_dsgraph_shadow_submitted(dxRender_Visual* pVisual);
++	const Fvector& cam = Device.vCameraPosition;
++	CFrustum vis_frustum;
++	vis_frustum.CreateFromMatrix(Device.mFullTransform, FRUSTUM_P_ALL);
++	u32 vis_planes = 6;
++	xr_vector<dxRender_Visual*> found;
++	CollectNearbyVisuals(radius, found);
++	Msg("* [DBG] nearvis count=%u (radius %.0f m, listing %u)", u32(found.size()), radius,
++		(u32)std::min<size_t>(found.size(), maxLog));
++	for (u32 i = 0; i < found.size() && i < maxLog; ++i)
++	{
++		dxRender_Visual* V = found[i];
++			// Verdicts of the culling tests that only the COLOUR pass applies. A caster the
++		// probe reports as invisible must be explained by one of these, because the shadow
++		// cascade deliberately skips HOM and the full-detail reject.
++		const float distSQ = V->vis.sphere.P.distance_to_sqr(cam) + EPS;
++		const float ssa = V->vis.sphere.R * V->vis.sphere.R / distSQ;
++		const float nearest = _sqrt(distSQ) - V->vis.sphere.R;
++		const float far_plane = (g_pGamePersistent && g_pGamePersistent->Environment().CurrentEnv)
++			? g_pGamePersistent->Environment().CurrentEnv->far_plane : 600.f;
++		const float fdist = std::max(100.f, far_plane * ps_r4_full_detail_distance_scale);
++		const float transition = clampr((nearest - fdist) / std::max(1.f, far_plane - fdist), 0.f, 1.f);
++		const bool fd_reject = (nearest > fdist) && (ssa <= r_ssaDISCARD * (1.f + transition * 11.f));
++		// The shader element the colour traversal would pick for this visual, and the
++		// vertex/pixel shader of its first pass: "queued but nothing drawn" is only
++		// explainable once the selected element and its passes are visible.
++		ShaderElement* se = rimp_select_sh_static(V, distSQ);
++		LPCSTR vs_name = "-";
++		LPCSTR ps_name = "-";
++		if (se && !se->passes.empty() && se->passes[0])
++		{
++			SPass& p0 = *se->passes[0];
++			if (p0.vs)
++				vs_name = p0.vs->cName.c_str();
++			if (p0.ps)
++				ps_name = p0.ps->cName.c_str();
++		}
++		Msg("* [DBG] nearvis %u v=%p type=%u s=(%.1f %.1f %.1f) r=%.1f d=%.1f box=(%.1f %.1f %.1f)-(%.1f %.1f %.1f) ssa=%.3f(disc %.3f) frust=%d hom=%d fdrej=%d subC=%u subS=%u se=%p npass=%u prio=%u vs=%s ps=%s",
++			i, (void*)V, V->Type,
++			V->vis.sphere.P.x, V->vis.sphere.P.y, V->vis.sphere.P.z, V->vis.sphere.R,
++			V->vis.sphere.P.distance_to(cam),
++			V->vis.box.min.x, V->vis.box.min.y, V->vis.box.min.z,
++			V->vis.box.max.x, V->vis.box.max.y, V->vis.box.max.z,
++			ssa, r_ssaDISCARD, vis_frustum.testSAABB(V->vis.sphere.P, V->vis.sphere.R, V->vis.box.data(), vis_planes) ? 1 : 0,
++			RImplementation.HOM.visible(V->vis.box) ? 1 : 0, fd_reject ? 1 : 0,
++			R_dsgraph_colour_submitted(V), R_dsgraph_shadow_submitted(V),
++			(void*)se, se ? u32(se->passes.size()) : 0u, se ? u32(se->flags.iPriority) : 0u,
++			vs_name, ps_name);
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Measured shadow-to-object alignment (r__sun_shadow_casters companion).
++// For every tall static object near the camera, ask the cascade that is currently
++// resident in rt_smap_depth where it actually put that object's shadow, laterally and
++// along the sun azimuth. A shared transform fault moves every object's shadow by the
++// same amount; a caster-class fault leaves some objects measured and others absent.
++// ---------------------------------------------------------------------------
++struct SvpSceneReadback
++{
++	xr_vector<u8> pos;
++	u32 pw = 0, ph = 0, pp = 0;
++	DXGI_FORMAT pf = DXGI_FORMAT_UNKNOWN;
++	xr_vector<u8> smap;
++	u32 sw = 0, sh = 0, sp = 0;
++	DXGI_FORMAT sf = DXGI_FORMAT_UNKNOWN;
++	float horzTan = 0.f, vertTan = 0.f;
++};
++
++static bool svp_load_scene(SvpSceneReadback& R, CRenderTarget* T, bool need_smap)
++{
++	DXGI_FORMAT f = DXGI_FORMAT_UNKNOWN;
++	if (!svp_read_rt_full(T->rt_Position, R.pos, R.pw, R.ph, R.pp, f))
++		return false;
++	R.pf = f;
++	if (R.pf != DXGI_FORMAT_R16G16B16A16_FLOAT)
++		return false;
++	if (need_smap && !svp_read_rt_full(T->rt_smap_depth, R.smap, R.sw, R.sh, R.sp, f))
++		return false;
++	R.sf = f;
++	if (fabsf(Device.mProject._11) < 1e-6f || fabsf(Device.mProject._22) < 1e-6f)
++		return false;
++	R.horzTan = 1.f / Device.mProject._11;
++	R.vertTan = -1.f / Device.mProject._22;
++	return true;
++}
++
++// Exact inverse of the reconstruction in svp_world_at_pixel, so it cannot disagree with it.
++static bool svp_uv_of_world(const SvpSceneReadback& R, const Fvector& P, float& u, float& v)
++{
++	Fvector Pv;
++	Device.mView.transform_tiny(Pv, P);
++	if (Pv.z < 0.05f)
++		return false;
++	u = 0.5f * (1.f + Pv.x / (Pv.z * R.horzTan));
++	v = 0.5f * (1.f + Pv.y / (Pv.z * R.vertTan));
++	return (u >= 0.f && u <= 1.f && v >= 0.f && v <= 1.f);
++}
++
++static bool svp_world_at_pixel(const SvpSceneReadback& R, u32 x, u32 y, Fvector& out)
++{
++	if (x >= R.pw || y >= R.ph)
++		return false;
++	const u16* hp = (const u16*)(R.pos.data() + size_t(y) * R.pp + size_t(x) * 8);
++	const float pz = svp_h2f(hp[2]);
++	if (pz < 0.2f)
++		return false;
++	const float sx = 2.f * R.horzTan / float(R.pw);
++	const float sy = 2.f * R.vertTan / float(R.ph);
++	Fvector Pv;
++	Pv.set(pz * ((x + 0.5f) * sx - R.horzTan), pz * ((y + 0.5f) * sy - R.vertTan), pz);
++	Device.mInvView.transform(out, Pv);
++	return true;
++}
++
++static bool svp_csm_shadowed(const SvpSceneReadback& R, const Fmatrix& X, const Fvector& Pw)
++{
++	const float cx = Pw.x * X._11 + Pw.y * X._21 + Pw.z * X._31 + X._41;
++	const float cy = Pw.x * X._12 + Pw.y * X._22 + Pw.z * X._32 + X._42;
++	const float cz = Pw.x * X._13 + Pw.y * X._23 + Pw.z * X._33 + X._43;
++	const float cw = Pw.x * X._14 + Pw.y * X._24 + Pw.z * X._34 + X._44;
++	if (cw <= 1e-4f)
++		return false;
++	const float u = 0.5f + 0.5f * cx / cw;
++	const float v = 0.5f - 0.5f * cy / cw;
++	const float dp = cz / cw;
++	if (u < 0.f || u > 1.f || v < 0.f || v > 1.f || dp < 0.f || dp > 1.f)
++		return false;
++	const int ix = clampr(int(u * R.sw), 0, int(R.sw) - 1);
++	const int iy = clampr(int(v * R.sh), 0, int(R.sh) - 1);
++	const u32 raw = *(const u32*)(R.smap.data() + size_t(iy) * R.sp + size_t(ix) * 4);
++	float dm = -1.f;
++	if (R.sf == DXGI_FORMAT_D32_FLOAT || R.sf == DXGI_FORMAT_R32_FLOAT)
++		dm = *(const float*)&raw;
++	else if (R.sf == DXGI_FORMAT_R24G8_TYPELESS || R.sf == DXGI_FORMAT_D24_UNORM_S8_UINT)
++		dm = float(raw & 0x00FFFFFFu) / 16777215.0f;
++	else
++		return false;
++	return dm < dp - 0.001f;
++}
++
++struct SvpShadowSample
++{
++	float s;   // lateral distance from the object axis, metres
++	float t;   // distance down-sun from the object base, metres
++	float y;   // world height of the surface actually drawn there
++	bool shadowed;
++};
++
++// For every tall static object near the camera, ask the cascade that is currently resident
++// in rt_smap_depth where its shadow band actually lies. The samples are taken from the
++// G-buffer surface itself (never from an assumed ground height - that version rejected
++// every sample on a hillside), so terrain relief cannot invalidate the verdict.
++static void svp_measure_shadow_offsets(CRenderTarget* T, const xr_vector<sun::cascade>& cascades,
++	u32 onlyCascade, u32 dumpSeq, const xr_vector<dxRender_Visual*>& objs)
++{
++	if (!T || onlyCascade >= cascades.size() || objs.empty())
++		return;
++	SvpSceneReadback R;
++	if (!svp_load_scene(R, T, true))
++	{
++		Msg("* [DBG] shoffset d=%u c=%u: readback failed", dumpSeq, onlyCascade);
++		return;
++	}
++	CEnvDescriptor& E = *g_pGamePersistent->Environment().CurrentEnv;
++	const Fvector& sd = E.sun_dir;
++	const float hl = _sqrt(sd.x * sd.x + sd.z * sd.z);
++	if (hl < 1e-3f || sd.y > -1e-2f)
++	{
++		Msg("* [DBG] shoffset d=%u c=%u: sun at or below horizon", dumpSeq, onlyCascade);
++		return;
++	}
++	Fvector hdir;
++	hdir.set(sd.x / hl, 0.f, sd.z / hl);   // shadows travel this way on the ground
++	Fvector perp;
++	perp.set(-hdir.z, 0.f, hdir.x);
++	const float tanElev = -sd.y / hl;
++	const Fmatrix& X = cascades[onlyCascade].xform;
++
++	u32 reported = 0;
++	for (dxRender_Visual* V : objs)
++	{
++		const float hgt = V->vis.box.max.y - V->vis.box.min.y;
++		if (hgt < 8.f)
++			continue;
++		Fvector base;
++		base.set((V->vis.box.min.x + V->vis.box.max.x) * .5f, V->vis.box.min.y,
++		         (V->vis.box.min.z + V->vis.box.max.z) * .5f);
++		if (base.distance_to(Device.vCameraPosition) > 45.f)
++			continue;
++
++		const float L = clampr(hgt / tanElev, 4.f, 60.f);
++		const float probe = clampr(L * .5f, 4.f, 20.f);
++		Fvector anchor;
++		anchor.mad(base, hdir, probe);
++		float au, av;
++		if (!svp_uv_of_world(R, anchor, au, av))
++			continue;   // the place where its shadow should be is not on screen
++
++		// Screen window around the anchor, sampled from the drawn surface.
++		xr_vector<SvpShadowSample> samples;
++		const s32 cx = s32(au * R.pw), cy = s32(av * R.ph);
++		for (s32 y = cy - 70; y <= cy + 70; y += 4)
++		{
++			if (y < 0 || y >= s32(R.ph))
++				continue;
++			for (s32 x = cx - 100; x <= cx + 100; x += 4)
++			{
++				if (x < 0 || x >= s32(R.pw))
++					continue;
++				Fvector Pw;
++				if (!svp_world_at_pixel(R, u32(x), u32(y), Pw))
++					continue;
++				const float dx = Pw.x - base.x, dz = Pw.z - base.z;
++				const float s = dx * perp.x + dz * perp.z;
++				const float t = dx * hdir.x + dz * hdir.z;
++				if (fabsf(s) > 14.f || t < 0.f || t > 1.6f * L)
++					continue;
++				SvpShadowSample sm;
++				sm.s = s; sm.t = t; sm.y = Pw.y;
++				sm.shadowed = svp_csm_shadowed(R, X, Pw);
++				samples.push_back(sm);
++			}
++		}
++		if (samples.size() < 40)
++		{
++			Msg("* [DBG] shoffset d=%u c=%u v=%p h=%.1f base=(%.1f %.1f) L=%.1f samples=%u too few",
++				dumpSeq, onlyCascade, (void*)V, hgt, base.x, base.z, L, u32(samples.size()));
++			continue;
++		}
++
++		// Ground level = 10th percentile of the drawn heights in the window; anything well
++		// above it is the object itself or its canopy, not the surface the band falls on.
++		xr_vector<float> heights;
++		heights.reserve(samples.size());
++		for (const SvpShadowSample& sm : samples)
++			heights.push_back(sm.y);
++		std::sort(heights.begin(), heights.end());
++		const float ground_y = heights[heights.size() / 10];
++
++		// Band position at t ~= probe.
++		const float bin = 0.4f;
++		const int nbins = int(28.f / bin);
++		xr_vector<s32> shd(nbins, 0), tot(nbins, 0);
++		int near_ok = 0;
++		for (const SvpShadowSample& sm : samples)
++		{
++			if (fabsf(sm.s) > 14.f || fabsf(sm.t - probe) > 2.5f || sm.y > ground_y + 2.f)
++				continue;
++			const int b = clampr(int((sm.s + 14.f) / bin), 0, nbins - 1);
++			++tot[b];
++			++near_ok;
++			if (sm.shadowed)
++				++shd[b];
++		}
++		float centre = 0.f, width = 0.f;
++		bool found = false;
++		if (near_ok >= 8)
++		{
++			int run_lo = -1, best_lo = -1, best_hi = -1;
++			for (int b = 0; b <= nbins; ++b)
++			{
++				const bool on = (b < nbins) && tot[b] >= 2 && shd[b] * 2 >= tot[b];
++				if (on)
++				{
++					if (run_lo < 0)
++						run_lo = b;
++				}
++				else if (run_lo >= 0)
++				{
++					if (best_lo < 0 || (b - 1 - run_lo) > (best_hi - best_lo))
++					{
++						best_lo = run_lo;
++						best_hi = b - 1;
++					}
++					run_lo = -1;
++				}
++			}
++			if (best_lo >= 0 && best_hi > best_lo)
++			{
++				centre = -14.f + (best_lo + best_hi + 1) * .5f * bin;
++				width = (best_hi - best_lo + 1) * bin;
++				found = true;
++			}
++		}
++
++		// Along-azimuth extent on the band centre line.
++		float first = -1.f, last = -1.f;
++		for (const SvpShadowSample& sm : samples)
++		{
++			if (fabsf(sm.s - (found ? centre : 0.f)) > 2.f || sm.y > ground_y + 2.f)
++				continue;
++			if (!sm.shadowed)
++				continue;
++			if (first < 0.f || sm.t < first)
++				first = sm.t;
++			if (sm.t > last)
++				last = sm.t;
++		}
++
++		Msg("* [DBG] shoffset d=%u c=%u v=%p h=%.1f base=(%.1f %.1f) L=%.1f probe=%.1f samples=%u groundY=%.1f band=%d dlat=%.2f width=%.1f along=%.1f..%.1f",
++			dumpSeq, onlyCascade, (void*)V, hgt, base.x, base.z, L, probe, u32(samples.size()),
++			ground_y, found ? 1 : 0, found ? fabsf(centre) : 0.f, width, first, last);
++		if (++reported >= 12)
++			break;
++	}
++	Msg("* [DBG] shoffset d=%u c=%u reported=%u", dumpSeq, onlyCascade, reported);
++}
++
++// r__sun_shadow_casters 4 puts exactly one object in the map, so everything nearer than
++// the ground in it belongs to that object. Measure that blob in full 24-bit precision and
++// compare it with where cascade.xform says the object's own box projects: the difference
++// is the registration error of the shadow pass, with no neighbour able to confuse it.
++static void svp_single_caster_blob(CRenderTarget* T, const xr_vector<sun::cascade>& cascades,
++                                   u32 onlyCascade, dxRender_Visual* V, u32 dumpSeq)
++{
++	if (!T || !V || onlyCascade >= cascades.size())
++		return;
++	SvpSceneReadback R;
++	if (!svp_load_scene(R, T, true))
++	{
++		Msg("* [DBG] blob d=%u c=%u: readback failed", dumpSeq, onlyCascade);
++		return;
++	}
++	const u32 W = R.sw, H = R.sh;
++	if (!W || !H || R.sf != DXGI_FORMAT_R24G8_TYPELESS)
++	{
++		Msg("* [DBG] blob d=%u c=%u: unsupported smap fmt=%d", dumpSeq, onlyCascade, int(R.sf));
++		return;
++	}
++
++	xr_vector<u32> hist(256, 0);
++	for (u32 y = 0; y < H; ++y)
++	{
++		const u8* row = R.smap.data() + size_t(y) * R.sp;
++		for (u32 x = 0; x < W; ++x)
++		{
++			const u32 raw = *(const u32*)(row + size_t(x) * 4);
++			const u32 dv = (raw & 0x00FFFFFFu) >> 16;   // top 3 bits of the 24-bit depth
++			++hist[dv & 255u];
++		}
++	}
++	// Ground = 90th percentile of stored depth. One caster cannot cover that much of the
++	// map, so the tail of the histogram is the terrain and the far plane.
++	u32 acc = 0;
++	float ground = 1.f;
++	const u32 want = (W * H) / 10 * 9;
++	for (int b = 0; b < 256; ++b)
++	{
++		acc += hist[b];
++		if (acc >= want)
++		{
++			ground = float(b) / 255.f;
++			break;
++		}
++	}
++	const float thr = ground - 0.02f;
++
++	double su = 0.0, sv = 0.0;
++	u32 n = 0;
++	float dmin = 2.f;
++	u32 mx = 0, my = 0;
++	for (u32 y = 0; y < H; ++y)
++	{
++		const u8* row = R.smap.data() + size_t(y) * R.sp;
++		for (u32 x = 0; x < W; ++x)
++		{
++			const u32 raw = *(const u32*)(row + size_t(x) * 4);
++			const float dm = float(raw & 0x00FFFFFFu) / 16777215.0f;
++			if (dm < dmin)
++			{
++				dmin = dm;
++				mx = x;
++				my = y;
++			}
++			if (dm < thr)
++			{
++				su += double(x);
++				sv += double(y);
++				++n;
++			}
++		}
++	}
++
++	const Fmatrix& X = cascades[onlyCascade].xform;
++	float pu = 0.f, pv = 0.f, ptop_u = 0.f, ptop_v = 0.f, ptop_d = 0.f;
++	u32 corners_in = 0;
++	const auto& B = V->vis.box;
++	for (int c = 0; c < 8; ++c)
++	{
++		Fvector p;
++		p.set((c & 1) ? B.max.x : B.min.x, (c & 2) ? B.max.y : B.min.y, (c & 4) ? B.max.z : B.min.z);
++		const float cx = p.x * X._11 + p.y * X._21 + p.z * X._31 + X._41;
++		const float cy = p.x * X._12 + p.y * X._22 + p.z * X._32 + X._42;
++		const float cz = p.x * X._13 + p.y * X._23 + p.z * X._33 + X._43;
++		if (cx < -1.f || cx > 1.f || cy < -1.f || cy > 1.f || cz < 0.f || cz > 1.f)
++			continue;
++		pu += 0.5f + 0.5f * cx;
++		pv += 0.5f - 0.5f * cy;
++		++corners_in;
++		if (c == 7)   // (max.x, max.y, max.z) - the box top, for reference
++		{
++			ptop_u = 0.5f + 0.5f * cx;
++			ptop_v = 0.5f - 0.5f * cy;
++			ptop_d = cz;
++		}
++	}
++	if (corners_in)
++	{
++		pu = pu / float(corners_in) * float(W);
++		pv = pv / float(corners_in) * float(H);
++	}
++	Msg("* [DBG] blob d=%u c=%u v=%p grass=%d ground=%.5f thr=%.5f n=%u centroid=(%.1f %.1f) predict=(%.1f %.1f) dtex=(%.1f %.1f) dmin=%.5f at=(%.1f %.1f) top_pred=(%.1f %.1f d%.5f) corners=%u",
++		dumpSeq, onlyCascade, (void*)V, psDeviceFlags2.test(rsGrassShadow) ? 1 : 0,
++		ground, thr, n,
++		n ? su / double(n) : -1.0, n ? sv / double(n) : -1.0,
++		pu, pv, n ? su / double(n) - double(pu) : 0.0, n ? sv / double(n) - double(pv) : 0.0,
++		dmin, float(mx), float(my),
++		ptop_u * float(W), ptop_v * float(H), ptop_d, corners_in);
++}
++
++// Which source wins for the shadow-relevant shaders. The MO2 profile stacks more than one
++// shader pack and several of these files exist in both, so the file on disk is not evidence
++// of what the engine reads. Reading through the engine FS shows the overlay winner, and the
++// markers tell the two implementations apart (SSFX wind vs the legacy wave, SSFX volumetric
++// sun vs the old raymarch, the +ssfx_issvp.x lens neutralization).
++static void svp_dump_shader_provenance()
++{
++	struct probe { LPCSTR path; };
++	static const probe probes[] = {
++		{ "r3\\shadow_direct_tree.vs" },
++		{ "r3\\deffer_tree_bump.vs" },
++		{ "r3\\deffer_tree_s_bump.vs" },
++		{ "r3\\accum_volumetric_sun.ps" },
++		{ "r3\\accum_sun_far.ps" },
++		{ "r3\\accum_sun_near.ps" },
++		{ "r3\\screenspace_wind.h" },
++		{ "r3\\check_screenspace_SSS.h" },
++	};
++
++	for (const probe& p : probes)
++	{
++		IReader* R = FS.r_open("$game_shaders$", p.path);
++		if (!R)
++		{
++			Msg("* [DBG] shader %s: MISSING", p.path);
++			continue;
++		}
++		xr_string text((LPCSTR)R->pointer(), R->length());
++		Msg("* [DBG] shader %s: %u bytes ssfx_wind=%d legacy_wave=%d hippobot=%d ray_samples=%d issvp_add=%d",
++			p.path, (u32)R->length(),
++			text.find("ssfx_wind_tree") != xr_string::npos,
++			text.find("calc_xz_wave") != xr_string::npos,
++			text.find("Hippobot") != xr_string::npos,
++			text.find("RAY_SAMPLES") != xr_string::npos,
++			text.find("+ ssfx_issvp.x") != xr_string::npos);
++		R->close();
++	}
++}
++
+ // PiP lens content probe (diagnostic, throttled): reads back a 16x16 block from the centre// of the second view's scene result and of the texture the lens material actually samples.
+ // A black lens has three very different causes and the log must separate them:
+ //   source black             -> the second view rendered nothing (camera, culling, combine)
+@@ -1032,15 +1804,13 @@ void CRender::Render()
+ 				// - doing so drew view-locked foliage shadows inside the scope,
+ 				// worse the higher the zoom (player report, 2026-10-25 screenshots).
+ 				// Clear to neutral (1 = unshadowed) for the lens pass instead.
+-				if (ps_ssfx_sss_quality.z > 0 || sss_rendered)
++				// Unconditional: with the pass disabled from startup the buffer has never
++				// been written and is still at its zero-initialised creation state, which
++				// multiplies the whole sun contribution by zero.
+ 				{
+ 					FLOAT ColorRGBA[4] = { 1,1,1,1 };
+ 					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss->pRT, ColorRGBA);
+ 					sss_rendered = false;
+-				}
+-				if (ps_ssfx_sss_quality.w > 0 || sss_extended_rendered)
+-				{
+-					FLOAT ColorRGBA[4] = { 1,1,1,1 };
+ 					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, ColorRGBA);
+ 					sss_extended_rendered = false;
+ 				}
+@@ -1055,12 +1825,13 @@ void CRender::Render()
+ 				}
+ 				else
+ 				{
+-					if (sss_rendered) // Clear buffer
+-					{
+-						sss_rendered = false;
+-						FLOAT ColorRGBA[4] = { 1,1,1,1 };
+-						HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss->pRT, ColorRGBA);
+-					}
++					// The sun accumulators multiply by this buffer. It must be neutral (1)
++					// even when the pass has never run in this process: the render target is
++					// created zero-initialised, so a missing clear blackened the entire sun
++					// contribution whenever SSS was disabled from startup.
++					sss_rendered = false;
++					FLOAT ColorRGBA[4] = { 1,1,1,1 };
++					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss->pRT, ColorRGBA);
+ 				}
+ 
+ 				if (ps_ssfx_sss_quality.w > 0)
+@@ -1071,12 +1842,9 @@ void CRender::Render()
+ 				}
+ 				else
+ 				{
+-					if (sss_extended_rendered) // Clear buffer
+-					{
+-						sss_extended_rendered = false;
+-						FLOAT ColorRGBA[4] = { 1,1,1,1 };
+-						HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, ColorRGBA);
+-					}
++					sss_extended_rendered = false;
++					FLOAT ColorRGBA[4] = { 1,1,1,1 };
++					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, ColorRGBA);
+ 				}
+ 			}
+ 		}
+@@ -1357,8 +2125,206 @@ void CRender::Render()
+ 		}
+ 	}
+ 
++// r__dump_shadow_buffers: one-shot dump of every buffer that can carry a shadow-like
++	// darkening, so the layer that produces a misplaced pattern can be named from its own
++	// image instead of inferred from console toggles. The masks are screen space (view
++	// locked by construction); the accumulator is the sun/light result; the color is what
++	// was displayed. The light list and the sun vector go to the log with the images.
++	if (ps_r__dump_shadow_buffers)
++	{
++		ps_r__dump_shadow_buffers = 0;
++
++		// Each invocation gets its own suffix: the two-view test needs the first dump to
++		// survive the second one. The counter resets when the process exits.
++		static u32 s_dumpSeq = 0;
++		const u32 dumpSeq = ++s_dumpSeq;
++
++		auto dumpRT = [dumpSeq](LPCSTR base, ref_rt& rt, float mu = -1.f, float mv = -1.f)
++		{
++			string_path name, full;
++			xr_sprintf(name, "dbg_%s_%u.bmp", base, dumpSeq);
++			FS.update_path(full, "$logs$", name);
++			svp_dump_rt(full, rt, mu, mv);
++		};
++
++		CRenderTarget* T = TargetMain ? TargetMain : Target;
++		if (T)
++		{
++			dumpRT("sss_dir", T->rt_ssfx_sss);
++			dumpRT("sss_ext", T->rt_ssfx_sss_ext);
++			dumpRT("sss_ext2", T->rt_ssfx_sss_ext2);
++			dumpRT("sss_atlas", T->rt_ssfx_sss_tmp);
++			dumpRT("ao", T->rt_ssfx_ao);
++			dumpRT("il", T->rt_ssfx_il);
++			dumpRT("accum", T->rt_Accumulator);
++			dumpRT("color", T->rt_Generic_0);
++			dumpRT("albedo", T->rt_Color);
++			dumpRT("position", T->rt_Position);
++		}
++
++		Msg("* [DBG] cam pos=(%.2f %.2f %.2f) dir=(%.3f %.3f %.3f) fov=%.2f",
++			Device.vCameraPosition.x, Device.vCameraPosition.y, Device.vCameraPosition.z,
++			Device.vCameraDirection.x, Device.vCameraDirection.y, Device.vCameraDirection.z,
++			Device.fFOV);
++
++		if (g_pGamePersistent)
++		{
++			CEnvDescriptor& E = *g_pGamePersistent->Environment().CurrentEnv;
++			// Sun shadow caster filter state, so an A/B of r__sun_shadow_casters is provable
++		// from the log instead of from what the picture looks like.
++		{
++			extern int ps_r__sun_shadow_casters;
++			extern u32 g_sun_caster_kept, g_sun_caster_skipped;
++			Msg("* [DBG] sun casters mode=%d kept=%u skipped=%u", ps_r__sun_shadow_casters,
++				g_sun_caster_kept, g_sun_caster_skipped);
++		}
++
++		// Which layers were live for this dump. AO/IL are screen-space and were
++			// re-enabled by MCM in earlier sessions, so a dump must state them instead
++			// of relying on the config file.
++			Msg("* [DBG] layers sss_q=(%.0f %.0f %.0f %.0f) ao_q=%d il_q=%d fog_scatter=%.2f shafts_mode=%u wind_tree=(%.2f %.2f %.2f %.2f)",
++				ps_ssfx_sss_quality.x, ps_ssfx_sss_quality.y, ps_ssfx_sss_quality.z, ps_ssfx_sss_quality.w,
++				ps_ssfx_ao_quality, ps_ssfx_il_quality, ps_ssfx_fog_scattering, ps_sunshafts_mode,
++				ps_ssfx_wind_trees.x, ps_ssfx_wind_trees.y, ps_ssfx_wind_trees.z, ps_ssfx_wind_trees.w);
++
++			Msg("* [DBG] env sect=%s sun_dir=(%.4f %.4f %.4f) sun_color=(%.3f %.3f %.3f) sky_rot=%.1f sky=%s sun_static=%d",
++				E.m_identifier.c_str(),
++				E.sun_dir.x, E.sun_dir.y, E.sun_dir.z,
++				E.sun_color.x, E.sun_color.y, E.sun_color.z,
++				E.sky_rotation * (180.f / PI), E.sky_texture_name.c_str(),
++				::Render->is_sun_static() ? 1 : 0);
++
++			// Where the engine sun is on this frame's screen. The visible disk in a screenshot
++			// can then be compared with it directly: if the disk and this projection disagree,
++			// the sky/environment is drawing the sun somewhere else than the light points.
++			Fvector to_sun;
++			to_sun.set(E.sun_dir).invert().normalize();
++			Fvector P;
++			P.mad(Device.vCameraPosition, to_sun, 1000.f);
++			Fvector4 clip;
++			const Fmatrix& M = Device.mFullTransform;
++			clip.x = P.x * M._11 + P.y * M._21 + P.z * M._31 + M._41;
++			clip.y = P.x * M._12 + P.y * M._22 + P.z * M._32 + M._42;
++			clip.z = P.x * M._13 + P.y * M._23 + P.z * M._33 + M._43;
++			clip.w = P.x * M._14 + P.y * M._24 + P.z * M._34 + M._44;
++			if (clip.w > 0.01f)
++			{
++				const float ndc_x = clip.x / clip.w;
++				const float ndc_y = clip.y / clip.w;
++				Msg("* [DBG] sun screen ndc=(%.3f %.3f) uv_topLeft=(%.4f %.4f)",
++					ndc_x, ndc_y, 0.5f + 0.5f * ndc_x, 0.5f - 0.5f * ndc_y);
++				if (TargetMain)
++					dumpRT("color_sun", TargetMain->rt_Generic_0, 0.5f + 0.5f * ndc_x, 0.5f - 0.5f * ndc_y);
++			}
++			else
++				Msg("* [DBG] sun is behind the camera (clip w=%.3f)", clip.w);
++		}
++
++		light* sun = (light*)Lights.sun_adapted._get();
++		if (sun)
++			Msg("* [DBG] sun_adapted pos=(%.1f %.1f %.1f) dir=(%.3f %.3f %.3f) color=(%.2f %.2f %.2f) range=%.0f shadow=%d",
++				sun->position.x, sun->position.y, sun->position.z,
++				sun->direction.x, sun->direction.y, sun->direction.z,
++				sun->color.r, sun->color.g, sun->color.b, sun->range, sun->flags.bShadow);
++
++		// Ground truth for the CSM: the exact per-cascade matrices the shadow pass
++		// rendered and sampled with. A known world point's light-space position can
++		// then be compared with the visible shadow without offline projection maths.
++		for (u32 ci = 0; ci < m_sun_cascades.size(); ++ci)
++		{
++			const Fmatrix& X = m_sun_cascades[ci].xform;
++			Msg("* [DBG] cascade%u r0=(%.6f %.6f %.6f %.6f) r1=(%.6f %.6f %.6f %.6f) r2=(%.6f %.6f %.6f %.6f) r3=(%.6f %.6f %.6f %.6f)",
++				ci, X._11, X._12, X._13, X._14, X._21, X._22, X._23, X._24,
++				X._31, X._32, X._33, X._34, X._41, X._42, X._43, X._44);
++		}
++
++		// At frame end only the last cascade's map is still resident, so probing all
++		// cascades here reported near/middle rows against the far map. Probe the far
++		// cascade only; the per-cascade capture below produces the other two.
++		svp_probe_shadow_numeric(T, m_sun_cascades, dumpSeq, int(m_sun_cascades.size()) - 1);
++
++		// Which models actually exist near the camera - so a caster the probe calls
++		// invisible can be matched against the level's own visual list.
++		// Which models actually exist near the camera - so a caster the probe calls
++		// invisible can be matched against the level's own visual list.
++		DumpNearbyVisuals(35.f, 400);
++
++		// Dump each cascade's shadow map on the next frame, while it is still current.
++		g_svpDumpSmap = true;
++		g_svpDumpSmapSeq = dumpSeq;
++
++		Msg("* [DBG] LP_normal point=%u spot=%u shadowed=%u",
++			u32(LP_normal.v_point.size()), u32(LP_normal.v_spot.size()), u32(LP_normal.v_shadowed.size()));
++		for (light* L : LP_normal.v_point)
++			Msg("* [DBG] point pos=(%.1f %.1f %.1f) range=%.1f color=(%.2f %.2f %.2f) shadow=%d active=%d",
++				L->position.x, L->position.y, L->position.z, L->range,
++				L->color.r, L->color.g, L->color.b, L->flags.bShadow, L->flags.bActive);
++		for (light* L : LP_normal.v_spot)
++			Msg("* [DBG] spot pos=(%.1f %.1f %.1f) dir=(%.2f %.2f %.2f) range=%.1f color=(%.2f %.2f %.2f) shadow=%d",
++				L->position.x, L->position.y, L->position.z,
++				L->direction.x, L->direction.y, L->direction.z, L->range,
++				L->color.r, L->color.g, L->color.b, L->flags.bShadow);
++		for (light* L : LP_normal.v_shadowed)
++			Msg("* [DBG] shadowed pos=(%.1f %.1f %.1f) range=%.1f color=(%.2f %.2f %.2f) type=%u",
++				L->position.x, L->position.y, L->position.z, L->range,
++				L->color.r, L->color.g, L->color.b, L->flags.type);
++
++		svp_dump_shader_provenance();
++	}
++
+ 	render_stats::Publish(render_stats::MsSince(statsFrameStart));
+ }
++
++// Called from render_sun_cascade right after this cascade's accumulation, i.e. while the
++// single shadow map still holds this cascade's depth (the next cascade overwrites it).
++// The numeric probe then samples the map with this cascade's own matrix, which is the only
++// way to tell a correct near-cascade shadow from a map content or transform error.
++void CRender::DumpShadowMapCascade(u32 cascade_ind)
++{
++	// The lens pass renders with its own projection and target; the dump must describe the
++	// view the player sees, so only the main target is captured. The flag then stays set
++	// until the main view's cascade loop consumes it.
++	if (TargetMain && Target != TargetMain)
++		return;
++	CRenderTarget* T = Target;
++	if (!T || cascade_ind >= m_sun_cascades.size())
++		return;
++
++	string_path name, full;
++	// Sequence first so a second dump from another yaw does not overwrite the first set.
++	xr_sprintf(name, "dbg_smap_d%u_c%u.bmp", g_svpDumpSmapSeq, cascade_ind);
++	FS.update_path(full, "$logs$", name);
++	svp_dump_rt(full, T->rt_smap_depth);
++
++	const Fmatrix& X = m_sun_cascades[cascade_ind].xform;
++	Msg("* [DBG] smap c=%u seq=%u cam pos=(%.2f %.2f %.2f) dir=(%.3f %.3f %.3f) sun_dir=(%.4f %.4f %.4f)",
++		cascade_ind, g_svpDumpSmapSeq,
++		Device.vCameraPosition.x, Device.vCameraPosition.y, Device.vCameraPosition.z,
++		Device.vCameraDirection.x, Device.vCameraDirection.y, Device.vCameraDirection.z,
++		g_pGamePersistent->Environment().CurrentEnv->sun_dir.x,
++		g_pGamePersistent->Environment().CurrentEnv->sun_dir.y,
++		g_pGamePersistent->Environment().CurrentEnv->sun_dir.z);
++	Msg("* [DBG] smap c=%u r0=(%.6f %.6f %.6f %.6f) r1=(%.6f %.6f %.6f %.6f) r2=(%.6f %.6f %.6f %.6f) r3=(%.6f %.6f %.6f %.6f)",
++		cascade_ind, X._11, X._12, X._13, X._14, X._21, X._22, X._23, X._24,
++		X._31, X._32, X._33, X._34, X._41, X._42, X._43, X._44);
++
++	svp_probe_shadow_numeric(T, m_sun_cascades, g_svpDumpSmapSeq, int(cascade_ind));
++
++	xr_vector<dxRender_Visual*> tall;
++	CollectNearbyVisuals(40.f, tall);
++	svp_measure_shadow_offsets(T, m_sun_cascades, cascade_ind, g_svpDumpSmapSeq, tall);
++
++	{
++		extern int ps_r__sun_shadow_casters;
++		extern dxRender_Visual* g_sun_caster_only;
++		if (ps_r__sun_shadow_casters == 4 && g_sun_caster_only)
++			svp_single_caster_blob(T, m_sun_cascades, cascade_ind, g_sun_caster_only, g_svpDumpSmapSeq);
++	}
++
++	if (cascade_ind + 1 == m_sun_cascades.size())
++		g_svpDumpSmap = false;
++}
++
+ #include "../xrRender/CHudInitializer.h"
+ 
+ void CRender::render_forward()
+diff --git a/src/Layers/xrRenderPC_R4/r4_rendertarget.cpp b/src/Layers/xrRenderPC_R4/r4_rendertarget.cpp
+index 77b09cce2..b4b7f5c29 100644
+--- a/src/Layers/xrRenderPC_R4/r4_rendertarget.cpp
++++ b/src/Layers/xrRenderPC_R4/r4_rendertarget.cpp
+@@ -644,6 +644,7 @@ CRenderTarget::CRenderTarget(LPCSTR set_name, u32 width, u32 height)
+ 	b_ssao = xr_new<CBlender_SSAO_noMSAA>();
+ 	///////////////////////////////////lvutner
+ 	b_sunshafts = xr_new<CBlender_sunshafts>();
++	b_sunmask = xr_new<CBlender_sunmask>();
+ 	b_blur = xr_new<CBlender_blur>();
+ 	b_pp_bloom = xr_new<CBlender_pp_bloom>();
+ 	b_dof = xr_new<CBlender_dof>();
+@@ -958,6 +959,7 @@ CRenderTarget::CRenderTarget(LPCSTR set_name, u32 width, u32 height)
+ 	s_hdr10_lens_flare_upsample.create(b_hdr10_lens_flare_upsample, "hdr10_lens_flare_upsample");
+ 
+ 	s_sunshafts.create(b_sunshafts, "r2\\sunshafts");
++	s_sunmask.create(b_sunmask, "r2\\csm_sunmask");
+ 	s_blur.create(b_blur, "r2\\blur");
+ 	s_pp_bloom.create(b_pp_bloom, "r2\\pp_bloom");
+ 	s_dof.create(b_dof, "r2\\dof");
+@@ -1768,6 +1770,7 @@ CRenderTarget::~CRenderTarget()
+ 	xr_delete(b_accum_mask);
+ 	xr_delete(b_occq);
+ 	xr_delete(b_sunshafts);
++	xr_delete(b_sunmask);
+ 
+ 	xr_delete(b_hdao_cs);
+ 	if (RImplementation.o.dx10_msaa)
+@@ -1827,6 +1830,21 @@ bool CRenderTarget::need_to_render_sunshafts()
+ 		if (fValue < 0.0001) return false;
+ 	}
+ 
++	// Sunshafts are a screen-space effect that must be anchored on the sun. With the sun
++	// behind the camera its screen position is undefined and the ray march turns into
++	// view-bound bands that read as a second light source. Do not render the pass at all
++	// while the sun is behind the view plane.
++	light* sun = (light*)RImplementation.Lights.sun_adapted._get();
++	if (sun)
++	{
++		Fvector to_sun;
++		to_sun.set(sun->direction).invert().normalize();
++		Fvector vs;
++		Device.mView.transform_dir(vs, to_sun);
++		if (vs.z <= 0.05f)
++			return false;
++	}
++
+ 	return true;
+ }
+ 
+diff --git a/src/Layers/xrRenderPC_R4/r4_rendertarget.h b/src/Layers/xrRenderPC_R4/r4_rendertarget.h
+index a00a0d602..77decc4f2 100644
+--- a/src/Layers/xrRenderPC_R4/r4_rendertarget.h
++++ b/src/Layers/xrRenderPC_R4/r4_rendertarget.h
+@@ -38,6 +38,7 @@ public:
+ 	IBlender* b_luminance;
+ 	IBlender* b_combine;
+ 	IBlender* b_sunshafts;
++	IBlender* b_sunmask;
+ 	IBlender* b_postprocess_msaa;
+ 	IBlender* b_bloom_msaa;
+ 	IBlender* b_combine_msaa[8];
+@@ -260,6 +261,7 @@ private:
+ 
+ 	ref_shader s_occq;
+ 	ref_shader s_sunshafts;
++	ref_shader s_sunmask;
+ 	// SSAO
+ 	ref_rt rt_ssao_temp;
+ 	ref_rt rt_half_depth;
+@@ -451,6 +453,7 @@ public:
+ 	BOOL u_DBT_enable(float zMin, float zMax);
+ 	void u_DBT_disable();
+ 	void phase_sunshafts();
++	void apply_sun_volumetric_mask();
+ 	void phase_blur();
+ 	void phase_pp_bloom();
+ 	void phase_dof();
+diff --git a/src/Layers/xrRenderPC_R4/r4_rendertarget_accum_direct.cpp b/src/Layers/xrRenderPC_R4/r4_rendertarget_accum_direct.cpp
+index 516ad506b..90a12cc20 100644
+--- a/src/Layers/xrRenderPC_R4/r4_rendertarget_accum_direct.cpp
++++ b/src/Layers/xrRenderPC_R4/r4_rendertarget_accum_direct.cpp
+@@ -2,6 +2,7 @@
+ #include "../xrRender/RenderDimensions.h"
+ #include "../../xrEngine/igame_persistent.h"
+ #include "../../xrEngine/environment.h"
++#include "Dlss/DlssIntegration.h"
+ 
+ //////////////////////////////////////////////////////////////////////////
+ // tables to calculate view-frustum bounds in world space
+@@ -566,7 +567,11 @@ void CRenderTarget::accum_direct_cascade(u32 sub_phase, Fmatrix& xform, Fmatrix&
+ 
+ 
+ 			Fmatrix inv_XDcombine;
+-			if (/*ps_r2_ls_flags_ext.is(R2FLAGEXT_SUN_ZCULLING) &&*/ sub_phase == SE_SUN_FAR)
++			// With sun z-culling the far pass is clipped by the previous cascade's volume, so its
++			// quad is built from xform_prev. Without z-culling the far pass has to cover its own
++			// volume - using xform_prev left the far cascade's lighting confined to the middle
++			// cascade's footprint while m_shadow below still used the far matrix.
++			if (ps_r2_ls_flags_ext.is(R2FLAGEXT_SUN_ZCULLING) && sub_phase == SE_SUN_FAR)
+ 				inv_XDcombine.invert(xform_prev);
+ 			else
+ 				inv_XDcombine.invert(xform);
+@@ -592,6 +597,120 @@ void CRenderTarget::accum_direct_cascade(u32 sub_phase, Fmatrix& xform, Fmatrix&
+ 		RCache.set_c("m_shadow", m_shadow);
+ 		RCache.set_c("m_sunmask", m_clouds_shadow);
+ 
++		// ------------------------------------------------------------------------
++		// r__shadow_probe v2: numeric witness of the sun sampling chain.
++		//
++		// 1) Sampling-matrix self-check: A = m_shadow * mView * P must equal
++		//    B = TexelAdjust * combine * P exactly (matrix associativity, since
++		//    m_shadow = TexelAdjust * combine * mInvView). dUV != 0 means the
++		//    matrix actually bound as m_shadow is not what the formula says.
++		//    (v1 fed the WORLD point to mInvView - camera->world - which double
++		//    applied it; dUV back then was an artefact of the probe itself.)
++		// 2) G-buffer reconstruction replay (gbuffer_stage.h): rebuild the
++		//    view-space position of P from its screen UV plus the binder inputs
++		//    (tan from the ACTIVE projection, RenderScreenWidth/Height, jitter)
++		//    and compare with the true mView * P. Any error here shifts every
++		//    shadow lookup in the scene, and its motion pattern names the input:
++		//      gbrErr scales with resolution ratio -> screen_res / RT size mismatch
++		//      gbrErr appears only when aiming    -> lens-pass projection mismatch
++		//      gbrErr rotates with yaw            -> jitter / view matrix mismatch
++		// 3) Size reconciliation: RenderScreen vs RT object vs Device display.
++		// ------------------------------------------------------------------------
++		extern int ps_r__shadow_probe;
++		extern int ps_r__shadow_probe_step;
++		extern Fvector4 ps_ssfx_taa;
++		if (ps_r__shadow_probe && ps_r__shadow_probe_step > 0 && (Device.dwFrame % u32(ps_r__shadow_probe_step)) == 0)
++		{
++			static Fvector shadow_probe;
++			static bool shadow_probe_init = false;
++			if (!shadow_probe_init)
++			{
++				shadow_probe.mad(Device.vCameraPosition, Device.vCameraDirection, 25.f);
++				shadow_probe_init = true;
++				Msg("* [SHADOW-PROBE] fixed world point (%.2f, %.2f, %.2f) - stand, strafe 1m, yaw 30deg, 2s each",
++					shadow_probe.x, shadow_probe.y, shadow_probe.z);
++			}
++
++			// --- 1) sampling-matrix self-check -----------------------------------
++			Fvector4 Pw, Pv, A4, B4;
++			Pw.set(shadow_probe.x, shadow_probe.y, shadow_probe.z, 1.f);
++			Device.mView.transform(Pv, Pw);
++			m_shadow.transform(A4, Pv);
++
++			Fmatrix m_correct;
++			m_correct.mul(m_TexelAdjust, fuckingsun->X.D.combine);
++			m_correct.transform(B4, Pw);
++
++			float pdx = A4.x - B4.x, pdy = A4.y - B4.y;
++			float dUV = _sqrt(pdx * pdx + pdy * pdy);
++
++			// --- 2) G-buffer reconstruction replay --------------------------------
++			float egx = 0.f, egy = 0.f, uvw = 0.f, uvx = 0.f, uvy = 0.f, jx = 0.f, jy = 0.f;
++			float VertTan = 0.f, HorzTan = 0.f;
++			{
++				VertTan = (fabsf(Device.mProject._22) > 1e-6f)
++					? (-1.0f / Device.mProject._22) : (-1.0f * tanf(deg2rad(Device.fFOV / 2.0f)));
++				HorzTan = (fabsf(Device.mProject._11) > 1e-6f)
++					? (1.0f / Device.mProject._11) : (-VertTan / Device.fASPECT);
++
++				// ssfx_jitter binder logic (Blender_Recorder_StandartBinding.cpp:1261)
++				if (dlss::Configured())
++				{
++					auto jit = dlss::ClipJitter(dlss::RasterJitter(), { dlss::RenderWidth(), dlss::RenderHeight() });
++					jx = jit.x;
++					jy = jit.y;
++				}
++				else if (ps_ssfx_taa.x > 0 && RImplementation.o.ssfx_taa)
++				{
++					static Fvector2 TAA_Offset[4] = { { 0.f, -1.f }, { -1.f, 0.f }, { 1.f, 0.f }, { 0.f, 1.f } };
++					jx = TAA_Offset[Device.dwFrame % 4].x / float(Device.dwWidth) * ps_ssfx_taa.y;
++					jy = TAA_Offset[Device.dwFrame % 4].y / float(Device.dwHeight) * ps_ssfx_taa.y;
++				}
++
++				Fvector4 Pclip;
++				Device.mFullTransform.transform(Pclip, Pw);
++				if (_abs(Pclip.w) > 1e-3f)
++				{
++					uvw = Pclip.w;
++					uvx = (Pclip.x / Pclip.w) * 0.5f + 0.5f;
++					// pos2d in the shaders is I.tc*screen_res, and the screen texgen carries
++					// the -0.5 y of mTexelAdjust: row 0 is ndc_y=+1.
++					uvy = 0.5f - (Pclip.y / Pclip.w) * 0.5f;
++
++					float sx = 2.0f * HorzTan / float(RenderScreenWidth());
++					float sy = 2.0f * VertTan / float(RenderScreenHeight());
++
++					// mFullTransform is unjittered (the raster offset is added inside the VS),
++					// so it already equals gbuffer_stage.h's pos2d after its de-jitter. Applying
++					// the jitter here as well would re-create the double compensation.
++					float px = uvx * float(RenderScreenWidth());
++					float py = uvy * float(RenderScreenHeight());
++
++					float gx = Pv.z * (px * sx - HorzTan);
++					float gy = Pv.z * (py * sy - VertTan);
++					egx = gx - Pv.x;
++					egy = gy - Pv.y;
++				}
++			}
++			float gerr = _sqrt(egx * egx + egy * egy);
++
++			LPCSTR phase = (SE_SUN_NEAR == sub_phase) ? "near" : ((SE_SUN_MIDDLE == sub_phase) ? "mid" : "far");
++			Msg("* [SHADOW-PROBE2] f=%u %-4s dUV=%.5f gbrErr=%.4f(%.4f,%.4f) Pview=(%.2f,%.2f,%.2f) uv=(%.4f,%.4f,w%.2f) | rsw=%u rsh=%u rtWH=%u,%u dwWH=%u,%u tanH=%.4f tanV=%.4f jit=(%.5f,%.5f) dlss=%d %ux%u | fov=%.2f sun=(%.1f,%.1f,%.1f)",
++				Device.dwFrame, phase,
++				dUV, gerr, egx, egy,
++				Pv.x, Pv.y, Pv.z,
++				uvx, uvy, uvw,
++				(u32)RenderScreenWidth(), (u32)RenderScreenHeight(),
++				get_width(), get_height(),
++				Device.dwWidth, Device.dwHeight,
++				HorzTan, VertTan,
++				jx, jy, dlss::Configured() ? 1 : 0,
++				dlss::Configured() ? dlss::RenderWidth() : 0,
++				dlss::Configured() ? dlss::RenderHeight() : 0,
++				Device.fFOV,
++				fuckingsun->position.x, fuckingsun->position.y, fuckingsun->position.z);
++		}
++
+ 		if (sub_phase == SE_SUN_FAR)
+ 		{
+ 			Fvector3 view_viewspace;
+@@ -1200,6 +1319,12 @@ void CRenderTarget::accum_direct_volumetric(u32 sub_phase, const u32 Offset, con
+ 	if (!(ps_sunshafts_mode == R2SS_VOLUMETRIC || ps_sunshafts_mode == R2SS_COMBINE_SUNSHAFTS))
+ 		return;
+ 
++	// The volumetric pass is a screen-space light shaft; with the sun behind the view
++	// plane it has no valid anchor and produces view-bound bands (see
++	// need_to_render_sunshafts). Keep the pass and the cascade chain in agreement.
++	if (!need_to_render_sunshafts())
++		return;
++
+ 	//	Test. draw only for near part
+ 	//	if (sub_phase!=SE_SUN_N/EAR) return;
+ 	//	if (sub_phase!=SE_SUN_FAR) return;
+@@ -1337,6 +1462,14 @@ void CRenderTarget::accum_direct_volumetric(u32 sub_phase, const u32 Offset, con
+ 		//RCache.set_Stencil			(TRUE,D3DCMP_LESSEQUAL,dwLightMarkerID,0xff,0x00);
+ 		//if( ! RImplementation.o.dx10_msaa )
+ 		RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 8, 0, 16);
++
++		// The far cascade is the last sun volumetric draw (near and far accumulate into
++		// the same buffer). Mask the accumulated sun shafts around the sun's screen
++		// position here, so the screen-space shaft pattern is bound to the sun instead
++		// of the view. Point/spot volumetric is added later in the light loop and is
++		// intentionally left unmasked.
++		if (sub_phase == SE_SUN_FAR)
++			apply_sun_volumetric_mask();
+ 		/*
+ 	 else 
+ 	 {
+@@ -1389,3 +1522,72 @@ void CRenderTarget::accum_direct_volumetric(u32 sub_phase, const u32 Offset, con
+ //			set_viewport_size(HW.pContext, w, h);
+ 	}
+ }
++
++// Bind the accumulated sun volumetric to the sun's screen position. The SSFX
++// volumetric shafts are built from shadow-map edges along the view ray, so their
++// pattern belongs to the view; masking them with a radial falloff centred on the
++// sun keeps the shafts only where the sun is, which is what "the pillar must stay
++// with the sun" means in a screen-space implementation. The buffer is copied aside
++// first because the same resource cannot be read and written in one pass.
++void CRenderTarget::apply_sun_volumetric_mask()
++{
++	if (!s_sunmask || !rt_ssfx_accum || !rt_Generic_2)
++		return;
++	if (RImplementation.o.dx10_msaa)
++		return;
++
++	CEnvDescriptor& E = *g_pGamePersistent->Environment().CurrentEnv;
++	if (E.m_fSunShaftsIntensity <= 0.001f)
++		return;
++
++	Fvector to_sun;
++	to_sun.set(E.sun_dir).invert().normalize();
++
++	const Fmatrix& M = Device.mFullTransform;
++	Fvector P;
++	P.mad(Device.vCameraPosition, to_sun, 1000.f);
++	Fvector4 clip;
++	clip.x = P.x * M._11 + P.y * M._21 + P.z * M._31 + M._41;
++	clip.y = P.x * M._12 + P.y * M._22 + P.z * M._32 + M._42;
++	clip.w = P.x * M._14 + P.y * M._24 + P.z * M._34 + M._44;
++
++	float u = 0.5f, v = 0.5f, radius = 0.f;
++	if (clip.w > 0.01f)
++	{
++		u = 0.5f + 0.5f * clip.x / clip.w;
++		v = 0.5f - 0.5f * clip.y / clip.w;
++		radius = 0.35f;
++	}
++
++	HW.pContext->CopyResource(rt_ssfx_accum->pTexture->surface_get(), rt_Generic_2->pTexture->surface_get());
++
++	u_setrt(rt_Generic_2, NULL, NULL, NULL);
++	RCache.set_CullMode(CULL_NONE);
++	RCache.set_Stencil(FALSE);
++
++	u32 Offset;
++	u32 C = color_rgba(255, 255, 255, 255);
++	float w = float(RenderScreenWidth());
++	float h = float(RenderScreenHeight());
++	Fvector2 p0, p1;
++	p0.set(.5f / w, .5f / h);
++	p1.set((w + .5f) / w, (h + .5f) / h);
++
++	struct v_aa
++	{
++		Fvector4 p;
++		Fvector2 uv0;
++	};
++
++	v_aa* pv = (v_aa*)RCache.Vertex.Lock(4, g_KD->vb_stride, Offset);
++	pv->p.set(EPS, float(h + EPS), EPS, 1.f);             pv->uv0.set(p0.x, p1.y); pv++;
++	pv->p.set(EPS, EPS, EPS, 1.f);                        pv->uv0.set(p0.x, p0.y); pv++;
++	pv->p.set(float(w + EPS), float(h + EPS), EPS, 1.f);  pv->uv0.set(p1.x, p1.y); pv++;
++	pv->p.set(float(w + EPS), EPS, EPS, 1.f);             pv->uv0.set(p1.x, p0.y); pv++;
++	RCache.Vertex.Unlock(4, g_KD->vb_stride);
++
++	RCache.set_Element(s_sunmask->E[0]);
++	RCache.set_c("sun_mask", u, v, radius, w / h);
++	RCache.set_Geometry(g_KD);
++	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
++}
+diff --git a/src/xrCore/LocatorAPI.h b/src/xrCore/LocatorAPI.h
+index d1e836280..7fe7b1357 100644
+--- a/src/xrCore/LocatorAPI.h
++++ b/src/xrCore/LocatorAPI.h
+@@ -151,6 +151,12 @@ public:
+ 	const file* exist(string_path& fn, LPCSTR path, LPCSTR name);
+ 	const file* exist(string_path& fn, LPCSTR path, LPCSTR name, LPCSTR ext);
+ 
++	// Read-only view of the registered file table (loose files and every mounted archive's
++	// entries). exist() only answers "is this exact name there", which makes "where does this
++	// shader actually live / which mod ships it" unanswerable in a 100-mod pack whose data is
++	// archived. Callers take it with auto because files_set itself stays private.
++	files_set const& all_files() const { return m_files; }
++
+ 	BOOL can_write_to_folder(LPCSTR path);
+ 	BOOL can_write_to_alias(LPCSTR path);
+ 	BOOL can_modify_file(LPCSTR fname);
+diff --git a/src/xrGame/Weapon.cpp b/src/xrGame/Weapon.cpp
+index 52139155c..f4d8fcb8d 100644
+--- a/src/xrGame/Weapon.cpp
++++ b/src/xrGame/Weapon.cpp
+@@ -3537,8 +3537,11 @@ void CWeapon::UpdateSecondVP()
+ 			// wheel switch mid-aim the stats below belong to the weapon that was aiming. The
+ 			// scope= name on such a switched line is still the new weapon's - acceptable noise
+ 			// for a diagnostic.
++			// The tail used to carry 9 values through 7 placeholders, so every field from end=
++			// on was shifted by two (zoomtype=-536870912 was really the float bit pattern of
++			// adsFovDbg) and thermal/mode never printed at all.
+ 			const float magNow = (lensFov > 0.005f && g_fov > 0.005f) ? (g_fov / lensFov) : 0.0f;
+-			Msg("* [PIP/scope] %s weapon='%s' scope='%s' lensFov=%.4f..%.4f mag=%.2f..%.2f ads=%.3f..%.3f frames=%u (last: magnifies=%d lensFov=%.4f mag=%.2f dyn=%d steps=%d fovMax=%.4f fovBase=%.4f end=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d)",
++			Msg("* [PIP/scope] %s weapon='%s' scope='%s' lensFov=%.4f..%.4f mag=%.2f..%.2f ads=%.3f..%.3f frames=%u (last: magnifies=%d lensFov=%.4f mag=%.2f dyn=%d steps=%d fovMax=%.4f fovBase=%.4f adsNow=%.3f end=%d useDynZoom=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d)",
+ 				kind,
+ 				aimSect.size() ? *aimSect : "(none)",
+ 				GetScopeName().size() ? *GetScopeName() : "(none)",
+diff --git a/src/xrGame/console_commands.cpp b/src/xrGame/console_commands.cpp
+index 21d097680..23210984e 100644
+--- a/src/xrGame/console_commands.cpp
++++ b/src/xrGame/console_commands.cpp
+@@ -1801,6 +1801,291 @@ public:
+ 	}
+ };
+ 
++// Print every key of a resolved config section, with the file that supplied it.
++// The pack's own configs live in dictionary-compressed .xdb archives, so grepping them from
++// outside is useless; this reads what the engine actually resolved, after every overlay and
++// include, and the DLTX provenance names the winning file per key. That is what makes a
++// "why does this variant behave differently" question answerable: dump both sections and diff.
++struct CCC_DumpSection : public IConsole_Command
++{
++	CCC_DumpSection(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = false; };
++
++	virtual void Execute(LPCSTR args)
++	{
++		if (!pSettings || !args || !*args)
++		{
++			// Deliberately a literal with no arguments: the two crashes this command caused came
++			// from feeding %s a value whose type was wrong, and a usage line must never be able to
++			// take the game down.
++			Msg("* [CFG] usage: r__dump_section <section>[,<section>...] | r__dump_section find <substring> [max]");
++			return;
++		}
++
++		// Section names are only useful once you can find them: the pack's item definitions live
++		// in dictionary-compressed db archives that cannot be grepped from outside, so a name
++		// search against what the engine actually resolved is the way in.
++		if (_strnicmp(args, "find ", 5) == 0)
++		{
++			char sub[128];
++			int maxn = 300;
++			xr_string rest = args + 5;
++			const size_t sp = rest.find(' ');
++			if (sp != xr_string::npos)
++			{
++				maxn = atoi(rest.c_str() + sp + 1);
++				rest = rest.substr(0, sp);
++			}
++			if (rest.size() >= sizeof(sub))
++				rest = rest.substr(0, sizeof(sub) - 1);
++			xr_strcpy(sub, rest.c_str());
++			const size_t sl = strlen(sub);
++			u32 hits = 0, scanned = 0;
++			for (const CInifile::Sect& s : pSettings->sections())
++			{
++				++scanned;
++				if (!s.Name.size())
++					continue;
++				LPCSTR nm = *s.Name;
++				const size_t nl = strlen(nm);
++				if (nl < sl)
++					continue;
++				for (size_t i = 0; i + sl <= nl; ++i)
++				{
++					if (!_strnicmp(nm + i, sub, sl))
++					{
++						Msg("* [CFG] sect '%s' keys=%u", nm, u32(s.Data.size()));
++						++hits;
++						break;
++					}
++				}
++				if (hits >= maxn)
++					break;
++			}
++			Msg("* [CFG] find '%s' -> %u of %u sections", sub, hits, scanned);
++			return;
++		}
++
++		xr_string sec;
++		LPCSTR p = args;
++		u32 dumped = 0;
++		while (*p)
++		{
++			LPCSTR e = strchr(p, ',');
++			if (!e)
++				e = p + strlen(p);
++			const size_t n = size_t(e - p);
++			if (n && n < 255)
++			{
++				sec.assign(p, n);
++				if (pSettings->section_exist(sec.c_str()))
++				{
++					const CInifile::Sect& S = pSettings->r_section(sec.c_str());
++					Msg("* [CFG] ===== '%s' : %u keys =====", sec.c_str(), u32(S.Data.size()));
++					for (const CInifile::Item& it : S.Data)
++					{
++						Msg("* [CFG] %s | %s = %s | from %s", sec.c_str(), *it.first,
++							it.second.size() ? *it.second : "(empty)",
++							it.filename.size() ? *it.filename : "(no provenance)");
++					}
++					++dumped;
++				}
++				else
++					Msg("* [CFG] section '%s' does not exist", sec.c_str());
++			}
++			if (!*e)
++				break;
++			p = e + 1;
++		}
++		Msg("* [CFG] dumped %u section(s) of '%s'", dumped, args);
++	}
++
++	virtual void Info(TInfo& I)
++	{
++		xr_strcpy(I, "<section>[,<section>...] - print every key of a resolved section with its source file");
++	}
++};
++
++// Read a file through the engine's own FS and write it into appdata\logs.
++// The pack ships its shaders and configs inside dictionary-compressed .xdb archives that no
++// external tool can open, and several mods provide the same relative path, so "what does this
++// file actually contain, and which layer won" is only answerable from inside the engine.
++//
++// Steps go to a sidecar file, not just to the log: the log is buffered and a crash loses
++// everything since the last flush, which is exactly why the first two crashes left no [FILE]
++// line at all and could only be read from the stack trace.
++static void mtcn_file_step(LPCSTR step)
++{
++	string_path p;
++	FS.update_path(p, "$logs$", "dbg_file_steps.txt");
++	FILE* f = fopen(p, "at");
++	if (!f)
++		return;
++	fprintf(f, "%s\n", step);
++	fclose(f);	// fclose flushes; no buffered step can be lost to a crash
++}
++
++struct CCC_DumpFile : public IConsole_Command
++{
++	CCC_DumpFile(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = false; };
++
++	virtual void Execute(LPCSTR args)
++	{
++		xr_string a = args ? args : "";
++		while (!a.empty() && a.front() == ' ')
++			a.erase(0, 1);
++		const size_t sp = a.find(' ');
++		if (sp == xr_string::npos)
++		{
++			Msg("* [FILE] usage: r__dump_file <fs_root> <relative\\path>   e.g. r__dump_file $game_shaders$ r3\\wd_gfy_exo_blank.ps");
++			return;
++		}
++		xr_string root = a.substr(0, sp);
++		xr_string rel = a.substr(sp + 1);
++		while (!rel.empty() && rel.front() == ' ')
++			rel.erase(0, 1);
++
++		// r__dump_file find <substring> [max] - search every registered name, loose or archived,
++		// and say which archive holds it. Guessing a path inside a 100-mod pack wastes a whole
++		// launch per wrong guess; this answers it in one.
++		if (_stricmp(root.c_str(), "find") == 0)
++		{
++			xr_string sub = rel;
++			int maxn = 200;
++			const size_t sp2 = sub.find(' ');
++			if (sp2 != xr_string::npos)
++			{
++				maxn = atoi(sub.c_str() + sp2 + 1);
++				sub = sub.substr(0, sp2);
++			}
++			const size_t sl = sub.size();
++			u32 hits = 0, scanned = 0;
++			for (const auto& f : FS.all_files())
++			{
++				++scanned;
++				if (!f.name || sl == 0)
++					continue;
++				const size_t nl = strlen(f.name);
++				if (nl < sl)
++					continue;
++				for (size_t i = 0; i + sl <= nl; ++i)
++				{
++					if (!_strnicmp(f.name + i, sub.c_str(), sl))
++					{
++						xr_string src = "loose";
++						if (f.vfs != u32(-1))
++						{
++							for (const CLocatorAPI::archive& ar : FS.m_archives)
++								if (ar.vfs_idx == f.vfs && ar.path.size())
++								{
++									src = *ar.path;
++									break;
++								}
++							if (src == "loose")
++							{
++								char tag[40];
++								xr_sprintf(tag, "vfs#%u", f.vfs);
++								src = tag;
++							}
++						}
++						Msg("* [FILE] %-70s %9u B  from %s", f.name, f.size_real, src.c_str());
++						++hits;
++						break;
++					}
++				}
++				if (hits >= u32(maxn))
++					break;
++			}
++			Msg("* [FILE] find '%s' -> %u of %u registered files", sub.c_str(), hits, scanned);
++			return;
++		}
++
++		char line[512];
++		xr_sprintf(line, "open %s + %s", root.c_str(), rel.c_str());
++		mtcn_file_step(line);
++
++		IReader* R = FS.r_open(root.c_str(), rel.c_str());
++		if (!R)
++		{
++			mtcn_file_step("open failed");
++			Msg("* [FILE] not found: %s + %s", root.c_str(), rel.c_str());
++			return;
++		}
++
++		const u32 size = u32(R->length());
++		const u32 cap = 16u * 1024u * 1024u;
++		if (size > cap)
++		{
++			// r_close() alone: it xr_delete()s the reader, and calling IReader::close() first
++			// releases what the destructor releases again. That double free is what took the game
++			// down twice - the corruption only surfaced at the next allocation, so the stack trace
++			// blamed Msg and pointed away from the real line.
++			FS.r_close(R);
++			Msg("* [FILE] %s + %s : %u bytes exceeds the %u MB dump cap", root.c_str(), rel.c_str(), size, cap / (1024u * 1024u));
++			return;
++		}
++
++		// Read through r(), never through pointer(): an archived entry is stored compressed, so
++		// pointer() addresses the COMPRESSED buffer while length() reports the uncompressed size.
++		xr_vector<u8> buf(size ? size : 1);
++		R->r(buf.data(), size);
++		FS.r_close(R);
++		mtcn_file_step("read done");
++
++		u32 crc = 2166136261u;
++		for (u32 i = 0; i < size; ++i)
++		{
++			crc ^= buf[i];
++			crc *= 16777619u;
++		}
++
++		// Name the layer that won: vfs == -1 is a loose file on disk, otherwise find the archive.
++		xr_string source = "loose";
++		string_path resolved;
++		resolved[0] = 0;
++		const CLocatorAPI::file* f = FS.exist(resolved, root.c_str(), rel.c_str());
++		if (f && f->vfs != u32(-1))
++		{
++			xr_sprintf(line, "archived vfs=%u", f->vfs);
++			mtcn_file_step(line);
++			for (const CLocatorAPI::archive& ar : FS.m_archives)
++				if (ar.vfs_idx == f->vfs && ar.path.size())
++				{
++					source = *ar.path;
++					break;
++				}
++		}
++		else
++			mtcn_file_step("provenance done (loose or unresolved)");
++
++		xr_string base = rel;
++		const size_t slash = base.find_last_of("\\/");
++		if (slash != xr_string::npos)
++			base = base.substr(slash + 1);
++		string_path out, fullpath;
++		xr_sprintf(out, "dbg_file_%s", base.c_str());
++		FS.update_path(fullpath, "$logs$", out);
++
++		bool written = false;
++		FILE* fh = fopen(fullpath, "wb");
++		if (fh)
++		{
++			written = (size == 0) || (fwrite(buf.data(), 1, size, fh) == size);
++			fclose(fh);
++		}
++		mtcn_file_step(written ? "file written" : "file write FAILED");
++
++		string_path report;
++		xr_sprintf(report, "* [FILE] %s + %s : %u bytes crc=%08x source=%s written=%s -> %s",
++			root.c_str(), rel.c_str(), size, crc, source.c_str(), written ? "yes" : "NO", out);
++		Msg("%s", report);
++	}
++
++	virtual void Info(TInfo& I)
++	{
++		xr_strcpy(I, "<fs_root> <relative path> | find <substring> [max] - dump a resolved file into appdata\\logs, or search every registered name");
++	}
++};
++
+ #ifdef DEBUG
+ extern void print_help(lua_State *L);
+ 
+@@ -3046,6 +3331,9 @@ void CCC_RegisterCommands()
+ 	psActorFlags.set(AF_IMPORTANT_SAVE, TRUE);
+ 	CMD3(CCC_Mask, "g_important_save", &psActorFlags, AF_IMPORTANT_SAVE);
+ 
++	CMD1(CCC_DumpSection, "r__dump_section");
++	CMD1(CCC_DumpFile, "r__dump_file");
++
+ #ifdef DEBUG
+ 	CMD1(CCC_LuaHelp, "lua_help");
+ 	CMD1(CCC_ShowSmartCastStats, "show_smart_cast_stats");
