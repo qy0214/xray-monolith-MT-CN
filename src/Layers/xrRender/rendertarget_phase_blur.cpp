@@ -2,11 +2,6 @@
 #include "RenderDimensions.h"
 #include "../../xrEngine/console_registry.h"
 
-// SSS omni light-slot diagnosis dump (r__sss_dump_lights, registered in
-// xrRender_console.cpp next to the other SSFX cvars).
-extern int ps_ssfx_sss_dump_lights;
-
-
 IC bool SortLights(light* i, light* j)
 {
 	return (i->distance < j->distance&& i->sss_priority < j->sss_priority);
@@ -876,43 +871,9 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
 
 					// ( Reminder ) The value is inverted ( 1.0 = Fadeout ~ 0.0 = Full Visible )
 					Lights_Array[slot].set(L_pos.x, L_pos.y, L_pos.z, std::max(MaxAtte, Atte));
-
-					// Diagnosis dump (r__sss_dump_lights 1, registered in
-					// xrRender_console.cpp next to the other SSFX cvars): the
-					// omni shadow pass renders radial shadows from each slot
-					// light's VIEW-space position - this dump identifies which
-					// world light is behind a wrong shadow set without guessing.
-					if (ps_ssfx_sss_dump_lights && (Device.dwFrame % 60) == 0)
-					{
-						Fvector wpos = LightSlot[slot]->position;
-						Msg("* [SSS-DUMP] slot=%d type=%s range=%.1f world=(%.1f, %.1f, %.1f) view=(%.2f, %.2f, %.2f) frame=%d",
-							slot,
-							LightSlot[slot]->flags.type == IRender_Light::OMNIPART ? "omni" : "spot",
-							LightSlot[slot]->range,
-							wpos.x, wpos.y, wpos.z,
-							L_pos.x, L_pos.y, L_pos.z,
-							Device.dwFrame);
-					}
 				}
 			}
 		}
-	}
-
-	// Diagnosis dump (r__sss_dump_lights 1): runs regardless of the slot
-	// occupancy - an EMPTY slot list while the anomaly is visible is itself
-	// the decisive datum (it clears the omni layer of suspicion).
-	if (ps_ssfx_sss_dump_lights && (Device.dwFrame % 60) == 0)
-	{
-		int occupied = 0;
-		for (int slot = 0; slot < 8; slot++)
-			if (LightSlot[slot])
-				occupied++;
-
-		Msg("* [SSS-DUMP] summary slots-occupied=%d/8 sss-frame-gate=%u camera=(%.1f, %.1f, %.1f) frame=%d",
-			occupied,
-			sss_currentframe,
-			Device.vCameraPosition.x, Device.vCameraPosition.y, Device.vCameraPosition.z,
-			Device.dwFrame);
 	}
 
 	RCache.set_Geometry(g_combine);
