@@ -271,7 +271,14 @@ namespace svpcam
 			const float aspect = (m.mProject._22 > 1e-6f) ? (m.mProject._11 / m.mProject._22) : 1.0f;
 			z.mProject._11 = aspect * cot;
 			z.mProject._22 = cot;
-			z.mFullTransform.mul(z.mView, z.mProject);
+			// Full transform = PROJECTION * VIEW, the order device.cpp:434 (ApplyDevice) uses.
+			// Fmatrix::transform() is a column-vector product (dest.x = v.x*_11 + v.y*_21 + ...),
+			// so a point must be taken through the view first and the projection second:
+			// full.transform(p) == mProject * (mView * p). Deriving it as mView * mProject here
+			// fed every Device.mFullTransform.transform() in the lens pass a matrix that applies
+			// the projection to world-space input - the accum depth-clip d_Z, enable_scissor and
+			// draw_rain all read garbage clip positions while the scope is up.
+			z.mFullTransform.mul(z.mProject, z.mView);
 			// The FOV this view is rendered with, published so the FOV derived quantities in the
 			// lens pass (see View::mFov) describe the lens camera and not the main view.
 			z.mFov = s_fovSmooth;
@@ -294,7 +301,9 @@ namespace svpcam
 		{
 			z.mProject._11 *= mag;
 			z.mProject._22 *= mag;
-			z.mFullTransform.mul(z.mView, z.mProject);
+			// Same order as ApplyDevice (device.cpp:434) and the authored-FOV branch above:
+			// full = mProject * mView for the column-vector transform() convention.
+			z.mFullTransform.mul(z.mProject, z.mView);
 			// Same as the authored-FOV branch above: this view renders at the divided FOV.
 			z.mFov = (m.mFov > 0.5f) ? (m.mFov / mag) : Device.fFOV;
 		}
