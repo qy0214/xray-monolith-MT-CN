@@ -1,108 +1,140 @@
 # MT-CN 分支：面向 **Anomaly 1.5.3「Anthology 2.1 剧情整合包」** 的引擎适配
 
-**本分支 = 上游 X-Ray Monolith (MT) 引擎 + 本仓库自己的适配层。**
+**本分支 = 上游 X-Ray Monolith (MT) 引擎 + 本仓库的适配层。** 目标：让整合包的剧情 / 武器 / 画面类 MOD 在该引擎上全部可用，并在其上提供 **DLSS / FSR3 原生上采样**与**同帧 PiP 镜内视图（3DSS / PiP 3DSS）**。
 
-**目标**：让整合包（剧情 / 武器 / 画面类 MOD）在该引擎上**全部可用**，并在其上提供 **DLSS / FSR3 原生上采样** 与 **同帧 PiP 3D 镜内视图**。
+全部第三方代码出处的完整台账在 **`docs/THIRD_PARTY_PROVENANCE.md`**；逐轮过程的证据在 **`docs/progress/STATUS.md`**。
 
-**部署方式**：仅写入整合包的 `MODS\MT-CN\`（由 MO2 覆盖）；**不写入整合包自带 `bin\`，不修改任何 MOD 文件**。
-
-## 一、新增功能（简要）
+## 一、新增功能
 
 | 功能 | 说明 |
 |---|---|
-| **原生 DLSS / FSR3 上采样** | 引擎内直接接入（NGX / FidelityFX FSR3）：抖动(jitter)、运动矢量、历史失效，以及"双渲染目标 + 镜内视图"下的正确降级 |
-| **同帧 PiP 3D 镜内视图（3DSS / PiP 3DSS）** | 镜内与主画面**同一帧**渲染（第二套渲染目标），镜内永远是最新画面；镜头相机 FOV、曝光归属、后处理归属均有明确契约 |
-| **整合包兼容层（compat）** | 读取并驱动 MOD 自己约定的 cvar：`scope_lense_*`、`r__svp_*`、`r4_upscaler_*`、`s3ds_*` 等（整合包 MCM 可直接调整） |
-| **渲染统计面板** | 分阶段 CPU 耗时 + 上采样器实际输入/输出尺寸（含"举镜提升内部分辨率"状态） |
-| **诊断开关** | `r__svp_debug 0/1/2`（默认 0 = 零开销）、`r__svp_lens_power` 等；|
+| **原生 DLSS / FSR3 上采样** | 引擎内直接接入（NVIDIA NGX / AMD FidelityFX）：抖动、运动矢量、历史失效，以及"双渲染目标 + 重建后 UI"的完整链路；未启用或加载失败自动回退原生分辨率并在控制台说明原因 |
+| **同帧 PiP 3D 镜内视图** | 镜内与主画面渲染在**同一帧**（第二套渲染目标），镜内永远是最新画面；镜头相机按 pack 声明的镜片 FOV 精确重建 |
+| **整合包兼容层（compat）** | 读取并驱动 MOD 自己约定的 cvar：`scope_lense_*`、`r__svp_*`、`r4_upscaler_*`、`s3ds_*` 等，使整合包 MCM 与既有脚本无需改动 |
+| **渲染统计面板** | 分阶段 CPU 耗时 + 上采样器实际输入/输出尺寸（含举镜提升内部分辨率的状态） |
+| **诊断开关** | `r__svp_debug 0/1/2`（默认 0 = 零开销）等；全部按需触发，无常驻成本 |
 
-## 二、DLSS / FSR3 出处
+## 二、更新日志（本分支自建以来）
 
-| | 出处 | 位置 |
-|---|---|---|
-| **DLSS** | **NVIDIA DLSS Super Resolution（NGX SDK）**：经 `NVSDK_NGX_D3D11_Init_with_ProjectID` / `NVSDK_NGX_*` 接入；头文件为仓库内 vendored 的 NVIDIA NGX SDK（`sdk/DLSS/include/nvsdk_ngx*.h`，许可证见 `sdk/DLSS/LICENSE.txt`）；**运行时**为游戏目录中的 `bin\nvngx_dlss.dll` | `src\Layers\xrRenderPC_R4\Dlss\` |
-| **FSR3** | **AMD FidelityFX FSR 3.1.2 Upscaler（MIT）+ 社区 D3D11 backend**：`sdk/FSR3/`（含 `LICENSE.txt`、`Third_party_notices.txt`；其 `README.txt` 注明 vendored 自 OGSR 依赖 `8adb7cf1…`，**非** AMD 官方 DX12/Vulkan backend）；**运行时**为 `bin\ffx_fsr3upscaler_x64.dll`、`bin\ffx_backend_dx11_x64.dll` | `src\Layers\xrRenderPC_R4\Dlss\` |
+**2026.10.16**（2 提交，起始）
 
-两者**均为可选**：未启用或加载失败时自动回退原生分辨率（原因在控制台与画面设置中可见）。
+* ci(mt)：MT 分支按自身推送构建（`9f36de0`）
+* docs(readme)：README 译为简体中文（`a13b3d2`）
 
-## 三、整合包各 MOD「对引擎的需求」及本分支的处置（简要）
+**2026.10.17**（64 提交，原生上采样 + 同帧 PiP 落地）
+
+* feat(render)：**DLSS / FSR3 原生上采样**接入——抖动、运动矢量、历史失效、双渲染目标（`9dc5a5b`）
+  * 出处：`sdk/DLSS` = **NVIDIA NGX / RTX SDKs LICENSE**（头文件 SPDX `LicenseRef-NvidiaProprietary`）；`sdk/FSR3` = **AMD FidelityFX FSR 3.1.2 Upscaler（MIT）**，但经 **OGSR-Engine** 的 checkout `8adb7cf1650120987d84fcc8be7e73ad8a6f9945` 取得其**社区 D3D11 backend**，非 AMD 官方 SDK tag
+* feat(render)：**同帧 PiP 第二套渲染目标**（T3 #6 阶段 0→4b：建目标集 `6eb9980`、逐遍分支 `1894c87`、镜帧渲入第二集 `61d802c`、同帧画镜与主视图 `6cf8ce4`）
+* fix(render)：PDA / 穿戴屏幕**在上采样重建之后**绘制（`fe4c9ea`）；延迟 HUD 表面对象深度（`4ccb508`）；屏幕空间叠层在重建**之前**跑（`3fc9c8b`）；PDA 屏幕目标保持显示分辨率（`b12fc41`）
+* feat(render)：举镜时提升内部渲染分辨率（默认 75%，并在渲染统计中显示）（`0c6c276`、`4f003b7`）
+* fix(render)：设备视图与第二视口光学件**不进入时域历史**（`a11b457`、`d2bb090`）；镜片视为不稳定面并匹配参考 mip bias（`63aa4df`）
+* fix(render)：主视口按渲染尺寸而非显示尺寸设置（`fe67c3e`）；无延迟 HUD 几何时跳过原生深度遍（`7a4621f`）
+* feat(compat)：注册其它构建暴露的 cvar（`efe5289`）、FDDA 设备屏幕常量并启用 Optick（`3bb80e6`）
+* feat(game)：每帧生成实体上限（防卡死）（`3453415`），并抽出可测的 spawn 预算与 cvar 注册（`15c09b5`）
+* feat(core)：每次会话日志按各自时间戳归档（`b379089`）；feat(engine)：调度队列状态显示 + 菜单帧上限（`4908546`）
+* fix(engine)：修复未定义行为、缺失 return 与警告缺陷（`d0b31c4`）；perf(scheduler)：`scheduler_batch_size` 默认 **512**（`5377bef`）
+* test(core)：主机测试工程 + PiP 镜状态表（`7e868f3`）；refactor：PiP 链加固、每帧一次求值、帧上下文契约显式化（`1895a22`、`56d5060`、`045a63a`）
+* docs(plan)：DLSS/FSR3 与 PiP(3DSS) 移植计划、T2/T3 性能计划、会话检查点
+* 引用说明：本日新增的引擎代码均为本仓库自研；对**他人 MOD 的机制依赖**（SSS / 3DSS）在 §六 与台账中逐条点名
+
+**2026.10.18**（62 提交，镜内成像逐项定案）
+
+* fix(pip)：镜内着色器改用**已解析的镜片 FOV**而非初始化值（`a421c61`）；投影矩阵按**当帧**镜头相机重建（`c47a05f`）；后改为按 pack 的授权角度精确重建（`f8bad87`、旧实现按倍率比值缩放，21.667° 的镜被渲成 24.0°）
+* fix(pip)：镜内可见性取自**主相机**（`2008444`）；第一人称模型不进镜内（`f3c95ea`）；镜内色调映射 + 热成像驱动 + 镜尺寸（`52fd6ab`、`9819278`）
+* fix(pip)：镜内曝光改用主套 `$user$tonemap`（此前镜集自己那份恒为 0 ⇒ 镜内近黑）（`4a390d0`）；夜视同时驱动镜内、NVG 瞄具不叠加双重夜视（`7435c1b`、`5cf2285`）
+* fix(pip)：**采样映射确认为恒等**（同帧整幅捕获 ⇒ 无裁剪），并以日志自证上传约定（`b771cd3`、`ce1c388`、`9ddcad8`、`d5c3c20`）
+* fix(pip)：准星保持 3DSS 尺度 + 举镜提升期间稳定覆盖（`9bf5ed0`、`e792ea7`）；热成像继续走 3DSS 路径不新增文件（`0cf6a0b`）、为热镜发布红外所需的 G-buffer 位置（`c0e3d49`）
+* fix(pip)：屏幕空间雾不进镜内遍（`544b4da`）；镜内遍清第二套的 SSFX AO/IL 并修正归属（`deee03d`）
+* fix(pip)：**发布每个视图自己的 FOV**，位置解压改由投影推导（`8710b80`）
+  * 该条引入的 `pos_decompression_params.HorzTan` **符号错误**（应为 `+1/_11`，写成 `-1/_11`）把重建的视线 x 绕屏幕中线镜像，造成"全世界影子错位"，2026-10-26 定案、10-28 修复（见 10-28 段）
+* feat(pip)：`r__svp_lcd_flat` 把 RT_SCREEN 发布为 RT_FLAT_SCREEN（`1978181`）；diag：镜内图像 BMP 直读、主集与镜集同帧对照（`4b77061`、`839d863`、`73f26d1`、`57b540a`）
+* perf(pip)：诊断默认关闭并节流，长会话不再刷日志（`512f256`、`0938533`）
+* 出处：镜内机制契约属 **R.A.K**（`z_3d_scopes` / `models_scope_reticle.ps`），逐行引用与判定记录在 `docs/pip-3dss-mod-contract.md`；SSFX 相关依赖属 **ascii1457**
+
+**2026.10.19**（10 提交，归档与 CI）
+
+* docs：本 fork 的特性、更新来源与 Anthology 2.1 适配说明（`ff6c36e`）；把 `MODS\MT-CN` 归档为 `dist/MT-CN` 及其运行时要求（`474c85a`）；修 README 被当作 YAML front matter 解析（`599f558`）
+* ci：MT 分支独立 release job（`6086256`）、工作流拉取 optick 子模块并弃用过时 action（`b0a3597`）
+* fix(pip)：给镜的 TAA skip mask 一个落点（`ceb26fc`）；日志审计收尾（上采样与复位行原为"每瞄准一次重复"）（`e20ab4f`）
+* chore：停止跟踪提交信息草稿（`9d9380e`）；移除内部代码库审查报告（`3e38464`）
+* 标签：`mt-2026.10.18`
+
+**2026.10.24**（54 提交，三轮审查修复批次）
+
+* fix(console)：**首次别名同步不再冲掉老用户已配置的原生上采样选择**（pipdlss 升级场景 DLSS 被静默关闭并落盘）——方向决策表 + 单测 + 真机验证（`f8a6d42`、`4798105`）
+* fix(render)：**HDR10 下同帧 PiP 整体拒建**修复——`rt_secondVP` 格式跟随开关 + 双守卫，真机 HDR10 验证（`b172560`、`90b20eb`）；主遍尺寸发布并游戏侧读取（`11d9b4c`）
+* fix：**zwork 六域审查批次**——并发防护、异常可见性、粒子异步原子量+互斥、调度器自注销死锁防护、日志器关闭路径（joinable+原子+幂等）、AI 视觉 `r_spatial` 锁配对（`a1325ce`、`8e38ece`）
+* refactor(xrCore)：把 DLTX mod-merge 机构从 `Xr_ini.cpp` 拆出（1140 行，等价性验证）（`4fcd764`）；归档冲突日志处理、Borland 空体清理（`748e631`）；日志关闭标记先于 `bIsAlive` 翻转（`c86be0e`）
+* fix(render)（影子链四处真缺陷，逐条留有根因记录）：SSS 镜内遍清屏（`ad1c786`）、太阳级联矩阵吸附到 **1 texel**（原 4，导致抬枪视角影子跳格）（`ad40ac3`）、`L_sun_dir_e` 每次绑定重算（每帧两相机）（`5e32c09`）、雾平面同样每次绑定重算（`d64961f`）、SSS 全向光槽每遍回填（`e318abb`）
+* fix(xrGame)：瞄准诊断归属到**真正在瞄准的武器**（滚轮换枪时不再错标）（`f8b483f`）；fix：幻影出生态命中 + 纹理被设备移除的诊断（`78493c8`）
+* fix：雨面湿润按帧时间累积，并暴露 `level.set_rain_wetness`（`4549813`）；perf：共享内存字符串容器由有序 vector 改哈希表（`58b9960`）
+* merge：上游 `all-in-one-vs2022-wpo-mt`（terrain registry 清理 + MT 伪装）零冲突合入（`058c5d2`）
+* docs：**上游 v0.2.2 六项 cherry-pick + 适配 + 批次记录**（`627258e`、`bedb0c8`、`82e85c8`）——**出处即上游作者与其 commit，本分支只做适配提交**；27 分支全景与同步政策（`9bbc064`、`08d0259`）、全量独立复验（`046cf7a`）；整合包安装 + MOD 全量审计（`360748d`）；Mimosa 深扫记录（`0c0846b`）
+* config：MT-CN 基线 `user.ltx`——HDR10 试开、随后按性能审查回退并削减几何（`735d194`、`bdbb1d0`）
+* 标签：`mt-2026.10.24`（README 汇总该批次 `329fc29`）
+
+**2026.10.25**（1 提交）
+
+* diag(render)：SSS 光槽 dump 不受槽位占用影响（空槽本身是关键证据）（`431a1e5`）
+
+**2026.10.28**（16 提交，影子方向定论 + 仪器退场 + 快照与出处）
+
+* fix(render)：**R4 屏幕空间位置去镜像**——`HorzTan` 符号修正 + 不再把上采样抖动二次补进 texel 常量；**2026-10-26 22:0x 真机验收**（用户："影子正常了"）（`8a4ccd8`）
+* fix(render)：每个太阳级联**无条件 bind+clear** 阴影图（空级联不刷就会被上一级深度读穿 ⇒ 随相机漂移的影子条）（`f3cd370`）；基础平行光不再占用阴影槽（`987d70b`，属已被证伪分支，保留理由已在提交内说明）
+* feat(render)：**光柱锚定太阳**——新增引擎自有 `r2\csm_sunmask` + `CBlender_sunmask` + `apply_sun_volumetric_mask()`，并加两道门（太阳在视平面后整段 volumetric 跳过；far 级联 clip quad 仅在 sun z-culling 下用 `xform_prev`）（`f35395c`）
+  * 出处：`s_vol` 是 **SSFX（ascii1457）** 的日光体积累积缓冲，本 pass 只是引擎侧遮罩，已在文件内声明
+* fix(render)：镜筒 `mFullTransform` 组合顺序改为 `mProject·mView`（列向量约定，与 `ApplyDevice` 一致）（`9ee1fdf`）；关闭 SSS 时遮罩缓冲**无条件清成中性 1**（原留在零初始态 ⇒ 整份太阳贡献被乘成黑）（`550b726`）；SSS 光槽中不在本帧 package 的灯**即刻释放**（原 5 帧延迟在双相机下产生无主径向影）（`be5f95b`）
+* feat(tools)：`r__dump_section` / `r__dump_file`（+ `CLocatorAPI::all_files()`）——走引擎自己的 FS 读解析后配置与文件、报出哪一层胜出；`.db/.xdb` 字典压缩外部工具打不开（`e9e39ea`）
+* fix(game)：`[PIP/scope]` 日志的占位符与实参对齐（原 9 值 7 占位，从 `end=` 起全部错位）（`4b40b9f`）
+* diag：摘除影子案的全部仪器（`r__dump_shadow_buffers` 934 行、`r__sun_shadow_casters` 159 行、`r__shadow_probe`、已入库的 `r__sss_dump_lights`）；删除前的整树状态以补丁形式入库（`6b97dd0`）
+* chore：`dist/MT-CN` 补齐为完整可部署快照（gamedata 与线上 md5 全等、exe 入库、第三方 dll 只留磁盘并登记指纹）（`b8364d7`、`8fcae71`）；部署通道定案为 **MO2 单一来源**，并把两份会覆盖玩家设置的可写配置快照移出
+* docs：批次记录（`b578a13`）；**第三方代码出处台账 `docs/THIRD_PARTY_PROVENANCE.md`**（`5d418cd`）
+* 构建与部署：`MSBuild -p:Configuration=DX11-AVX -p:Platform=x64` → **0 错误**；产物 28,679,168 B（比 10-27 那份小 40,448 B，即摘掉的仪器）；已部署到整合包 `bin\` 并清着色器缓存；**构建不可逐字节复现**（同尺寸不同 md5，识别要用尺寸 + 源码提交）
+* 标签：`mt-2026.10.28`
+
+## 三、整合包各 MOD「对引擎的需求」及本分支的处置
 
 | 整合包 MOD | 它对引擎的需求 | 本分支的处置 |
 |---|---|---|
-| **R.A.K 武器包适配 3DSS / PiP 3DSS**（镜片着色器 + 镜内 FOV 数据 + 政策文件） | ① 材质契约：`scope_svp`（引擎是否提供第二视图）、`s_second_vp = $user$viewport2`、`scope_lense_reproject`；② `s_position` 绑到 **`$user$generic2` = GBuffer 位置**；③ 镜片着色器写入的 **TAA 跳过掩码**（`SV_Target2`）必须落到运动矢量目标的 alpha；④ 镜片 FOV 语义：`scope_lens_fov` 为**度数**、倍率 = `65 / fov`，变倍镜给出两端与级数 | ② 在假镜 / 热成像路径**发布 GBuffer 位置**到 `$user$generic2`；③ 把**运动矢量目标**绑为该遍第 3 个 MRT（掩码入 alpha、速度为 0）；①④ 按 pack 语义实现镜头相机与采样映射（见第四节） |
-| **热成像（Heat Vision）/ 夜视（Beef NVGs）** | 这两者是**佩戴设备**的全屏效应（管状遮罩，无设备时遮罩=0 ⇒ 整幅黑） | **不用 `r__heatvision` 驱动"瞄具"**（实测会整幅黑）；热成像瞄具改走 pack 自己的 **3DSS 分支 `infrared()`** ⇒ 引擎**撤回第二视图**让它运行；`scope_lense_allow_nvg/thermal` 与设备桥脚本照常生效 |
-| **屏幕空间着色器 23.5（SSS）** | `ssfx_fog / ao / il / bloom / taa / motionblur / water / rain` 均依赖**主相机**的深度、运动矢量与模糊链；`s_motion_vectors.a` 是 **TAA 掩码** | 第二视图（镜内）**跳过或清零**这些屏幕空间阶段（雾 / SSR / 水 / 雨 / 运动模糊 / 泛光 / AO / IL）；镜片掩码绑到 `s_motion_vectors` 的 alpha |
-| **R.A.K 武器包（含永久变体）** | 瞄具参数位于 `wpn_<weapon>_<token>` 子段（无瞄具槽位时也要能解析） | 引擎**按 token 后缀走查**解析镜片参数（`scope_*` / `s3ds_*`），并读取 `scope_lense_quality_percent` 等 |
-| **DLSS 适配 MOD（modxml_dlss_options）** | 通过 `user.ltx` 的 cvar 配置上采样 | 引擎提供并尊重 `r4_upscaler_*` / `r__upscaler_*` 等 cvar |
-| **通用（所有依赖屏幕空间的 MOD）** | 引擎的 `Device.fFOV` 必须与"**当前正在渲染的视图**"一致 | 镜头遍**发布本视图的 FOV**（否则屏幕空间重建、SSAO、光源可见性、雨体投影、光照 LOD 都会按主画面计算） |
+| **R.A.K 武器包适配 3DSS / PiP 3DSS** | 材质契约 `scope_svp`、镜内 FOV 数据、政策文件 | 引擎提供第二视口与同帧渲染；契约逐行记录在 `docs/pip-3dss-mod-contract.md` |
+| **热成像 / 夜视（Beefs NVGs）** | 佩戴设备的全屏效应（管状遮罩） | 镜内也驱动夜视、NVG 瞄具不双重叠加；热成像保留 3DSS 路径，不新增文件 |
+| **屏幕空间着色器 23.5（SSFX / ascii1457）** | `ssfx_*` 依赖主相机的深度、运动矢量与模式常量 | 每遍重算视图相关量、镜内遍清相应缓冲；本仓库对 SSFX 着色器的覆盖文件逐个保留原作者头（见 §六） |
+| **R.A.K 武器包（含永久变体）** | 瞄具参数在 `wpn_<weapon>_<token>` 子段 | 按 token 后缀解析，无瞄具槽位时也能取到 |
+| **DLSS 适配 MOD（`modxml_dlss_options`）** | 通过 `user.ltx` cvar 配置上采样 | 引擎提供并尊重 `r4_upscaler_*` / `r__upscaler_*`；升级场景不冲掉用户既有选择 |
+| **可穿戴设备（Wearable Devices）** | 手腕屏幕需在重建后、按显示分辨率绘制 | 屏幕 UI 走"原生 UI 遍"；覆盖文件保留在 MT-CN 并声明基线来源 |
+| **通用（所有依赖屏幕空间的 MOD）** | `Device.fFOV` 必须与**正在渲染的视图**一致 | 每个视图发布自己的 FOV；镜内遍不再污染主视图状态 |
 
-## 四、引擎侧契约与 BUG 修复（简要）
+## 四、已知问题
 
-- **镜内曝光**：镜头遍必须使用**主套**曝光（`t_LUM_dest` ⇒ `$user$tonemap`）；此前镜头套自己那份恒为零 ⇒ 镜内近黑；
-- **镜头相机 FOV**：改为按 pack 的**授权角度**精确重建投影（旧实现按倍率"比值"缩放，21.667° 的镜子被渲成 24.0°）；
-- **镜内采样映射**：确认为**恒等**（同帧整幅捕获 ⇒ 无裁剪），并给出几何推导与日志判据；
-- **`Device.fFOV` 随视图切换**：修好屏幕空间重建 / SSAO 噪声与半径 / 光源可见性锥 / 雨体投影 / 光照 LOD；
-- **第二套渲染目标**：SSFX **AO/IL 清零**、雾 / SSR / 水 / 雨 / 运动模糊 / 泛光**按遍守卫**、模糊链归属明确；
-- **名称重映射**：第二套目标全部经 `createUnique`，并把镜内图**发布到镜头材质真正采样的那张表面**；
-- **镜内目标尺寸/格式**：保持显示尺寸与比例；~~HDR10 下格式不匹配时**拒绝创建**（避免静默失败）~~ **已修复（2026-10-24）**：`rt_secondVP` 格式跟随同帧开关（开=16F/关=10bit），HDR10 下同帧 PiP 可用并经真机验证；
-- **准星高倍尺度**：pack 声明的 FFP 在 PiP 下改用 SFP 分支，保持 3DSS 观感；
-- **变倍镜**：
+> 完整的处置状态（已修复 / 未修复 / 缓期与前置条件、批次提交索引、验证与部署状态）在 **`docs/progress/STATUS.md`**。
 
-### 2026-10-24 审查修复批次（30 提交，已同步至 origin）
+1. **热成像镜快速转动时镜内出现一圈"光圈"**：**未解决**，已实测排除五条路径（镜片反射模型、上采样屏幕锁定判据、相机运动模糊、上采样器 ……）。
+2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）**尚未解析**；现以"瞄具是否真的放大 + PiP 模块是否存在"作等价门槛。
+3. **MCM 的 live effects 开关当前无效**（`scope_lense_live_effects`）：**结构性不可达**（属隔帧时间复用架构，本引擎同帧设计不进入该路径），非单纯未实现。
+4. **`scope_lense_ads_is_pip` 晚一帧**：该值由渲染器每帧开头刷新（`compat::Tick`），比本帧 PiP 判定晚一帧到达，展示用途可接受。
+5. **部署方式（2026-10-28 定案）**：`gamedata\` 唯一来源是 MO2 的 `mods\MT-CN\`（挂载层读取优先于根目录），exe 必须物理在 `bin\`；`MODS\MT-CN\` 只留 `bin\`、`db\mods\…db0`、说明与清缓存脚本。**不要把游戏自己写的可配置文件（`axr_options.ltx`、`appdata\user.ltx`）放进挂载目录**——快照会赢下读取，把玩家之后改的选项每次启动退回。
+6. **`night_vision.h` 在仓库内有两份不同内容的副本**（`gamedata/shaders/r3/` 与 `dist/MT-CN/gamedata/shaders/r3/`），运行时用 dist/MT-CN 那份；另一份待清理。
 
-本批次源自三轮独立审查（两轮外部报告核验 + `.zwork` 六域审查），全部处置状态与证据见 **`docs/progress/STATUS.md`** 总台账。要点：
+## 五、部署要求与运行时来源（配套归档：`dist/MT-CN/`）
 
-**已修复（全部构建验证，核心项经真机验证）**
+见 `dist/MT-CN/来源与要求.md`：内含 `bin\` 各文件的大小与 SHA-256、构建命令行、`scheduler_batch_size=512` 的三处来源，以及"为什么快照不再打包可写配置"。
 
-| 类别 | 内容 |
-|---|---|
-| 数据一致性 | **首帧别名同步冲掉老用户原生上采样配置**（pipdlss 升级场景 DLSS 被静默关闭并落盘）——方向决策表化 + 单测 + 真机验证；上采样 MOD↔原生双 token 映射收敛为单表（static_assert + 89 项测试） |
-| 渲染并发 | 镜头遍改写 `Device.dw*` 的竞争窗口：主集尺寸接缝（`Device.ScreenWidth/Height()`）+ 游戏侧 12 处迁移 |
-| HDR10 | 同帧 PiP 在 HDR10 下整体拒建 → 修复并真机验证（`rt_secondVP` 格式跟随开关 + 双守卫） |
-| 并发加固（zwork 批次） | 粒子异步框架原子量+互斥；调度器自注销自旋死锁防护；日志器关闭路径（joinable + 原子 + 幂等）；AI 视觉 `r_spatial` 锁配对；三处吞异常补可见性 |
-| 工具与卫生 | 日志归档毫秒+冲突计数；Xr_ini 的 DLTX 管线拆分（1140 行，等价性验证）；Borland 空体清理；ttapi/判空等防护；CI 接单元测试并 gate release |
-| 定论关闭 | `scope_lense_live_effects` 为**结构性不可达**（属隔帧时间复用架构，本引擎同帧设计不进入该路径）；`shared_str` 非原子计数维持上游设计（曾有 Atomic 尝试被 revert，原因未记录） |
 
-**进度与部署**：上游 `all-in-one-vs2022-wpo-mt` 已实测合并（零冲突）；部署物 `MODS\MT-CN\bin\AnomalyDX11AVX.exe`（DX11-AVX，SHA256 前缀 `8A0171A9`）+ 26 条校验清单；配置基线 = SDR + DLSS performance + 草距 1000 / 草密度 0.4（几何减载）。真机验证记录：P1-1 升级场景、HDR10 PiP、SDR 零回归、zwork 批次双路径长跑——详见 STATUS.md 第 5 节。
+## 六、第三方代码出处
 
-**计划（按优先级，前置条件在档）**：① 长时游玩观察（zwork 批次 + MT 读档崩溃率）；② `.zwork` 缓期架构项——seqParallel 并发模型、ISpatial_DB 全局锁、骨骼栅栏、LocatorAPI、声音切换窗口（需专项设计 + 运行时测量）；③ 光圈伪影实机抓帧（`r__svp_debug 2`）；④ 政策文件 `scope_lense_enabled` 解析；⑤ imgui 字体资源化（需一次手动二进制提取）；⑥ 拆分 Weapon.cpp / 整库现代化等**有意不做**（上游合并策略，见"上游同步策略"小节）。
+**规则**：凡取自他处的代码，**文件内**必须写明出处（项目 / 作者 / URL 或 commit 哈希），并在 `docs/THIRD_PARTY_PROVENANCE.md` 登记一行。只写进 commit message 对我们拥有的文件不算完成——文件会被单独阅读；对**只是承接的上游代码**则相反：不往他人代码里插注释，以免每次上游合并都制造冲突，追溯入口是台账与原始提交（cherry-pick 保留了原作者名）。
 
-### 2026-10-28 影子方向定论 + 诊断仪器退场批次（13 提交，已同步至 origin）
+| 档 | 内容 | 位置 |
+|---|---|---|
+| **OGSR / OpenXRay** | `374947615` lulnope ← OGSR `69433fa1`（`GraviZone::exit_Zone` 16 行）；`46fd396eb`/`7f0c6b54e` OneMorePseudoCoder ← OGSR `ec6396cb`（`PHMovementControl` -451/+207）；`6fdad0a74` DEMONIZED ← 3 个 OpenXRay commit + OGSR `d359bde2`；`fbff6e64e`/`feac7dd7f` MFB ← OpenXRay（smart covers）；`440495c79` "inspired by openxray" 属启发 | 台账 §1 |
+| **Vendored SDK** | `sdk/DLSS` = NVIDIA RTX SDKs LICENSE（v. March 14 2024，SPDX `LicenseRef-NvidiaProprietary`；义务是 §2a 禁止剥离声明）；`sdk/FSR3` = AMD MIT + `Third_party_notices.txt`，但 README 自述取自 **OGSR checkout `8adb7cf1…`** 的社区 D3D11 backend | 台账 §2 |
+| **派生自整合包 MOD** | SSFX（**ascii1457**，moddb：`…/addons/screen-space-shaders`）的 `ssfx_ao/il/ssr/sss/sss_ext/water_ssr.ps`、`screenspace_mvectors.h`；Beefs NVGs 的 `night_vision.h`；Wearable Devices 的 `wd_body.vs`、`wd_exo.script`、`d_promin_health_ui.script`；汉化整合包的 `fix_fast_travel_markers.script`（原件不声明作者，只能声明我方改动） | 台账 §3 |
+| **已声明的自研派生** | `dlss_cas.h:1` "CAS adapted from OGSR's `postprocess_cas.ps`, based on AMD's CAS presentation" + GPUOpen 链接 | 文件内 |
+| **许可提示** | GitHub 对 `OGSR/OGSR-Engine` 报 `Other` / `NOASSERTION`（非标准 OSI 许可）：**注明出处不等于免责**，对外分发前需单独确认其条款 | 台账 §1 末 |
 
-影子错位一案在 10-26 22:0x 真机定论（根因＝R4 `pos_decompression_params.HorzTan` 符号反了，把重建的视线 x 绕屏幕中线镜像），本批次把当时**为查证而生的仪器**与**被证据确认的修复**分门别类落库。要点：
+复查命令（谁都能重跑核对）见台账 §5。
 
-| 类别 | 内容 |
-|---|---|
-| 定论修复 | `r4.cpp`：HorzTan 改为 `+1/_11`（`_11=_22*fASPECT`，旧写法保住了量级却翻了符号）；同时**不再把上采样抖动加进 texel 常量**（着色器已自行去抖，这里等于补两次） |
-| CSM 缺陷 | `R_sun.cpp`：级联阴影图的 bind+clear 移出"本級联有投射物"判断——累积遍每帧都采这张图，空级联不刷就会读穿上一级的深度（随相机漂移的影子条） |
-| 体积光 | 新增引擎自有的 `csm_sunmask` + `CBlender_sunmask` + `apply_sun_volumetric_mask()`，把光柱锚在太阳的屏幕位置；另带两道门：太阳在视平面后**整段 volumetric 跳过**、far 级联 clip quad 仅在有 sun z-culling 时用 `xform_prev` |
-| 镜筒/SSS | 镜筒 `mFullTransform` 组合顺序改为 `mProject·mView`（列向量约定，与 `ApplyDevice` 一致）；关闭 SSS 时遮罩缓冲**无条件清成中性 1**（原来留在零初始态，把整份太阳贡献乘成黑）；SSS 光槽中"不在本帧 package 里"的灯即刻释放（原 5 帧延迟在双相机下产生无主径向影） |
-| 仪器退场 | 删除 `r__dump_shadow_buffers` 全套（934 行：读回/数值探针/近旁 visual/着色器来源）、`r__sun_shadow_casters` 过滤门（159 行）、`r__shadow_probe`/`_step`、以及已提交的 `r__sss_dump_lights`（单独一条 diag 提交）。前三者从未进过历史，删除前的完整状态留作本地补丁 |
-| 保留仪器 | `r__dump_section` / `r__dump_file`（+ `CLocatorAPI::all_files()`）：走引擎自己的 FS 读解析后的配置与文件、报出哪一层胜出；`.db/.xdb` 字典压缩外部工具打不开，整合包里"这个设置实际是什么值"只有从引擎内部才答得出。按需触发，无常驻成本 |
-
-**进度与部署**：`MSBuild -p:Configuration=DX11-AVX -p:Platform=x64` → **0 错误**，产物 28,679,168 B（比 10-27 那份小 40,448 B，即摘掉的仪器体积），md5 `3beee11e`、SHA-256 前缀 `ea6fcf23a364728b`；已部署到整合包 `bin\AnomalyDX11AVX.exe` 并同步 `MODS\MT-CN\bin\`，**着色器缓存已清**（下次启动重编一次，首启变慢属预期），上一份构建备份在 `_binbackup\AnomalyDX11AVX.probe-build_20261027_0108.exe`。`dist/MT-CN/` 补齐为完整可部署快照（gamedata 与线上 md5 全等、exe 入库、第三方 dll 只留磁盘并登记指纹）。**待真机验收**：四肢图是否被喂上（`promin page=… feed=bhs`）、MT-CN 中文界面（`wd i18n active` / `dbg i18n active`）、快旅已验收。
-
-## 五、已知问题
-
-> 完整的审查处置状态台账（已修复/未修复/缓期与前置条件、批次提交索引、验证与部署状态）统一维护在 **`docs/progress/STATUS.md`**；记忆与进度文件（三份计划、六份域审查原始报告、会话笔记）已全部收拢到 `docs/progress/`。
-
-1. **热成像镜快速转动时镜内出现一圈"光圈"**：**未解决**。已实测排除五条：镜片反射模型、上采样"屏幕锁定"判据、相机运动模糊、上采样器本身（关闭 DLSS 无效）、TAA 掩码路径。下一步建议：`r__svp_debug 2` 并在举镜扫视时抓取 `appdata\logs\pip_optics_screen.bmp`，按其形状定位。
-2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）尚未解析；目前以"瞄具是否真的放大 + PiP 模块是否存在"作为等价门槛。
-3. **MCM 的 live effects 开关当前无效**（`scope_lense_live_effects`）：**结构性不可达，非单纯未实现**。已核对 pack 着色器源码（R.A.K PiP mod 的 `anthology_pip_temporal.h`）：`pip_refresh_effects()` 只存在于 `scope_lense_motion.x > 0.5` 的时间复用分支——那是"隔帧捕获 + 陈旧捕获刷新"架构（`color - old_effects + current_effects`）的机制。本引擎同帧 PiP 刻意令 `motion.x = 0`（每帧全新渲染镜头，无陈旧捕获），整条刷新路径不会进入。MCM 页可调但无效果是上述架构差异的结果；若未来实现时间复用（计划文档 Task 8），需同时提供 `s_pip_main_effects` 与 `s_pip_capture_effects` 两个效果层纹理。
-4. **`scope_lense_ads_is_pip` 晚一帧**：该值由渲染器每帧开头刷新（`compat::Tick`），比"本帧是否 PiP 瞄准"的评估结果晚一帧到达；MCM/脚本侧展示用途不受影响，做逐帧逻辑时不要依赖它的即时性。
-5. **部署方式（2026-10-28 定案）**：`gamedata\` 的唯一来源是 MO2 的 `Modpack-…\mods\MT-CN\`（profile 限 Standart；挂载层读取优先于根目录），而 exe 是进程映像、注入不进去，必须物理存在于整合包 `bin\`；整合包 `MODS\MT-CN\` 因此只保留 `bin\`、`db\mods\00_modded_exes_gamedata.db0`、说明与清缓存脚本。仍用日志启动戳的 `exeTime/exeSize` 判定实际运行的构建。**不要把游戏自己写的可配置文件（`axr_options.ltx`、`appdata\user.ltx`）放进挂载目录**——快照会赢下读取，玩家之后改的选项每次启动都被退回。
-6. **HDR10 下同帧 PiP（已修复并真机验证，2026-10-24）**：原先 `rt_secondVP` 恒为 10bit，与镜头集 16F 场景图的发布 `CopyResource` 格式不匹配，整体拒建。现在 `rt_secondVP` 的格式跟随 `r__svp_same_frame`：同帧路径开启时在 HDR10 下建为 16F（发布拷贝合法），关闭时保持 10bit（旧路径的交换链拷贝合法）。两个守卫兜底：发布目的地的格式检查对准**主集**的 `rt_secondVP`（中途切换开关导致的失配会拒建而非静默黑镜），旧拷贝点遇到失配会跳过并打一次告警（HDR10 下切换开关需 `vid_restart`）。拒建告警已按"missing"路径的节奏节流（约 5 分钟一条）。真机验证：HDR10 开启局 `r4_hdr10_on 1` 下 `second viewport target set ... created`、举镜 `lens=1`、零拒建零错误；SDR 局零变化。
-
-## 六、部署要求与运行时来源（配套归档：`dist/MT-CN/`）
-
-本仓库的 `dist/MT-CN/` 是 MT-CN 运行内容的**可部署快照**：`gamedata\` 与线上 MO2 的 `mods\MT-CN\gamedata\` 逐字节一致（2026-10-28 起该目录是 gamedata 的唯一来源，整合包 `MODS\MT-CN\` 只保留 `bin\`、`db\mods\00_modded_exes_gamedata.db0`、说明与清缓存脚本）；完整说明见 `dist/MT-CN/来源与要求.md`。
-
-| 项 | 说明 |
-|---|---|
-| **`bin\AnomalyDX11AVX.exe`**（**已归档**，2026-10-28）| 由本仓库源码构建产出：`MSBuild src\engine-vs2022.sln -p:Configuration=DX11-AVX -p:Platform=x64`。快照内现为摘除诊断仪器后的构建，28,679,168 B，SHA-256 前缀 `ea6fcf23a364728b`。Git Bash 下开关必须写 `-p:`：`/p:` 会被 MSYS 路径转换吃掉，MSBuild 报 `MSB1008` 却仍然返回 0 |
-| **`bin\nvngx_dlss.dll`**（磁盘上有，不入库）| **NVIDIA DLSS 运行时**：产品 `NVIDIA Deep Learning SuperSampling`，版本 **310.9.1.0**（`NVIDIA DLSS - DVS PRODUCTION`），SHA-256 前缀 `3975567B8943`；与整合包 `bin\` 下为**同一份**。出处：**NVIDIA DLSS SDK（NGX）** <https://github.com/NVIDIA/DLSS> ／ <https://developer.nvidia.com/rtx/dlss>。`.gitignore` 用 `dist/MT-CN/bin/*.dll` 排除，换机后按指纹核对再拷 |
-| **`bin\ffx_*.dll`**（磁盘上有，不入库）| **AMD FidelityFX FSR 3.1.2** 运行时，由游戏安装提供；SDK 与许可证见仓库 `sdk/FSR3/`。指纹见 `dist/MT-CN/来源与要求.md` §一 |
-| **`scheduler_batch_size = 512`（必须）**| 三处来源任一即可保证：引擎源码默认值已为 512；游戏 `appdata\user.ltx` 实测 512；整合包基座 `gamedata\configs\axr_options.ltx` 亦为 512。**快照不再打包这两份可写配置**——挂载层读取优先于根目录，带快照会每启动把玩家改过的选项退回旧值（10-26 快照正是这么吃掉 `speed/*` 两项的） |
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/themrdemonized/xray-monolith)
 
