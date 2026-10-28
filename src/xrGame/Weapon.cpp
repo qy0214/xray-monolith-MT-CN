@@ -3537,8 +3537,11 @@ void CWeapon::UpdateSecondVP()
 			// wheel switch mid-aim the stats below belong to the weapon that was aiming. The
 			// scope= name on such a switched line is still the new weapon's - acceptable noise
 			// for a diagnostic.
+			// The tail used to carry 9 values through 7 placeholders, so every field from end=
+			// on was shifted by two (zoomtype=-536870912 was really the float bit pattern of
+			// adsFovDbg) and thermal/mode never printed at all.
 			const float magNow = (lensFov > 0.005f && g_fov > 0.005f) ? (g_fov / lensFov) : 0.0f;
-			Msg("* [PIP/scope] %s weapon='%s' scope='%s' lensFov=%.4f..%.4f mag=%.2f..%.2f ads=%.3f..%.3f frames=%u (last: magnifies=%d lensFov=%.4f mag=%.2f dyn=%d steps=%d fovMax=%.4f fovBase=%.4f end=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d)",
+			Msg("* [PIP/scope] %s weapon='%s' scope='%s' lensFov=%.4f..%.4f mag=%.2f..%.2f ads=%.3f..%.3f frames=%u (last: magnifies=%d lensFov=%.4f mag=%.2f dyn=%d steps=%d fovMax=%.4f fovBase=%.4f adsNow=%.3f end=%d useDynZoom=%d rtZoom=%.1f attached=%d zoomtype=%d img=%d thermal=%d mode=%d)",
 				kind,
 				aimSect.size() ? *aimSect : "(none)",
 				GetScopeName().size() ? *GetScopeName() : "(none)",
