@@ -140,15 +140,24 @@ static class cl_pos_decompress_params : public R_constant_setup
 		// two FOVs - the mask the player reported.
 		const float VertTan = (fabsf(Device.mProject._22) > 1e-6f)
 			? (-1.0f / Device.mProject._22) : (-1.0f * tanf(deg2rad(Device.fFOV / 2.0f)));
+		// POSITIVE, like R2/R3 (`-VertTan/fASPECT`). _11 = _22 * fASPECT, so the projection
+		// derived form of that expression is +1/_11. When this line was switched to the
+		// projection it was written as -1/_11, which keeps the magnitude but flips x, and
+		// gbuffer_stage.h builds the ray as `pos2d*zw - xy`: every R4 screen-space position
+		// reconstruction (and the CSM lookup that starts from it) came out mirrored about the
+		// vertical centre line - zero at the middle of the screen, up to 2*z*tan(hfov/2) at the
+		// edges, and it moved whenever the view moved.
 		const float HorzTan = (fabsf(Device.mProject._11) > 1e-6f)
-			? (-1.0f / Device.mProject._11) : (-VertTan / Device.fASPECT);
+			? (1.0f / Device.mProject._11) : (-VertTan / Device.fASPECT);
 
-		// Scene-space texel size at the render resolution, plus the upscaler's
-		// raster jitter (zero when the upscaler is inactive).
+		// Scene-space texel size at the render resolution. The raster jitter is NOT added
+		// here: gbuffer_stage.h already removes it from the pixel coordinate before using
+		// this constant to turn that coordinate into a ray. Adding it here as well shifted
+		// every screen-space world position (and the CSM shadow lookup that starts from it)
+		// by one raster sample.
 		const float sx = 2.0f * HorzTan / RenderScreenWidth();
 		const float sy = 2.0f * VertTan / RenderScreenHeight();
-		const auto jitter = dlss::RasterJitter();
-		RCache.set_c(C, HorzTan + jitter.x * sx, VertTan + jitter.y * sy, sx, sy);
+		RCache.set_c(C, HorzTan, VertTan, sx, sy);
 	}
 } binder_pos_decompress_params;
 
