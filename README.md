@@ -113,8 +113,8 @@
 2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）**尚未解析**；现以"瞄具是否真的放大 + PiP 模块是否存在"作等价门槛。
 3. **MCM 的 live effects 开关当前无效**（`scope_lense_live_effects`）：**结构性不可达**（属隔帧时间复用架构，本引擎同帧设计不进入该路径），非单纯未实现。
 4. **`scope_lense_ads_is_pip` 晚一帧**：该值由渲染器每帧开头刷新（`compat::Tick`），比本帧 PiP 判定晚一帧到达，展示用途可接受。
-5. **部署方式（2026-10-28 定案）**：`gamedata\` 唯一来源是 MO2 的 `mods\MT-CN\`（挂载层读取优先于根目录），exe 必须物理在 `bin\`；`MODS\MT-CN\` 只留 `bin\`、`db\mods\…db0`、说明与清缓存脚本。**不要把游戏自己写的可配置文件（`axr_options.ltx`、`appdata\user.ltx`）放进挂载目录**——快照会赢下读取，把玩家之后改的选项每次启动退回。
-6. **`night_vision.h` 在仓库内有两份不同内容的副本**（`gamedata/shaders/r3/` 与 `dist/MT-CN/gamedata/shaders/r3/`），运行时用 dist/MT-CN 那份；另一份待清理。
+5. **部署方式（2026-10-28 定案）**：`gamedata\` 唯一来源是 MO2 的 `mods\MT-CN\`（挂载层读取优先于根目录），exe 必须物理在 `bin\`；`MODS\MT-CN\` 只留 `bin\`、`db\mods\…db0`、说明与清缓存脚本。**不要把游戏自己写的可配置文件（`axr_options.ltx`、`appdata\user.ltx`）放进挂载目录**——快照会赢下读取，把玩家之后改的选项每次启动退回。**因此必须经 MO2 启动**：2026-10-28 22:14 一次 JSGME「停用→启用」循环后，游戏根 `gamedata\` 里那批历史遗留散件（含 18 个着色器覆盖）已被清除，根目录不再存在兜底副本；绕过 MO2 直接起游戏会失去 DLSS/SSFX/穿戴设备相关着色器与脚本覆盖。
+6. **`night_vision.h` 在仓库里有两份内容不同的副本，且两份都有主**：`gamedata/shaders/r3/` 那份是**上游自带**（`29633bd1`，DEMONIZED，2024-09-25 “gamedata reorganize”），`dist/MT-CN/gamedata/shaders/r3/` 那份是我们随 MT-CN 部署的 Beefs NVGs 改版。两者不是重复文件，**都不要删**；运行时生效的是 MT-CN 挂载的那份。
 
 ## 五、部署要求与运行时来源（配套归档：`dist/MT-CN/`）
 
@@ -127,6 +127,7 @@
 
 | 档 | 内容 | 位置 |
 |---|---|---|
+| **上游 Monolith 的承接提交** | 共 **11 条**「作者是别人、由我们落地」：Chad ×6、erepb、Burke T、vacwave、lulnope（←OGSR）。逐板比对：**6 条与源板一致，5 条属"承接+改写"**——`8bc95cd7f`（只多一行 v0.2.2 标记）、`19b19090a`（include 结构不同）、`cb445886f`（补 items 清理循环与 `xrCriticalSectionGuard` 作用域）、`468e9bdc4`（分支结构按本仓库重排）、`00c4c0897`（保留本分支抛物实现，并把 `H_SetParent` 扩到所有掉落物）。改写过的文件 git author 仍是上游作者，容易被误读为原样，故逐条登记 | 台账 §1A |
 | **OGSR / OpenXRay** | `374947615` lulnope ← OGSR `69433fa1`（`GraviZone::exit_Zone` 16 行）；`46fd396eb`/`7f0c6b54e` OneMorePseudoCoder ← OGSR `ec6396cb`（`PHMovementControl` -451/+207）；`6fdad0a74` DEMONIZED ← 3 个 OpenXRay commit + OGSR `d359bde2`；`fbff6e64e`/`feac7dd7f` MFB ← OpenXRay（smart covers）；`440495c79` "inspired by openxray" 属启发 | 台账 §1 |
 | **Vendored SDK** | `sdk/DLSS` = NVIDIA RTX SDKs LICENSE（v. March 14 2024，SPDX `LicenseRef-NvidiaProprietary`；义务是 §2a 禁止剥离声明）；`sdk/FSR3` = AMD MIT + `Third_party_notices.txt`，但 README 自述取自 **OGSR checkout `8adb7cf1…`** 的社区 D3D11 backend | 台账 §2 |
 | **派生自整合包 MOD** | SSFX（**ascii1457**，moddb：`…/addons/screen-space-shaders`）的 `ssfx_ao/il/ssr/sss/sss_ext/water_ssr.ps`、`screenspace_mvectors.h`；Beefs NVGs 的 `night_vision.h`；Wearable Devices 的 `wd_body.vs`、`wd_exo.script`、`d_promin_health_ui.script`；汉化整合包的 `fix_fast_travel_markers.script`（原件不声明作者，只能声明我方改动） | 台账 §3 |

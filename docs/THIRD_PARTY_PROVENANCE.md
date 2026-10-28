@@ -19,14 +19,43 @@
 
 **许可注意**：GitHub API 对 `OGSR/OGSR-Engine` 返回 `license: "Other"`、`spdx_id: "NOASSERTION"`（非标准 OSI 许可）。因此这些代码的转载**不因"注明出处"就自动免责**——上游仓库自行把它们合入 Monolith，本分支只是承接；若将来要对外分发本仓库，需要单独确认 OGSR 侧条款。本文件把这点写在这里而不是假装解决。
 
+## 1A. 上游 Monolith 的承接提交（作者名在 git 里保留，落地人为本分支）
+
+本分支上「作者是他人的、由我们落地（committer=qy0214）」的提交共 **11 条**。逐条把落地板与源板（`(cherry picked from commit …)`）的 +/- 行做归一化 md5 比对，结果分两类：
+
+| 本分支提交 | 作者 | 源提交 | 比对结果 |
+|---|---|---|---|
+| `74fcc33fe` Initial azazel net fix commit | vacwave | 无 cherry-pick 行（随上游分支合入） | 一致 |
+| `8c0765647` UIScrollView 拖拽判定 | Burke T | 同上 | 一致 |
+| `d0c52dd1b` fix(ui) 滚动条捕获 | erepb | 同上 | 一致 |
+| `374947615` fix floating artefacts | lulnope | `69433fa1`（**OGSR-Engine**，见 §1） | 一致 |
+| `9d7126fc4` Fix race condition in texture loading | Chad | `v0.2.2` 内 | 一致 |
+| `a3456c91d` Fix wallmarks crash | Chad | `v0.2.2` 内 | 一致 |
+| `8bc95cd7f` Implement map caching (PDA stutters) | Chad | `3aaf2204…` | **改写**：仅多一行标记 `// upstream v0.2.2: PDA map caching (fixes map stutters)` |
+| `19b19090a` move discord rpc off main thread | Chad | `5a95f84a…` | **改写**：include 结构不同（我方需 `#include <thread>`，不带 `pch_script.h`），并保留本分支的 Azazel 注释行 |
+| `cb445886f` mutex for item destruction/insertion | Chad | `14ed5b3b…` | **改写**：我方额外补了 items 清理循环（`poolSI.destroy(D->G[i].items[clr])`）与 `xrCriticalSectionGuard lock(pool_mutex)` 的作用域 |
+| `468e9bdc4` checks for invalidated wallmarks | Chad | `f3c84df8…` | **改写**：我方多了 `StateDecs desc;`、少了源板的 `continue;`（分支结构按本仓库代码重排） |
+| `00c4c0897` Fix nullptr crash in Inventory::DropItem | Chad | `78a57161…` | **改写**：保留本分支的抛物实现（owner 判空、`cam_Active()->vDirection`、速度取水平模长），并把 `H_SetParent` 扩到所有掉落物；文件内有注释说明 |
+
+**读这些文件时要注意**：git 的 author 是上游作者，容易让人以为内容也是原样。凡标「改写」的 5 条，代码里混有本分支的改动；这 5 条的源哈希都在提交 message 里，对照方法见 §5。
+
+另外：`git log HEAD --no-merges` 中「作者与 committer 都不是 qy0214」的上游提交共 **4095** 条，属基座谱系（Anomaly 2019 → Monolith 各分支），由继承与一次我们自己做的 merge（`058c5d26d`，2026-10-24，零冲突）带入。这部分的出处 = 上游仓库与 git 作者名，不逐条登记。
+
 ## 2. Vendored SDK
 
 | 目录 | 许可 | 版本与派生关系（实测） |
 |---|---|---|
-| `sdk/DLSS/`（NGX 头 + `nvsdk_ngx_d.lib`） | **NVIDIA RTX SDKs LICENSE**（`LICENSE.txt`，日期行 "v. March 14, 2024"）；头文件内 `SPDX-License-Identifier: LicenseRef-NvidiaProprietary`、`Copyright (c) 2018-2023 NVIDIA CORPORATION & AFFILIATES` | NGX 具体版本号未登记（**待补**）。许可条款实核：§2a 禁止移除版权/专有声明，§7 允许 SDK 内含第三方组件的独立声明——要求是**别剥离**，不是"必须新增致谢" |
+| `sdk/DLSS/`（NGX 头 + `nvsdk_ngx_d.lib`） | **NVIDIA RTX SDKs LICENSE**（`LICENSE.txt`，日期行 "v. March 14, 2024"）；头文件内 `SPDX-License-Identifier: LicenseRef-NvidiaProprietary`、`Copyright (c) 2018-2023 NVIDIA CORPORATION & AFFILIATES` | SDK 包版本号未随文件提供（头文件里只有 `NVSDK_NGX_VERSION_API_MACRO 0x0000015`）；可辨识信息为：版权年份 2018-2023、许可文本日期 "v. March 14, 2024"、配套运行时 `nvngx_dlss.dll` 文件版本 **310.9.1.0**。许可条款实核：§2a 禁止移除版权/专有声明，§7 允许 SDK 内含第三方组件的独立声明——要求是**别剥离**，不是"必须新增致谢" |
 | `sdk/FSR3/`（463 文件） | **AMD MIT**（`LICENSE.txt`，`Copyright © 2023 Advanced Micro Devices, Inc.`）+ `Third_party_notices.txt`（MIT 声明），两者完整保留 | **不是 AMD 官方 SDK tag**：`README.txt:4` 自述来自 OGSR 的 `3rd_party/Src/FidelityFX-SDK`，OGSR checkout `8adb7cf1650120987d84fcc8be7e73ad8a6f9945`，并明写"community D3D11 backend…not AMD's officially supported DX12/Vulkan backend"。API 头标识 upscaler = 3.1.2 |
 | `dist/MT-CN/bin/` 三个 dll（磁盘有、不入库） | 随 NVIDIA / AMD SDK | 指纹见 `dist/MT-CN/来源与要求.md` §一：`nvngx_dlss.dll` 58,956,912 B `3975567b8943…`（DLSS 310.9.1.0）、`ffx_backend_dx11_x64.dll` 8,425,984 B `b9eea14fe044…`、`ffx_fsr3upscaler_x64.dll` 44,032 B `d2a08178c8f3…` |
 
+**另外三处涉及他人代码、但都不是本分支引入的**：
+
+| 项 | 事实 |
+|---|---|
+| `src/3rd party/optick-git` | **Git 子模块**，`url = github.com/bombomby/optick.git`，pin 在 `8abd28dee`（`1.4.0.0-9`）。`.gitmodules` 由上游 ProfLander 于 2025-06-19 加入（“Integrate optick profiler”）；本分支只在 CI 里 `submodules: true` 拉取（`b0a35975`），许可随子模块自带 |
+| `.github/workflows/*` | 用到的第三方 Actions 全部由上游引入（Dmitry Chernyavsky）：`microsoft/setup-msbuild@v1.3.1`、`al-cheb/configure-pagefile-action@v1.3`、`c-hive/gha-remove-artifacts@v1.2.0`、`softprops/action-gh-release@v2.3.2`、`actions/checkout@v4`、`actions/upload-artifact@v4.6.0`、`actions/download-artifact@v4.1.8`。本分支的 CI 提交（`60862562` 独立 release job、`4ae75fd2` 测试 job、`3943bd1b` 构建脚本）**只复用**这些 action，没有引入新的他人 Action |
+| `src/3rd party/**`、`sdk/include`、`sdk/binaries`、`sdk/libraries`、`sdk/autoexp.dat`、`compressor/` | 最早加入者：Anomaly（2019-08-26）与 DEMONIZED（2024-09-25）——**基座自带**，本分支未向其中新增文件（`sdk/DLSS`、`sdk/FSR3` 除外，见上表）。`sdk/autoexp.dat` 自带 “Copyright(c) Microsoft Corporation” |
 ## 3. 派生自整合包里他人 MOD 的文件（`dist/MT-CN/`）
 
 基线路径缩写：`SSS` = `mods\[GFX] 屏幕空间着色器 23.5 — ScreenSpaceShaders Update 23.5 — Обновление шейдеров`（作者 **ascii1457**，moddb：`.../mods/stalker-anomaly/addons/screen-space-shaders`）；`WD` = `mods\[GAM] 可穿戴设备 — Wearable Devices`；`NV` = `mods\[GFX] 夜视仪着色器 — Beefs NVGs Shaders`；`汉化` = `mods\[汉化] 汉化整合包 — A.N.T.H.O.L.O.G.Y 汉化整合包`；`ROOT` = 合并后的 `Anomaly-1.5.3-Anthology 2.1\gamedata`。
@@ -39,7 +68,7 @@
 | `shaders/r3/ssfx_ao.ps` / `ssfx_il.ps` / `ssfx_ssr.ps` / `ssfx_sss.ps` / `ssfx_sss_ext.ps` / `ssfx_water_ssr.ps` | SSS | 33 / 15 / 27 / 9 / 13 / 27 | ✓ 六个都保留 `ascii1457` 头（各 +1～4 行 DLSS 相关） |
 | `shaders/r3/deffer_grass.vs` | SSS | 73（版本差） | **原件本就无 `@ Author` 头**（实测 orig=0），行内 2 处 moddb 链接与原件一致 |
 | `shaders/r3/deffer_impl_flat.ps` | SSS | 267（版本差） | 同上（原件无头，1 处 moddb 链接保留） |
-| `shaders/r3/night_vision.h` | NV | 199（不同 Beefs 版本） | ✓ `BEEF'S SHADER BASED NIGHT VISION EFFECT` + 致谢 LVutner / Sky4Ace / Meltac |
+| `shaders/r3/night_vision.h` | NV（区分：仓库根 `gamedata/shaders/r3/night_vision.h` 是**上游自带**那份，来自 `29633bd1` DEMONIZED 2024-09-25 “gamedata reorganize”；dist 里这份才是我们部署的 Beefs 改版） | 199（不同 Beefs 版本） | ✓ `BEEF'S SHADER BASED NIGHT VISION EFFECT` + 致谢 LVutner / Sky4Ace / Meltac |
 | `shaders/r3/wd_body.vs` | WD | 9 | ✓ 首行点名 WearableDevices |
 | `shaders/r3/csm_sunmask.ps`、`dlss_*.h/.ps`、`upscaler_camera_mv.ps` | 无（本仓库原创） | — | 本仓库产物；`dlss_cas.h:1` 另声明"CAS adapted from OGSR's postprocess_cas.ps, based on AMD's CAS presentation"+GPUOpen 链接 |
 
@@ -52,7 +81,7 @@
 | `scripts/fix_fast_travel_markers.script` | 汉化 包同名脚本 | 该原件**不声明作者**，无法向上归属；本次补声明：只有 `is_travel_target` 的 clsid 兜底是我们的改动 |
 | `scripts/modxml_dlss_options.script`、`zzz_mtcn_wd_i18n.script`、`zzz_mtcn_dbg_launcher_i18n.script`、`zzz_mtcn_limb_mirror.script`、`configs/text/chs/st_mtcn_i18n.xml` | 本仓库原创，但**包裹/引用他人模块** | 文件内已点名被包装对象（`wd_gui`、Banjaji 的 `ui_debug_launcher.script`、BHS `zzz_player_injuries.script:432/630/225/257`、`haru_quick_action_wheel_mcm.script:1844` 等）✓ |
 | `configs/text/eng/st_monolith_dlss.xml` | 本仓库原创 | 与 ROOT、汉化 包内三份 md5 全等（`a87d5ba1…`，加注释后）；本次补声明 |
-| `db/mods/00_modded_exes_gamedata.db0` | 本仓库 compressor 产物 | 生成方式**待补**（本次未核） |
+| `db/mods/00_modded_exes_gamedata.db0` | 上游 `compressor/` 工具产出 | `compressor/! compress_gamedata.cmd:2` = `xrCompress.exe gamedata -ltx build_patch.ltx -pack -strong -1024 -db`；工具属上游（DEMONIZED，2024-09-25），本分支只是归档其产物（`474c85ab`，md5 `b8bb004e`，与线上 `db\mods\` 同一份） |
 
 ## 4. 本次核查中被撤回的说法
 
