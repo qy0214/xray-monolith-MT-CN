@@ -1,0 +1,252 @@
+-- MT-CN: Chinese labels for the Wearable Devices configuration UI (the Alt+M window).
+--
+-- WHY A SCRIPT AND NOT A TEXT FILE: the pack translates by string id through
+-- gamedata/configs/text/chs/*.xml, and WD's own table is complete (eng and chs both carry 53 ids,
+-- zero diff; every ui_mcm_wd_*/st_wd_* id the scripts reference exists in chs). The English you see
+-- in this UI is different in kind - about 133 strings are hardcoded Lua literals (`label = "Anim
+-- Speed"`, row labels like "Yaw (Y)"), not ids, so no XML file can ever reach them. Editing the pack
+-- is off limits, so the labels are rewritten at the one moment they are still data: WD registers its
+-- tabs/devices through wd_gui, which happens inside wd_boot's on_game_start, i.e. after every script
+-- file has loaded. Wrapping those entry points from this zzz_-named file therefore runs before any
+-- registration, and needs no pack file touched.
+--
+-- Term choices follow the pack's own Chinese, not new coinages: factions come from
+-- st_rigged_community_* (强盗/晴空/纪律团/自由团/雇佣兵/军方/科学家/黑石/罪孽/变节者/自由潜行者),
+-- "你的阵营" from ui_mcm_lst_idiots_faction, 护腕/手表/荧光棒/精神/耐力/辐射/状态 from the pack's
+-- existing usage, except the two device names, which follow the user's chosen terms (Promin ->
+-- 护腕PDA, Vektor -> 护腕表) rather than the pack's own Latin item names (st_promin = Promin,
+-- st_vektor_name = Vektor): the UI reads better with them, and the item still shows Promin in the
+-- inventory. ISG stays as-is.
+--
+-- Matching is exact on the whole string, never substring, so ambiguous words ("Map", "Scale",
+-- "Time", "Range") cannot bleed into unrelated text; anything absent from MAP is left untouched,
+-- which is also what happens if the pack later renames a label. No id-like key can be caught here,
+-- because every key contains a space or is a capitalized word, and translation ids are snake_case.
+--
+-- Engine Lua printf substitutes %s only.
+if not wd_gui then
+    printf("[MT-CN] wd i18n skipped: wd_gui not loaded yet")
+    return
+end
+
+local MAP = {
+    -- tabs, sections and switches
+    Appearance = "外观",
+    Emblem = "徽标",
+    Map = "地图",
+    Minimap = "小地图",
+    Audio = "声音",
+    Display = "显示",
+    Other = "其他",
+    Dev = "开发者",
+    Time = "时间",
+    Range = "距离",
+    Scale = "缩放",
+    Skin = "皮肤",
+    Clock = "时钟",
+    Digits = "数字",
+    Gauge = "表盘",
+    Ring = "环",
+    Arrow = "箭头",
+    Glow = "辉光",
+    Dynamic = "动态",
+    Regular = "常规",
+    Default = "默认",
+    Position = "位置",
+    Brightness = "亮度",
+    Saturation = "饱和度",
+    ["Nixie color"] = "辉光管颜色",
+    ["Status Icons"] = "状态图标",
+    ["STATUS ICONS"] = "状态图标",
+    ["Screen Glow"] = "屏幕辉光",
+    ["Screen Offset"] = "屏幕偏移",
+    ["Watch Glow"] = "手表辉光",
+    ["Watch Position"] = "手表位置",
+    ["Bracer Position"] = "护腕位置",
+    ["Device Position"] = "设备位置",
+    ["Display Position"] = "显示位置",
+    ["Use saved positions"] = "使用已保存的位置",
+    ["Anim Speed"] = "动画速度",
+    ["Fire mode"] = "射击模式",
+    ["Air filter condition"] = "滤芯状态",
+    ["Filter time"] = "滤芯剩余时间",
+    ["Toxic Air"] = "有毒空气",
+    Toxic = "毒性",
+    ["Radio Messages"] = "无线电消息",
+    ["NPC Identification"] = "NPC 识别",
+    ["BHS inventory only"] = "仅 BHS 背包",
+    ["Vektor LEDs"] = "护腕表指示灯",
+    ["Anomaly LED"] = "异常指示灯",
+    ["Rad LED"] = "辐射指示灯",
+    ["Promin <-> Watch"] = "护腕PDA <-> 手表",
+    ["Weapon <-> "] = "武器 <-> ",
+
+    -- devices and hands
+    Promin = "护腕PDA",
+    Vektor = "护腕表",
+    Watch = "手表",
+    Bracer = "护腕",
+    Glowstick = "荧光棒",
+    Metro = "地铁",
+    Hand = "手部",
+    ["L-Hand"] = "左手",
+    ["R-Hand"] = "右手",
+    Companions = "队友",
+    Anomaly = "异常",
+    Artefact = "神器",
+
+    -- meters
+    ["HP BAR"] = "生命条",
+    ["PSY BAR"] = "精神条",
+    ["Psy bar"] = "精神条",
+    ["STAM BAR"] = "耐力条",
+    Stamina = "耐力",
+    ["RAD BAR"] = "辐射条",
+    ["Radiation bar"] = "辐射条",
+    ["FACTION ICON"] = "阵营徽标",
+    Bleeding = "出血",
+
+    -- weapon classes
+    Pistols = "手枪",
+    SMGs = "冲锋枪",
+    Rifles = "步枪",
+    Shotguns = "霰弹枪",
+    Snipers = "狙击步枪",
+
+    -- nixie / glow schemes
+    Black = "黑",
+    ["Blood Moon"] = "血月",
+    Ember = "余烬",
+    Glacier = "冰川",
+    Inferno = "炼狱",
+    Midnight = "午夜",
+    Radium = "镭",
+    Ultraviolet = "紫外",
+    Violet = "紫",
+
+    -- emblem list (pack-canonical faction names)
+    None = "无",
+    ["Actor Faction"] = "你的阵营",
+    Loners = "自由潜行者",
+    Bandits = "强盗",
+    ["Clear Sky"] = "晴空",
+    Duty = "纪律团",
+    Freedom = "自由团",
+    Mercenaries = "雇佣兵",
+    Military = "军方",
+    Ecologists = "科学家",
+    Monolith = "黑石",
+    Sin = "罪孽",
+    Renegades = "变节者",
+
+    -- slider row labels
+    ["Position x"] = "位置 x",
+    ["Position y"] = "位置 y",
+    ["Position z"] = "位置 z",
+    ["Offset x"] = "偏移 x",
+    ["Offset y"] = "偏移 y",
+    ["Offset z"] = "偏移 z",
+    ["Yaw (Y)"] = "偏航 (Y)",
+    ["Pitch (X)"] = "俯仰 (X)",
+    ["Roll (Z)"] = "翻滚 (Z)",
+    ["Zoom (m)"] = "缩放 (米)",
+    ["Promin x"] = "护腕PDA x",
+    ["Promin y"] = "护腕PDA y",
+    ["Promin z"] = "护腕PDA z",
+    ["Vektor x"] = "护腕表 x",
+    ["Vektor y"] = "护腕表 y",
+    ["Vektor z"] = "护腕表 z",
+    ["Anomaly x"] = "异常 x",
+    ["Anomaly y"] = "异常 y",
+    ["Anomaly z"] = "异常 z",
+    ["Artefact x"] = "神器 x",
+    ["Artefact y"] = "神器 y",
+    ["Artefact z"] = "神器 z",
+    ["Ring offset x"] = "环偏移 x",
+    ["Ring offset y"] = "环偏移 y",
+    ["Ring offset z"] = "环偏移 z",
+    ["Ring north (deg)"] = "环正北 (度)",
+    ["Ring scale (x main)"] = "环缩放 (主 x)",
+    ["Arrow offset x"] = "箭头偏移 x",
+    ["Arrow offset y"] = "箭头偏移 y",
+    ["Arrow offset z"] = "箭头偏移 z",
+    ["Arrow north (deg)"] = "箭头正北 (度)",
+    ["Arrow scale (x main)"] = "箭头缩放 (主 x)",
+}
+
+local MOD_VALUES = { none = "无", alt = "Alt", ctrl = "Ctrl", shift = "Shift" }
+
+local function translate(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+    return MAP[value]
+end
+
+local function walk(node, depth)
+    if depth > 6 or type(node) ~= "table" then
+        return
+    end
+    for key, value in pairs(node) do
+        if type(value) == "table" then
+            local label = value[2]
+            if #value == 2 and type(value[1]) == "string" and type(label) == "string" and MOD_VALUES[value[1]] then
+                value[2] = MOD_VALUES[value[1]]
+            else
+                walk(value, depth + 1)
+            end
+            local hit = translate(value.label)
+            if hit then
+                value.label = hit
+            end
+            local hit_text = translate(value.text)
+            if hit_text then
+                value.text = hit_text
+            end
+        elseif key == "label" or key == 4 then
+            local hit = translate(value)
+            if hit then
+                node[key] = hit
+            end
+        end
+    end
+end
+
+local function wrap(name)
+    local original = wd_gui[name]
+    if type(original) ~= "function" then
+        printf("[MT-CN] wd i18n: wd_gui.%s missing, skipped", name)
+        return
+    end
+    wd_gui[name] = function(...)
+        for _, arg in ipairs({ ... }) do
+            if type(arg) == "table" then
+                walk(arg, 1)
+            end
+        end
+        return original(...)
+    end
+end
+
+-- Registration entry points wd_boot calls during on_game_start, after this file has loaded.
+wrap("register_tab")
+wrap("register_device")
+wrap("register_global_toggle")
+wrap("new_catalog_enum")
+
+if wd_mcm and type(wd_mcm.on_mcm_load) == "function" then
+    local original_mcm = wd_mcm.on_mcm_load
+    wd_mcm.on_mcm_load = function(...)
+        local result = original_mcm(...)
+        walk(result, 1)
+        return result
+    end
+end
+
+local map_size = 0
+for _ in pairs(MAP) do
+    map_size = map_size + 1
+end
+-- Engine printf substitutes %s only, hence tostring on the count.
+printf("[MT-CN] wd i18n active: %s label keys; wrapped register_tab/register_device/register_global_toggle/new_catalog_enum%s",
+    tostring(map_size), (wd_mcm and type(wd_mcm.on_mcm_load) == "function") and " + wd_mcm" or "")

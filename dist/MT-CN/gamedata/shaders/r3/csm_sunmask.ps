@@ -1,0 +1,14 @@
+#include "common.h"
+
+// Engine-side anchor for the SSFX sun volumetric: keep the shafts only around the
+// sun's screen position. sun_mask = (sun_uv.x, sun_uv.y, radius, aspect).
+Texture2D s_vol;
+uniform float4 sun_mask;
+
+float4 main(p_screen I) : SV_Target
+{
+	float3 vol = s_vol.Sample(smp_linear, I.tc0).rgb;
+	float2 d = (I.tc0 - sun_mask.xy) * float2(sun_mask.w, 1.0f);
+	float m = 1.0f - smoothstep(sun_mask.z, sun_mask.z * 2.2f, length(d));
+	return float4(vol * m, 1.0f);
+}

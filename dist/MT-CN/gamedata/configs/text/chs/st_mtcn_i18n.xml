@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- MT-CN: MCM rows whose author hardcoded prose instead of an id.
+
+     MCM renders a row's `text` through the string table - proven by the Wearable Devices page, whose
+     rows pass ids (ui_mcm_wd_title, ui_mcm_wd_gui_key) and come out Chinese while these two stay
+     English. So the prose itself can be declared as the id and the row translates, with no script
+     file shadowed and nothing to keep in sync when the mod updates.
+
+     Sources: haru_quick_action_wheel_mcm.script:1844 text = "Manual Tab"
+              passive_income_mcm.script:10                text = "Pay Time Start" -->
+<w>
+	<string id="Manual Tab"><text>手动标签页设置</text></string>
+	<string id="Pay Time Start"><text>计薪起始时刻（0-24）</text></string>
+</w>

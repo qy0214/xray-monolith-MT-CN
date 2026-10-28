@@ -1,0 +1,247 @@
+-- MT-CN limb mirror: paints the Promin's limb diagram without changing any damage rule.
+--
+-- WHY THIS EXISTS: the pack's only per-limb health source is BHS (zzz_player_injuries), which is
+-- installed but DISABLED in the active MO2 profile (`profiles/Anthology 2.1 Standart/modlist.txt`
+-- line 114 starts with "-"). Turning it on is not a display-only choice: kill_on_update() forces
+-- death once the head or torso pool empties (zzz_player_injuries.script:630, no MCM switch) and
+-- zzz_player_injuries_effects adds concussion damage and a health cap (:225, :257), while
+-- actor_on_item_use takes over healing items. The user asked for the display without the rules.
+--
+-- WHAT IS COPIED AND WHAT IS NOT: BHS itself never edits the hit - actor_on_before_hit only records
+-- which limb was touched, and hit_on_update then re-reads what the engine already subtracted
+-- (amount = old_hp - db.actor.health). This mirror uses that same observation step, the same bone
+-- table and the same 100/11 ruler, and stops there. It never assigns db.actor.health, never calls
+-- set_health_ex, never kills, never touches items, never registers effects. timedhp stays 0 because
+-- temporary blue HP would be a new resource, not a display.
+--
+-- CONSEQUENCE TO KEEP IN MIND: the limb attribution is inferred from the hit bone plus the total
+-- engine health delta, so it approximates where damage went instead of modelling it. Unattributed
+-- drains (radiation, anomaly) land on the torso so the diagram degrades sensibly.
+--
+-- STEPS ASIDE AUTOMATICALLY: if the real BHS is enabled later it loads after this file (zzz_mtcn_*
+-- sorts before zzz_player_*) and replaces the module global; the first update detects that (only the
+-- real module defines actor_on_before_hit) and disarms the mirror, so no limb is ever counted twice.
+--
+-- Engine Lua printf substitutes %s only, so every value is stringified here.
+if zzz_player_injuries then
+    -- The real BHS is already loaded; nothing to mirror.
+    return
+end
+
+local LIMBS = { "head", "torso", "leftarm", "rightarm", "leftleg", "rightleg" }
+
+local MAXHP = { head = 11, torso = 11, leftarm = 5, rightarm = 5, leftleg = 5, rightleg = 5 }
+
+-- Bone id -> limb, taken from BHS (zzz_player_injuries.script:432) so the diagram agrees with the
+-- version the pack ships for the HARD profile.
+local HITBOXES = {
+    [14] = "head", [15] = "head", [16] = "head", [17] = "head", [18] = "head", [19] = "head",
+
+    [2] = "torso", [11] = "torso", [12] = "torso", [13] = "torso", [20] = "torso", [33] = "torso",
+
+    [21] = "leftarm", [22] = "leftarm", [23] = "leftarm", [24] = "leftarm", [25] = "leftarm", [26] = "leftarm",
+    [27] = "leftarm", [28] = "leftarm", [29] = "leftarm", [30] = "leftarm", [31] = "leftarm", [32] = "leftarm",
+
+    [34] = "rightarm", [35] = "rightarm", [36] = "rightarm", [37] = "rightarm", [38] = "rightarm", [39] = "rightarm",
+    [40] = "rightarm", [41] = "rightarm", [42] = "rightarm", [43] = "rightarm", [44] = "rightarm", [45] = "rightarm",
+
+    [3] = "leftleg", [4] = "leftleg", [5] = "leftleg", [6] = "leftleg",
+
+    [7] = "rightleg", [8] = "rightleg", [9] = "rightleg", [10] = "rightleg",
+}
+
+local SAVE_KEY = "mtcn_limb_mirror"
+local DAMAGE_EPSILON = 0.0293
+local HEAD_MULTIPLIER = 2
+local POOL_UNIT = 100 / 11
+
+local mirror = {
+    mtcn_mirror = true,
+    health = {},
+    timedhp = {},
+    maxhp = MAXHP,
+    -- Referenced by d_promin_health_ui.compute_preview for the quick-wheel heal preview; empty
+    -- tables make it return nil so the preview degrades instead of inventing per-item limb numbers.
+    medkits = {},
+    healhelp = {},
+}
+
+local installed = true
+local damaged_limb = nil
+local prev_health = nil
+
+local function reset_pools()
+    for _, limb in ipairs(LIMBS) do
+        mirror.health[limb] = MAXHP[limb]
+        mirror.timedhp[limb] = 0
+    end
+end
+
+reset_pools()
+
+local function disarm(reason)
+    if not installed then
+        return
+    end
+    installed = false
+    printf("[MT-CN] limb mirror disarmed: %s", tostring(reason))
+end
+
+local function apply_damage(limb, fraction)
+    local mult = limb == "head" and HEAD_MULTIPLIER or 1
+    local points = math.ceil(fraction * mult * POOL_UNIT)
+    local left = mirror.health[limb] - points
+    mirror.health[limb] = left > 0 and left or 0
+end
+
+-- Engine health going UP (bandages and medkits raise it in this pack) is mirrored back into the
+-- pools proportionally to how empty each limb is, so the diagram can recover.
+local function apply_heal(fraction)
+    local missing = {}
+    local total = 0
+    for _, limb in ipairs(LIMBS) do
+        local gap = MAXHP[limb] - mirror.health[limb]
+        missing[limb] = gap
+        total = total + gap
+    end
+    if total <= 0 then
+        return
+    end
+    local points = fraction * POOL_UNIT
+    for _, limb in ipairs(LIMBS) do
+        if missing[limb] > 0 then
+            local filled = mirror.health[limb] + points * missing[limb] / total
+            mirror.health[limb] = filled < MAXHP[limb] and filled or MAXHP[limb]
+        end
+    end
+end
+
+local function on_before_hit(s_hit, bone_id)
+    if not installed or not s_hit then
+        return
+    end
+    if bone_id == 65535 then
+        return
+    end
+    local limb = HITBOXES[bone_id]
+    if limb then
+        damaged_limb = limb
+        return
+    end
+    -- Fall damage arrives with the world as the draftsman and no usable bone, as in BHS. `hit` is
+    -- a shared constants table rather than a language builtin, so it is checked before indexing.
+    if hit and s_hit.type == hit.strike and s_hit.draftsman and s_hit.draftsman:id() == 0 then
+        damaged_limb = math.random(2) == 1 and "leftleg" or "rightleg"
+    end
+end
+
+local function on_update()
+    if not installed then
+        return
+    end
+    local actor = db and db.actor
+    if not actor or not actor:alive() then
+        return
+    end
+
+    local hp = actor.health
+    if type(hp) ~= "number" then
+        return
+    end
+    if prev_health == nil then
+        prev_health = hp
+        return
+    end
+
+    local delta = prev_health - hp
+    prev_health = hp
+
+    if delta > DAMAGE_EPSILON then
+        -- Radiation and anomaly damage raise no bone hit; charging them to the torso keeps the
+        -- diagram honest about "something is eating you" without pretending to know where.
+        apply_damage(damaged_limb or "torso", delta)
+        damaged_limb = nil
+    elseif delta < -DAMAGE_EPSILON then
+        apply_heal(-delta)
+    end
+end
+
+local function on_first_update()
+    if installed and zzz_player_injuries and zzz_player_injuries ~= mirror
+        and zzz_player_injuries.actor_on_before_hit then
+        disarm("real BHS is loaded")
+        return
+    end
+    if installed then
+        prev_health = db and db.actor and db.actor.health
+    end
+end
+
+local function save_state(m_data)
+    if not installed or not m_data then
+        return
+    end
+    local pools = {}
+    for _, limb in ipairs(LIMBS) do
+        pools[limb] = mirror.health[limb]
+    end
+    m_data[SAVE_KEY] = pools
+end
+
+local function load_state(m_data)
+    if not installed or not m_data then
+        return
+    end
+    local pools = m_data[SAVE_KEY]
+    if type(pools) ~= "table" then
+        reset_pools()
+        return
+    end
+    for _, limb in ipairs(LIMBS) do
+        local value = tonumber(pools[limb])
+        if value then
+            mirror.health[limb] = value
+        else
+            mirror.health[limb] = MAXHP[limb]
+        end
+        mirror.timedhp[limb] = 0
+    end
+    prev_health = nil
+end
+
+zzz_player_injuries = mirror
+-- OBSERVATION, not yet a mechanism: in the 10-28 18:26 run this file printed its marker twice (so
+-- the bare write above did execute) while the ui3d probe's _G.zzz_player_injuries stayed nil for the
+-- whole session, even though the same probe reads _G.d_promin_config and _G.d_promin_ui - both also
+-- bare globals from other files - without trouble. Publishing through _G as well costs nothing and
+-- removes one variable; the line below reports which door actually holds the table, and the probe
+-- now reports which branch d_promin_health_ui took (feed=sys means the diagram is NOT being fed).
+-- The write is guarded so that enabling the real BHS in another profile is not shadowed by this
+-- file loading first (zzz_mtcn_* sorts before zzz_player_*).
+if _G.zzz_player_injuries == nil or _G.zzz_player_injuries.mtcn_mirror then
+    _G.zzz_player_injuries = mirror
+end
+printf("[MT-CN] limb mirror published: bare=%s _G=%s ours=%s",
+    tostring(type(zzz_player_injuries)), tostring(type(_G.zzz_player_injuries)),
+    tostring(_G.zzz_player_injuries == mirror))
+
+if type(RegisterScriptCallback) == "function" then
+    RegisterScriptCallback("actor_on_before_hit", on_before_hit)
+end
+
+if wd_core then
+    wd_core.register({
+        id = "mtcn_limb_mirror",
+        callbacks = {
+            actor_on_first_update = { on_first_update },
+            actor_on_update = { on_update },
+            save_state = { save_state },
+            load_state = { load_state },
+        },
+    })
+elseif type(RegisterScriptCallback) == "function" then
+    RegisterScriptCallback("actor_on_first_update", on_first_update)
+    RegisterScriptCallback("actor_on_update", on_update)
+end
+
+printf("[MT-CN] limb mirror active: display-only pools, no health write, no death rule")

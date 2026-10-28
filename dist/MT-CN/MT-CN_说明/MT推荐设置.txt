@@ -36,6 +36,9 @@ MT-CN 性能设置（MT 引擎调优记录）
   - 关掉本轮两项：MCM → Modded Exes → Optimizations 里把
       "Lua functor cache" / "Task manager" 改回关闭（会同步写回两份配置）；
     或直接把 appdata\user.ltx、gamedata\configs\axr_options.ltx 里对应值改回 0。
-  - 完全回退 MT-CN：JSGME 停用 MT-CN → 跑一次「清空着色器缓存.bat」。
+  - 完全回退 MT-CN：还原原版 bin\AnomalyDX11AVX.exe / bin\nvngx_dlss.dll，删
+    db\mods\00_modded_exes_gamedata.db0，并在 MO2 里取消 MT-CN 勾选 → 跑一次「清空着色器缓存.bat」。
+    （2026-10-28 起 gamedata 只在 MO2 的 mods\MT-CN 一份，MODS\MT-CN 里已无 gamedata，
+      详见同目录 README_部署与撤回.txt。）
     （注意：本文件列的 1/2/3 是 cvar，存放于游戏自身配置，不在 MT-CN 里，
       所以停用 MT-CN 不会自动还原它们；按上面方式手动改回即可。）

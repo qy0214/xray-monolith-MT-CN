@@ -1,0 +1,109 @@
+local POLL_MS = 200
+-- Load-time marker: the pack ships this module inside db\scripts\*.xdb, so the line below is the
+-- only way to tell at runtime whether the loose override is the one the engine actually loaded.
+printf("[MT-CN] wd_exo override active: exo screen block scoped to promin only")
+local SWITCH_SECTION = "wd_exo"
+local PROMIN_SCREEN_KEY = "promin_screen"
+
+local devices = {}
+local exo_kind = nil
+local last_outfit_key = nil
+local promin_screen = true
+
+local function get_exo_kind(visual)
+    if type(visual) ~= "string" then
+        return nil
+    end
+    local stem = visual:lower():gsub("%.ogf$", "")
+    if stem:find("proto") or stem:find("nosorog") then
+        return "blocked"
+    end
+    if stem:find("exo") and not stem:find("exolight") then
+        return promin_screen and "exo" or "blocked"
+    end
+    return nil
+end
+
+local function resolve_exo_kind(outfit_key)
+    if wd_outfit.is_none(outfit_key) then
+        return nil
+    end
+    return get_exo_kind(wd_attach.get_visual_of(wd_outfit.get_hands_section(outfit_key)))
+end
+
+function register_device(spec)
+    for index, existing in ipairs(devices) do
+        if existing.id == spec.id then
+            devices[index] = spec
+            return
+        end
+    end
+    devices[#devices + 1] = spec
+end
+
+function is_exo()
+    return exo_kind == "exo" or exo_kind == "blocked"
+end
+
+local function apply_hide_flags()
+    local worn = is_exo()
+    local blocked = exo_kind == "blocked"
+    for _, spec in ipairs(devices) do
+        for _, name in ipairs(spec.names or {}) do
+            wd_attach.set_model_hidden(name, worn)
+            -- MT-CN override: the switch that yields "blocked" is called promin_screen, and the
+            -- built-in suit monitor only substitutes for the Promin, but this line hid every
+            -- bracer device's screen - so the watch went dark on an exoskeleton with nothing to
+            -- replace it. Scope the block to the Promin.
+            local hide = (spec.hide_screen and worn) or (blocked and spec.id == "promin")
+            wd_attach.set_screen_hidden(name, hide)
+            -- Runs only on an outfit change, so this is a few lines per change and is the numeric
+            -- proof of which device the exo switch is actually muting.
+            printf("[MT-CN] wd_exo hide: kind=%s device=%s name=%s model=%s screen=%s",
+                tostring(exo_kind), tostring(spec.id), name, tostring(worn), tostring(hide))
+        end
+    end
+end
+
+function apply()
+    local outfit_key = wd_outfit.get_key()
+    if outfit_key == last_outfit_key then
+        return false
+    end
+    last_outfit_key = outfit_key
+    local kind = resolve_exo_kind(outfit_key) or false
+    if kind == exo_kind then
+        return false
+    end
+    exo_kind = kind
+    apply_hide_flags()
+    local worn = is_exo()
+    for _, spec in ipairs(devices) do
+        if spec.on_change then
+            spec.on_change(worn)
+        end
+    end
+    for _, spec in ipairs(devices) do
+        if spec.resync then
+            spec.resync()
+        end
+    end
+    return true
+end
+
+function reset()
+    exo_kind = nil
+    last_outfit_key = nil
+    promin_screen = ini_sys:r_bool_ex(SWITCH_SECTION, PROMIN_SCREEN_KEY, true)
+end
+
+function register()
+    wd_core.register({
+        id = "wd_exo",
+        callbacks = {
+            actor_on_first_update = { apply },
+            actor_on_update = { { apply, interval = POLL_MS } },
+        },
+        on_start = reset,
+    })
+end

@@ -1,0 +1,343 @@
+-- Fix Fast Travel Markers - Bypass missing faction_quick_travel.ltx
+-- Anomaly 1.5.3 / Anthology 2.1
+--
+-- Merged features:
+--   - Add fast_travel map spots for all smart terrains (respecting visit_only / show_all)
+--   - Support travel to backpacks, sleeping bags, actor_bag (v17 feature)
+--   - Teleport companions on same-level travel (v17 feature)
+--   - Multi-level destination name resolution (v17 feature)
+--   - Full condition checks: combat / overweight / damage / storm
+--   - Time progression based on distance
+--   - Respects all gameplay/fast_travel/* settings
+
+local LOG_TAG = "[fix_fast_travel_markers]"
+printf("%s MT-CN override active: target test accepts clsid, not only name", LOG_TAG)
+
+local function safe_get_opt(key, default)
+	if ui_options and type(ui_options.get) == "function" then
+		local ok, val = pcall(ui_options.get, key)
+		if ok and val ~= nil then
+			return val
+		end
+	end
+	return default
+end
+
+local function is_fast_travel_enabled()
+	local enabled = safe_get_opt("gameplay/fast_travel/state", 0)
+	return enabled and enabled > 0
+end
+
+-- Translate helper: returns translated string or nil if not found
+local function tr(id)
+	local t = game.translate_string(id)
+	if t and t ~= id then return t end
+	return nil
+end
+
+-- Multi-level destination name resolution
+local function get_dest_name(sname)
+	-- 1) Standard smart name: st_<name>_name
+	local nm = tr("st_" .. sname .. "_name")
+	-- 2) Strip trailing _spot/_box suffixes and retry
+	if not nm then
+		local base = string.gsub(sname, "_spot$", "")
+		base = string.gsub(base, "_box$", "")
+		if base ~= sname then nm = tr("st_" .. base .. "_name") end
+	end
+	-- 3) Player base neut_base series -> st_neut_base_name
+	if not nm and string.find(sname, "neut_base") then
+		nm = tr("st_neut_base_name")
+	end
+	-- 4) Generic fallback: underscores to spaces, replace common terms
+	if not nm then
+		nm = string.gsub(sname, "_", " ")
+		nm = string.gsub(nm, "smart terrain", "营地")
+		nm = string.gsub(nm, "neut base", "我的营地")
+	end
+	-- 5) Extract base name from smart_terrain_xxx pattern
+	if not nm or nm == sname then
+		local m = string.match(sname, "smart_terrain_(.+)")
+		if m then
+			m = string.gsub(m, "_spot$", "")
+			m = string.gsub(m, "_box$", "")
+			nm = tr("st_" .. m .. "_name")
+			if not nm then nm = tr("st_esc_smart_terrain_" .. m .. "_name") end
+		end
+	end
+	return nm or sname
+end
+
+-- Check if object name is an allowed travel target (smart terrain or backpack-type)
+local function is_travel_target(se_obj, sname)
+	if not sname then return false end
+	if sname:find("smart_terrain")
+		or sname:find("backpack")
+		or sname:find("sleeping_bag")
+		or sname:find("actor_bag")
+		or sname:find("_bag") then
+		return true
+	end
+	-- MT-CN: the name test alone misses AnthologiA's own smart terrain sections. Verified on the
+	-- 18:14 run (predbannik): the clicked spots resolved to se=pre_sim_5, pre_sim_12, pre_baza1, so
+	-- markers were created (add_fast_travel_markers matches on clsid) while both menu handlers
+	-- returned false - "markers only, no fast travel entry". Use the same authority the marker loop
+	-- already uses.
+	local ok, is_smart = pcall(function()
+		return se_obj and se_obj:clsid() == clsid.smart_terrain
+	end)
+	return (ok and is_smart) or false
+end
+
+local function get_travel_option_text(se_obj, level_name)
+	local longnames = safe_get_opt("gameplay/fast_travel/long_names", false)
+	local prefix = game.translate_string("st_pda_fast_travel_to")
+	local dest_name = get_dest_name(se_obj:name())
+	if longnames and level_name then
+		return prefix .. " " .. game.translate_string(level_name) .. " " .. dest_name
+	else
+		return prefix .. " " .. dest_name
+	end
+end
+
+-- Teleport companions to destination (same-level travel only)
+local function teleport_companions(pos)
+	local ids
+	local ok = pcall(function() ids = axr_companions.list_actor_squad_by_id() end)
+	if not ok or type(ids) ~= "table" then return end
+
+	local gvid = db.actor:game_vertex_id()
+	local lvid = db.actor:level_vertex_id()
+	local n = 0
+	for _, id in ipairs(ids) do
+		n = n + 1
+		local ang = n * 1.2
+		local p = vector():set(pos.x + math.cos(ang) * 1.5,
+		                      pos.y,
+		                      pos.z + math.sin(ang) * 1.5)
+		local npc = level.object_by_id(id)
+		if npc then
+			pcall(function() npc:set_npc_position(p) end)
+		else
+			pcall(function() alife():teleport_object(id, gvid, lvid, p) end)
+		end
+	end
+end
+
+-- Add fast travel map spots for all smart terrains
+local function add_fast_travel_markers()
+	if not (db and db.actor) then
+		return true
+	end
+
+	local enabled = safe_get_opt("gameplay/fast_travel/state", 0)
+	if not enabled or enabled == 0 then
+		return true
+	end
+
+	local longnames = safe_get_opt("gameplay/fast_travel/long_names", false)
+
+	local sim = alife()
+	if not sim then
+		return true
+	end
+
+	local gg = game_graph()
+	local added = 0
+
+	for i = 1, 65534 do
+		local smart = sim:object(i)
+		if smart and smart:clsid() == clsid.smart_terrain then
+			local name = smart:name()
+			local can_travel = true
+
+			if enabled == 1 then
+				if game_statistics and game_statistics.has_actor_visited_smart then
+					if not game_statistics.has_actor_visited_smart(name) then
+						can_travel = false
+					end
+				end
+			end
+
+			if can_travel then
+				if level.map_has_object_spot(i, "fast_travel") then
+					level.map_remove_object_spot(i, "fast_travel")
+				end
+
+				local spot_name
+				if longnames then
+					local level_name = "unknown"
+					if gg and smart.m_game_vertex_id then
+						local vertex = gg:vertex(smart.m_game_vertex_id)
+						if vertex then
+							level_name = sim:level_name(vertex:level_id())
+						end
+					end
+					spot_name = game.translate_string(level_name) .. " " .. get_dest_name(name)
+				else
+					spot_name = get_dest_name(name)
+				end
+
+				level.map_add_object_spot(i, "fast_travel", spot_name)
+				added = added + 1
+			end
+		end
+	end
+
+	printf("%s added %s fast travel marker(s) (state=%s)", LOG_TAG, tostring(added), tostring(enabled))
+	return true
+end
+
+-- Check travel conditions (combat / overweight / damage / storm)
+local function check_travel_conditions()
+	local combattravel = safe_get_opt("gameplay/fast_travel/on_combat", false)
+	if not combattravel then
+		if xr_combat_ignore and not is_empty(xr_combat_ignore.fighting_with_actor_npcs) then
+			actor_menu.set_msg(1, game.translate_string("st_travel_event"), 4)
+			hide_hud_pda()
+			return false
+		end
+	end
+
+	local weighttravel = safe_get_opt("gameplay/fast_travel/on_overweight", false)
+	if not weighttravel then
+		local suit = db.actor:item_in_slot(7)
+		local max_w = db.actor:get_actor_max_walk_weight()
+		if suit and suit.get_additional_max_weight then
+			max_w = max_w + (suit:get_additional_max_weight() or 0)
+		end
+		if db.actor:get_total_weight() > max_w then
+			actor_menu.set_msg(1, game.translate_string("st_travel_overloaded"), 4)
+			hide_hud_pda()
+			return false
+		end
+	end
+
+	local damagetravel = safe_get_opt("gameplay/fast_travel/on_damage", false)
+	if not damagetravel then
+		local bleeding = db.actor.bleeding > 0
+		local radiation = db.actor.radiation > 0
+		if bleeding or radiation then
+			if bleeding and radiation then
+				actor_menu.set_msg(1, game.translate_string("st_sleep_bleeding_irradiated"), 5)
+			elseif bleeding then
+				actor_menu.set_msg(1, game.translate_string("st_sleep_bleeding"), 4)
+			else
+				actor_menu.set_msg(1, game.translate_string("st_sleep_irradiated"), 4)
+			end
+			hide_hud_pda()
+			return false
+		end
+	end
+
+	local stormtravel = safe_get_opt("gameplay/fast_travel/on_emission", false)
+	if not stormtravel then
+		local surge = xr_conditions and xr_conditions.surge_started and xr_conditions.surge_started()
+		local psi = psi_storm_manager and psi_storm_manager.is_started and psi_storm_manager.is_started()
+		if surge or psi then
+			actor_menu.set_msg(1, game.translate_string("st_travel_event"), 4)
+			hide_hud_pda()
+			return false
+		end
+	end
+
+	return true
+end
+
+-- Add "Fast travel to" option when clicking an allowed target spot
+local function on_map_spot_menu_add_property(property_ui, id, level_name)
+	if not is_fast_travel_enabled() then
+		return
+	end
+
+	if not id or id <= 0 or id >= 65535 then
+		return
+	end
+
+	local se_obj = alife_object(id)
+	if not se_obj then
+		return
+	end
+
+	local sname = se_obj:name() or ""
+	if is_travel_target(se_obj, sname) then
+		property_ui:AddItem(get_travel_option_text(se_obj, level_name))
+	end
+end
+
+-- Handle the travel option click
+local function on_map_spot_menu_property_clicked(property_ui, id, level_name, prop)
+	if not is_fast_travel_enabled() then
+		return
+	end
+
+	if not id or id <= 0 or id >= 65535 then
+		return
+	end
+
+	local se_obj = alife_object(id)
+	if not se_obj then
+		return
+	end
+
+	local sname = se_obj:name() or ""
+	if not is_travel_target(se_obj, sname) then
+		return
+	end
+
+	local expected = get_travel_option_text(se_obj, level_name)
+	if prop ~= expected then
+		return
+	end
+
+	if not check_travel_conditions() then
+		return
+	end
+
+	-- Forward game time if enabled
+	local notime = safe_get_opt("gameplay/fast_travel/time", false)
+	if not notime then
+		local dist = db.actor:position():distance_to(se_obj.position)
+		level.change_game_time(0, math.floor(dist / 1000) + math.random(0, 2), math.random(1, 59))
+		if surge_manager and surge_manager.get_surge_manager then
+			surge_manager.get_surge_manager().time_forwarded = true
+		end
+		if psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
+			psi_storm_manager.get_psi_storm_manager().time_forwarded = true
+		end
+		if level_weathers and level_weathers.get_weather_manager then
+			level_weathers.get_weather_manager():forced_weather_change()
+		end
+	end
+
+	printf("%s traveling to %s", LOG_TAG, sname)
+
+	hide_hud_pda()
+
+	-- Same-level travel: set position and teleport companions
+	if level_name == level.name() then
+		db.actor:set_actor_position(se_obj.position)
+		teleport_companions(se_obj.position)
+	else
+		-- Cross-level travel
+		ChangeLevel(se_obj.position, se_obj.m_level_vertex_id, se_obj.m_game_vertex_id, VEC_ZERO, true)
+	end
+end
+
+local function on_game_load_handler()
+	add_fast_travel_markers()
+end
+
+local function on_option_change_handler()
+	add_fast_travel_markers()
+end
+
+function on_game_start()
+	RegisterScriptCallback("map_spot_menu_add_property", on_map_spot_menu_add_property)
+	RegisterScriptCallback("map_spot_menu_property_clicked", on_map_spot_menu_property_clicked)
+	RegisterScriptCallback("on_game_load", on_game_load_handler)
+	RegisterScriptCallback("on_option_change", on_option_change_handler)
+	printf("%s callbacks registered", LOG_TAG)
+end
+
+printf("%s loaded", LOG_TAG)

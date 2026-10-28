@@ -1,0 +1,112 @@
+-- MT-CN: Chinese entry names for the F7 debug launcher (Banjaji 制作系统改进/ui_debug_launcher.script).
+--
+-- WHY A SCRIPT WORKS HERE: the entry rows live in the global `content` table, and each row's text is
+-- the `name` field, which the file only ever uses for display (list_element at :749) and for log
+-- output (:819, :844). Nothing indexes or persists by that string, so rewriting it is safe.
+-- `content` is rebuilt inside the global prepare() (:16-22), called at :97 and :674, so the
+-- translation is applied right after prepare() returns - and re-applied on every later rebuild.
+--
+-- DELIBERATELY NOT TOUCHED:
+--   * itm_to_spawn_table / obj_to_spawn_table category strings. Those are join keys: the private
+--     local itm_to_spawn_classes maps object class -> the same literal string, so translating the
+--     visible list without the (unreachable, file-local) class map would silently break the spawn
+--     filters. Display value and lookup key are the same string here, unlike the menu rows.
+--   * names that are console command or class identifiers rather than prose: rsStatistic, and the
+--     window self.name values (UIDebugMain, UIDebug_ItemSpawn, ...) which never appear in `content`.
+--   * Anything in the target/spawn tables other than `.name`: keys, functors, cmd, hide_ui.
+--
+-- Terms follow this pack's own Chinese: surge/emission -> 辐射风暴 (ui_mcm_idiots_subtitle_options_surge
+-- = 辐射风暴选项), psi -> 精神 (st_ui_psi_sensor = 精神防护), artefact -> 神器, outfit -> 护甲,
+-- squad -> 小队. 精神风暴 is my composition from 精神 + 风暴 because the pack never renders a psi-storm
+-- label anywhere (both 灵能风暴 and 精神风暴 score 0 in its chs corpus) - say the word and I switch it.
+--
+-- Engine Lua printf substitutes %s only.
+if type(prepare) ~= "function" then
+    printf("[MT-CN] dbg i18n skipped: prepare() not found")
+    return
+end
+
+local MAP = {
+    ["Get info"] = "获取信息",
+    ["Kill"] = "杀死目标",
+    ["Delete"] = "删除对象",
+    ["Trade"] = "交易",
+    ["Trade (all)"] = "交易（全部）",
+    ["Become companion"] = "收为同伴",
+    ["Can see me?"] = "能看见我吗？",
+    ["Change faction"] = "变更阵营",
+    ["List items"] = "列出物品",
+    ["Be friend (relation)"] = "设为友好（关系）",
+    ["Be neutral (relation)"] = "设为中立（关系）",
+    ["Be enemy (relation)"] = "设为敌对（关系）",
+    ["Be friend (goodwill)"] = "设为友好（好感度）",
+    ["Be neutral (goodwill)"] = "设为中立（好感度）",
+    ["Be enemy (goodwill)"] = "设为敌对（好感度）",
+    ["Be friend squad (goodwill)"] = "整队友好（好感度）",
+    ["Be neutral squad (goodwill)"] = "整队中立（好感度）",
+    ["Be enemy squad (goodwill)"] = "整队敌对（好感度）",
+
+    ["Go incognito"] = "隐身",
+    ["Go rich"] = "致富",
+    ["God mode"] = "无敌模式",
+    ["Unlimited ammo"] = "无限弹药",
+    ["Give basic items"] = "给予基础物品",
+    ["Record position"] = "记录位置",
+    ["Get nearest object"] = "获取最近对象",
+    ["Item spawner"] = "物品生成器",
+    ["Object spawner"] = "对象生成器",
+
+    ["Weapon HUD editor"] = "武器 HUD 编辑器",
+    ["Reload Weapon HUD"] = "重载武器 HUD",
+    ["Weapon stats editor"] = "武器属性编辑器",
+    ["Artefact stats editor"] = "神器属性编辑器",
+    ["Outfit stats editor"] = "护甲属性编辑器",
+    ["Lighting editor"] = "光照编辑器",
+    ["Weather editor"] = "天气编辑器",
+    ["Pocket Workshop"] = "袖珍工坊",
+    ["NPC Logic / Execute"] = "NPC 逻辑 / 执行",
+    ["Debug HUD"] = "调试 HUD",
+    ["Debug Map HUD"] = "调试地图 HUD",
+    ["A-Life respawns"] = "A-Life 重生开关",
+    ["Refresh game"] = "刷新游戏",
+    ["Refresh trade inventory"] = "刷新商店库存",
+    ["Reload system_ini"] = "重载 system_ini",
+    ["Start a psi-storm"] = "启动精神风暴",
+    ["Stop a psi-storm"] = "结束精神风暴",
+    ["Start an emission"] = "启动辐射风暴",
+    ["Stop an emission"] = "结束辐射风暴",
+    ["Delete all squads"] = "删除所有小队",
+    ["Delete common squads"] = "删除普通小队",
+}
+
+local function translate_rows(rows)
+    if type(rows) ~= "table" then
+        return
+    end
+    for _, row in ipairs(rows) do
+        if type(row) == "table" then
+            local hit = MAP[row.name]
+            if hit then
+                row.name = hit
+            end
+        end
+    end
+end
+
+local original_prepare = prepare
+
+prepare = function(...)
+    local result = original_prepare(...)
+    if type(content) == "table" then
+        for _, rows in pairs(content) do
+            translate_rows(rows)
+        end
+    end
+    return result
+end
+
+local map_size = 0
+for _ in pairs(MAP) do
+    map_size = map_size + 1
+end
+printf("[MT-CN] dbg i18n active: %s menu entry names; spawn categories untouched (join keys)", tostring(map_size))
