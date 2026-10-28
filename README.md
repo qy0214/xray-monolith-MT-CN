@@ -67,6 +67,21 @@
 
 **计划（按优先级，前置条件在档）**：① 长时游玩观察（zwork 批次 + MT 读档崩溃率）；② `.zwork` 缓期架构项——seqParallel 并发模型、ISpatial_DB 全局锁、骨骼栅栏、LocatorAPI、声音切换窗口（需专项设计 + 运行时测量）；③ 光圈伪影实机抓帧（`r__svp_debug 2`）；④ 政策文件 `scope_lense_enabled` 解析；⑤ imgui 字体资源化（需一次手动二进制提取）；⑥ 拆分 Weapon.cpp / 整库现代化等**有意不做**（上游合并策略，见"上游同步策略"小节）。
 
+### 2026-10-28 影子方向定论 + 诊断仪器退场批次（13 提交，已同步至 origin）
+
+影子错位一案在 10-26 22:0x 真机定论（根因＝R4 `pos_decompression_params.HorzTan` 符号反了，把重建的视线 x 绕屏幕中线镜像），本批次把当时**为查证而生的仪器**与**被证据确认的修复**分门别类落库。要点：
+
+| 类别 | 内容 |
+|---|---|
+| 定论修复 | `r4.cpp`：HorzTan 改为 `+1/_11`（`_11=_22*fASPECT`，旧写法保住了量级却翻了符号）；同时**不再把上采样抖动加进 texel 常量**（着色器已自行去抖，这里等于补两次） |
+| CSM 缺陷 | `R_sun.cpp`：级联阴影图的 bind+clear 移出"本級联有投射物"判断——累积遍每帧都采这张图，空级联不刷就会读穿上一级的深度（随相机漂移的影子条） |
+| 体积光 | 新增引擎自有的 `csm_sunmask` + `CBlender_sunmask` + `apply_sun_volumetric_mask()`，把光柱锚在太阳的屏幕位置；另带两道门：太阳在视平面后**整段 volumetric 跳过**、far 级联 clip quad 仅在有 sun z-culling 时用 `xform_prev` |
+| 镜筒/SSS | 镜筒 `mFullTransform` 组合顺序改为 `mProject·mView`（列向量约定，与 `ApplyDevice` 一致）；关闭 SSS 时遮罩缓冲**无条件清成中性 1**（原来留在零初始态，把整份太阳贡献乘成黑）；SSS 光槽中"不在本帧 package 里"的灯即刻释放（原 5 帧延迟在双相机下产生无主径向影） |
+| 仪器退场 | 删除 `r__dump_shadow_buffers` 全套（934 行：读回/数值探针/近旁 visual/着色器来源）、`r__sun_shadow_casters` 过滤门（159 行）、`r__shadow_probe`/`_step`、以及已提交的 `r__sss_dump_lights`（单独一条 diag 提交）。前三者从未进过历史，删除前的完整状态留作本地补丁 |
+| 保留仪器 | `r__dump_section` / `r__dump_file`（+ `CLocatorAPI::all_files()`）：走引擎自己的 FS 读解析后的配置与文件、报出哪一层胜出；`.db/.xdb` 字典压缩外部工具打不开，整合包里"这个设置实际是什么值"只有从引擎内部才答得出。按需触发，无常驻成本 |
+
+**进度与部署**：`MSBuild -p:Configuration=DX11-AVX -p:Platform=x64` → **0 错误**，产物 28,679,168 B（比 10-27 那份小 40,448 B，即摘掉的仪器体积），md5 `3beee11e`、SHA-256 前缀 `ea6fcf23a364728b`；已部署到整合包 `bin\AnomalyDX11AVX.exe` 并同步 `MODS\MT-CN\bin\`，**着色器缓存已清**（下次启动重编一次，首启变慢属预期），上一份构建备份在 `_binbackup\AnomalyDX11AVX.probe-build_20261027_0108.exe`。`dist/MT-CN/` 补齐为完整可部署快照（gamedata 与线上 md5 全等、exe 入库、第三方 dll 只留磁盘并登记指纹）。**待真机验收**：四肢图是否被喂上（`promin page=… feed=bhs`）、MT-CN 中文界面（`wd i18n active` / `dbg i18n active`）、快旅已验收。
+
 ## 五、已知问题
 
 > 完整的审查处置状态台账（已修复/未修复/缓期与前置条件、批次提交索引、验证与部署状态）统一维护在 **`docs/progress/STATUS.md`**；记忆与进度文件（三份计划、六份域审查原始报告、会话笔记）已全部收拢到 `docs/progress/`。
@@ -75,19 +90,19 @@
 2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）尚未解析；目前以"瞄具是否真的放大 + PiP 模块是否存在"作为等价门槛。
 3. **MCM 的 live effects 开关当前无效**（`scope_lense_live_effects`）：**结构性不可达，非单纯未实现**。已核对 pack 着色器源码（R.A.K PiP mod 的 `anthology_pip_temporal.h`）：`pip_refresh_effects()` 只存在于 `scope_lense_motion.x > 0.5` 的时间复用分支——那是"隔帧捕获 + 陈旧捕获刷新"架构（`color - old_effects + current_effects`）的机制。本引擎同帧 PiP 刻意令 `motion.x = 0`（每帧全新渲染镜头，无陈旧捕获），整条刷新路径不会进入。MCM 页可调但无效果是上述架构差异的结果；若未来实现时间复用（计划文档 Task 8），需同时提供 `s_pip_main_effects` 与 `s_pip_capture_effects` 两个效果层纹理。
 4. **`scope_lense_ads_is_pip` 晚一帧**：该值由渲染器每帧开头刷新（`compat::Tick`），比"本帧是否 PiP 瞄准"的评估结果晚一帧到达；MCM/脚本侧展示用途不受影响，做逐帧逻辑时不要依赖它的即时性。
-5. **部署方式**：整合包 `bin\AnomalyDX11AVX.exe` 的归属需玩家确认（MO2 覆盖 vs 拷入 `bin`）；可用日志启动戳的 `exeTime/exeSize` 判定实际运行的构建。
+5. **部署方式（2026-10-28 定案）**：`gamedata\` 的唯一来源是 MO2 的 `Modpack-…\mods\MT-CN\`（profile 限 Standart；挂载层读取优先于根目录），而 exe 是进程映像、注入不进去，必须物理存在于整合包 `bin\`；整合包 `MODS\MT-CN\` 因此只保留 `bin\`、`db\mods\00_modded_exes_gamedata.db0`、说明与清缓存脚本。仍用日志启动戳的 `exeTime/exeSize` 判定实际运行的构建。**不要把游戏自己写的可配置文件（`axr_options.ltx`、`appdata\user.ltx`）放进挂载目录**——快照会赢下读取，玩家之后改的选项每次启动都被退回。
 6. **HDR10 下同帧 PiP（已修复并真机验证，2026-10-24）**：原先 `rt_secondVP` 恒为 10bit，与镜头集 16F 场景图的发布 `CopyResource` 格式不匹配，整体拒建。现在 `rt_secondVP` 的格式跟随 `r__svp_same_frame`：同帧路径开启时在 HDR10 下建为 16F（发布拷贝合法），关闭时保持 10bit（旧路径的交换链拷贝合法）。两个守卫兜底：发布目的地的格式检查对准**主集**的 `rt_secondVP`（中途切换开关导致的失配会拒建而非静默黑镜），旧拷贝点遇到失配会跳过并打一次告警（HDR10 下切换开关需 `vid_restart`）。拒建告警已按"missing"路径的节奏节流（约 5 分钟一条）。真机验证：HDR10 开启局 `r4_hdr10_on 1` 下 `second viewport target set ... created`、举镜 `lens=1`、零拒建零错误；SDR 局零变化。
 
 ## 六、部署要求与运行时来源（配套归档：`dist/MT-CN/`）
 
-本仓库的 `dist/MT-CN/` 是整合包 `MODS\MT-CN\` 的**可部署快照**（不含大体积二进制）；完整说明见 `dist/MT-CN/来源与要求.md`。
+本仓库的 `dist/MT-CN/` 是 MT-CN 运行内容的**可部署快照**：`gamedata\` 与线上 MO2 的 `mods\MT-CN\gamedata\` 逐字节一致（2026-10-28 起该目录是 gamedata 的唯一来源，整合包 `MODS\MT-CN\` 只保留 `bin\`、`db\mods\00_modded_exes_gamedata.db0`、说明与清缓存脚本）；完整说明见 `dist/MT-CN/来源与要求.md`。
 
 | 项 | 说明 |
 |---|---|
-| **`bin\nvngx_dlss.dll`**（未归档）| **NVIDIA DLSS 运行时**：产品 `NVIDIA Deep Learning SuperSampling`，版本 **310.9.1.0**（`NVIDIA DLSS - DVS PRODUCTION`），SHA-256 前缀 `3975567B8943`；与整合包 `bin\` 下为**同一份**。出处：**NVIDIA DLSS SDK（NGX）** <https://github.com/NVIDIA/DLSS> ／ <https://developer.nvidia.com/rtx/dlss> |
-| **`bin\ffx_*.dll`**（未归档）| **AMD FidelityFX FSR 3.1.2** 运行时，由游戏安装提供；SDK 与许可证见仓库 `sdk/FSR3/` |
-| **`bin\AnomalyDX11AVX.exe`**（未归档）| 由本仓库源码构建产出 |
-| **`scheduler_batch_size = 512`（必须）**| 需同时满足两处：`appdata\user.ltx` 的 `scheduler_batch_size 512`，与 `gamedata\configs\axr_options.ltx` 的 `modded_exes/optimizations/scheduler_batch_size = 512`（整合包基座中亦已是 512）。本快照两份均为 **512**。 |
+| **`bin\AnomalyDX11AVX.exe`**（**已归档**，2026-10-28）| 由本仓库源码构建产出：`MSBuild src\engine-vs2022.sln -p:Configuration=DX11-AVX -p:Platform=x64`。快照内现为摘除诊断仪器后的构建，28,679,168 B，SHA-256 前缀 `ea6fcf23a364728b`。Git Bash 下开关必须写 `-p:`：`/p:` 会被 MSYS 路径转换吃掉，MSBuild 报 `MSB1008` 却仍然返回 0 |
+| **`bin\nvngx_dlss.dll`**（磁盘上有，不入库）| **NVIDIA DLSS 运行时**：产品 `NVIDIA Deep Learning SuperSampling`，版本 **310.9.1.0**（`NVIDIA DLSS - DVS PRODUCTION`），SHA-256 前缀 `3975567B8943`；与整合包 `bin\` 下为**同一份**。出处：**NVIDIA DLSS SDK（NGX）** <https://github.com/NVIDIA/DLSS> ／ <https://developer.nvidia.com/rtx/dlss>。`.gitignore` 用 `dist/MT-CN/bin/*.dll` 排除，换机后按指纹核对再拷 |
+| **`bin\ffx_*.dll`**（磁盘上有，不入库）| **AMD FidelityFX FSR 3.1.2** 运行时，由游戏安装提供；SDK 与许可证见仓库 `sdk/FSR3/`。指纹见 `dist/MT-CN/来源与要求.md` §一 |
+| **`scheduler_batch_size = 512`（必须）**| 三处来源任一即可保证：引擎源码默认值已为 512；游戏 `appdata\user.ltx` 实测 512；整合包基座 `gamedata\configs\axr_options.ltx` 亦为 512。**快照不再打包这两份可写配置**——挂载层读取优先于根目录，带快照会每启动把玩家改过的选项退回旧值（10-26 快照正是这么吃掉 `speed/*` 两项的） |
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/themrdemonized/xray-monolith)
 
