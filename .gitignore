@@ -47,3 +47,7 @@ __pycache__/
 src/tests/build/
 
 commit_msg.tmp
+
+# MT-CN 快照里的第三方运行时二进制不入库（NVIDIA/AMD 提供，见 dist/MT-CN/来源与要求.md 的
+# SHA-256 清单）；我们自产的 AnomalyDX11AVX.exe 入库，所以只排除 dll。
+dist/MT-CN/bin/*.dll
