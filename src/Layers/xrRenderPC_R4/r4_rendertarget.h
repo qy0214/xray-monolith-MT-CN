@@ -38,6 +38,7 @@ public:
 	IBlender* b_luminance;
 	IBlender* b_combine;
 	IBlender* b_sunshafts;
+	IBlender* b_sunmask;
 	IBlender* b_postprocess_msaa;
 	IBlender* b_bloom_msaa;
 	IBlender* b_combine_msaa[8];
@@ -260,6 +261,7 @@ private:
 
 	ref_shader s_occq;
 	ref_shader s_sunshafts;
+	ref_shader s_sunmask;
 	// SSAO
 	ref_rt rt_ssao_temp;
 	ref_rt rt_half_depth;
@@ -451,6 +453,7 @@ public:
 	BOOL u_DBT_enable(float zMin, float zMax);
 	void u_DBT_disable();
 	void phase_sunshafts();
+	void apply_sun_volumetric_mask();
 	void phase_blur();
 	void phase_pp_bloom();
 	void phase_dof();

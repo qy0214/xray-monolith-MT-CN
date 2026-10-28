@@ -65,3 +65,25 @@ void CBlender_sunshafts::Compile(CBlender_Compile& C)
 		break;
 	}
 }
+
+CBlender_sunmask::CBlender_sunmask() { description.CLS = 0; }
+
+CBlender_sunmask::~CBlender_sunmask()
+{
+}
+
+void CBlender_sunmask::Compile(CBlender_Compile& C)
+{
+	IBlender::Compile(C);
+
+	switch (C.iElement)
+	{
+	case 0:
+		C.r_Pass("ssss_notransform", "csm_sunmask", FALSE, FALSE, FALSE);
+		C.r_dx10Texture("s_vol", r2_RT_ssfx_accum);
+		C.r_dx10Sampler("smp_linear");
+		C.r_dx10Sampler("smp_nofilter");
+		C.r_End();
+		break;
+	}
+}

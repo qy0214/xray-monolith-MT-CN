@@ -566,7 +566,11 @@ void CRenderTarget::accum_direct_cascade(u32 sub_phase, Fmatrix& xform, Fmatrix&
 
 
 			Fmatrix inv_XDcombine;
-			if (/*ps_r2_ls_flags_ext.is(R2FLAGEXT_SUN_ZCULLING) &&*/ sub_phase == SE_SUN_FAR)
+			// With sun z-culling the far pass is clipped by the previous cascade's volume, so its
+			// quad is built from xform_prev. Without z-culling the far pass has to cover its own
+			// volume - using xform_prev left the far cascade's lighting confined to the middle
+			// cascade's footprint while m_shadow below still used the far matrix.
+			if (ps_r2_ls_flags_ext.is(R2FLAGEXT_SUN_ZCULLING) && sub_phase == SE_SUN_FAR)
 				inv_XDcombine.invert(xform_prev);
 			else
 				inv_XDcombine.invert(xform);
@@ -1200,6 +1204,12 @@ void CRenderTarget::accum_direct_volumetric(u32 sub_phase, const u32 Offset, con
 	if (!(ps_sunshafts_mode == R2SS_VOLUMETRIC || ps_sunshafts_mode == R2SS_COMBINE_SUNSHAFTS))
 		return;
 
+	// The volumetric pass is a screen-space light shaft; with the sun behind the view
+	// plane it has no valid anchor and produces view-bound bands (see
+	// need_to_render_sunshafts). Keep the pass and the cascade chain in agreement.
+	if (!need_to_render_sunshafts())
+		return;
+
 	//	Test. draw only for near part
 	//	if (sub_phase!=SE_SUN_N/EAR) return;
 	//	if (sub_phase!=SE_SUN_FAR) return;
@@ -1337,6 +1347,14 @@ void CRenderTarget::accum_direct_volumetric(u32 sub_phase, const u32 Offset, con
 		//RCache.set_Stencil			(TRUE,D3DCMP_LESSEQUAL,dwLightMarkerID,0xff,0x00);
 		//if( ! RImplementation.o.dx10_msaa )
 		RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 8, 0, 16);
+
+		// The far cascade is the last sun volumetric draw (near and far accumulate into
+		// the same buffer). Mask the accumulated sun shafts around the sun's screen
+		// position here, so the screen-space shaft pattern is bound to the sun instead
+		// of the view. Point/spot volumetric is added later in the light loop and is
+		// intentionally left unmasked.
+		if (sub_phase == SE_SUN_FAR)
+			apply_sun_volumetric_mask();
 		/*
 	 else 
 	 {
@@ -1388,4 +1406,73 @@ void CRenderTarget::accum_direct_volumetric(u32 sub_phase, const u32 Offset, con
 //		if (RImplementation.o.ssfx_volumetric)
 //			set_viewport_size(HW.pContext, w, h);
 	}
+}
+
+// Bind the accumulated sun volumetric to the sun's screen position. The SSFX
+// volumetric shafts are built from shadow-map edges along the view ray, so their
+// pattern belongs to the view; masking them with a radial falloff centred on the
+// sun keeps the shafts only where the sun is, which is what "the pillar must stay
+// with the sun" means in a screen-space implementation. The buffer is copied aside
+// first because the same resource cannot be read and written in one pass.
+void CRenderTarget::apply_sun_volumetric_mask()
+{
+	if (!s_sunmask || !rt_ssfx_accum || !rt_Generic_2)
+		return;
+	if (RImplementation.o.dx10_msaa)
+		return;
+
+	CEnvDescriptor& E = *g_pGamePersistent->Environment().CurrentEnv;
+	if (E.m_fSunShaftsIntensity <= 0.001f)
+		return;
+
+	Fvector to_sun;
+	to_sun.set(E.sun_dir).invert().normalize();
+
+	const Fmatrix& M = Device.mFullTransform;
+	Fvector P;
+	P.mad(Device.vCameraPosition, to_sun, 1000.f);
+	Fvector4 clip;
+	clip.x = P.x * M._11 + P.y * M._21 + P.z * M._31 + M._41;
+	clip.y = P.x * M._12 + P.y * M._22 + P.z * M._32 + M._42;
+	clip.w = P.x * M._14 + P.y * M._24 + P.z * M._34 + M._44;
+
+	float u = 0.5f, v = 0.5f, radius = 0.f;
+	if (clip.w > 0.01f)
+	{
+		u = 0.5f + 0.5f * clip.x / clip.w;
+		v = 0.5f - 0.5f * clip.y / clip.w;
+		radius = 0.35f;
+	}
+
+	HW.pContext->CopyResource(rt_ssfx_accum->pTexture->surface_get(), rt_Generic_2->pTexture->surface_get());
+
+	u_setrt(rt_Generic_2, NULL, NULL, NULL);
+	RCache.set_CullMode(CULL_NONE);
+	RCache.set_Stencil(FALSE);
+
+	u32 Offset;
+	u32 C = color_rgba(255, 255, 255, 255);
+	float w = float(RenderScreenWidth());
+	float h = float(RenderScreenHeight());
+	Fvector2 p0, p1;
+	p0.set(.5f / w, .5f / h);
+	p1.set((w + .5f) / w, (h + .5f) / h);
+
+	struct v_aa
+	{
+		Fvector4 p;
+		Fvector2 uv0;
+	};
+
+	v_aa* pv = (v_aa*)RCache.Vertex.Lock(4, g_KD->vb_stride, Offset);
+	pv->p.set(EPS, float(h + EPS), EPS, 1.f);             pv->uv0.set(p0.x, p1.y); pv++;
+	pv->p.set(EPS, EPS, EPS, 1.f);                        pv->uv0.set(p0.x, p0.y); pv++;
+	pv->p.set(float(w + EPS), float(h + EPS), EPS, 1.f);  pv->uv0.set(p1.x, p1.y); pv++;
+	pv->p.set(float(w + EPS), EPS, EPS, 1.f);             pv->uv0.set(p1.x, p0.y); pv++;
+	RCache.Vertex.Unlock(4, g_KD->vb_stride);
+
+	RCache.set_Element(s_sunmask->E[0]);
+	RCache.set_c("sun_mask", u, v, radius, w / h);
+	RCache.set_Geometry(g_KD);
+	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 }

@@ -644,6 +644,7 @@ CRenderTarget::CRenderTarget(LPCSTR set_name, u32 width, u32 height)
 	b_ssao = xr_new<CBlender_SSAO_noMSAA>();
 	///////////////////////////////////lvutner
 	b_sunshafts = xr_new<CBlender_sunshafts>();
+	b_sunmask = xr_new<CBlender_sunmask>();
 	b_blur = xr_new<CBlender_blur>();
 	b_pp_bloom = xr_new<CBlender_pp_bloom>();
 	b_dof = xr_new<CBlender_dof>();
@@ -958,6 +959,7 @@ CRenderTarget::CRenderTarget(LPCSTR set_name, u32 width, u32 height)
 	s_hdr10_lens_flare_upsample.create(b_hdr10_lens_flare_upsample, "hdr10_lens_flare_upsample");
 
 	s_sunshafts.create(b_sunshafts, "r2\\sunshafts");
+	s_sunmask.create(b_sunmask, "r2\\csm_sunmask");
 	s_blur.create(b_blur, "r2\\blur");
 	s_pp_bloom.create(b_pp_bloom, "r2\\pp_bloom");
 	s_dof.create(b_dof, "r2\\dof");
@@ -1768,6 +1770,7 @@ CRenderTarget::~CRenderTarget()
 	xr_delete(b_accum_mask);
 	xr_delete(b_occq);
 	xr_delete(b_sunshafts);
+	xr_delete(b_sunmask);
 
 	xr_delete(b_hdao_cs);
 	if (RImplementation.o.dx10_msaa)
@@ -1825,6 +1828,21 @@ bool CRenderTarget::need_to_render_sunshafts()
 		float fValue = E.m_fSunShaftsIntensity;
 		//	TODO: add multiplication by sun color here
 		if (fValue < 0.0001) return false;
+	}
+
+	// Sunshafts are a screen-space effect that must be anchored on the sun. With the sun
+	// behind the camera its screen position is undefined and the ray march turns into
+	// view-bound bands that read as a second light source. Do not render the pass at all
+	// while the sun is behind the view plane.
+	light* sun = (light*)RImplementation.Lights.sun_adapted._get();
+	if (sun)
+	{
+		Fvector to_sun;
+		to_sun.set(sun->direction).invert().normalize();
+		Fvector vs;
+		Device.mView.transform_dir(vs, to_sun);
+		if (vs.z <= 0.05f)
+			return false;
 	}
 
 	return true;
