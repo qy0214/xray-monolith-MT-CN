@@ -1041,15 +1041,13 @@ void CRender::Render()
 				// - doing so drew view-locked foliage shadows inside the scope,
 				// worse the higher the zoom (player report, 2026-10-25 screenshots).
 				// Clear to neutral (1 = unshadowed) for the lens pass instead.
-				if (ps_ssfx_sss_quality.z > 0 || sss_rendered)
+				// Unconditional: with the pass disabled from startup the buffer has never
+				// been written and is still at its zero-initialised creation state, which
+				// multiplies the whole sun contribution by zero.
 				{
 					FLOAT ColorRGBA[4] = { 1,1,1,1 };
 					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss->pRT, ColorRGBA);
 					sss_rendered = false;
-				}
-				if (ps_ssfx_sss_quality.w > 0 || sss_extended_rendered)
-				{
-					FLOAT ColorRGBA[4] = { 1,1,1,1 };
 					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, ColorRGBA);
 					sss_extended_rendered = false;
 				}
@@ -1064,12 +1062,13 @@ void CRender::Render()
 				}
 				else
 				{
-					if (sss_rendered) // Clear buffer
-					{
-						sss_rendered = false;
-						FLOAT ColorRGBA[4] = { 1,1,1,1 };
-						HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss->pRT, ColorRGBA);
-					}
+					// The sun accumulators multiply by this buffer. It must be neutral (1)
+					// even when the pass has never run in this process: the render target is
+					// created zero-initialised, so a missing clear blackened the entire sun
+					// contribution whenever SSS was disabled from startup.
+					sss_rendered = false;
+					FLOAT ColorRGBA[4] = { 1,1,1,1 };
+					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss->pRT, ColorRGBA);
 				}
 
 				if (ps_ssfx_sss_quality.w > 0)
@@ -1080,12 +1079,9 @@ void CRender::Render()
 				}
 				else
 				{
-					if (sss_extended_rendered) // Clear buffer
-					{
-						sss_extended_rendered = false;
-						FLOAT ColorRGBA[4] = { 1,1,1,1 };
-						HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, ColorRGBA);
-					}
+					sss_extended_rendered = false;
+					FLOAT ColorRGBA[4] = { 1,1,1,1 };
+					HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, ColorRGBA);
 				}
 			}
 		}
