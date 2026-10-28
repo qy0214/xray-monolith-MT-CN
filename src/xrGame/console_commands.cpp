@@ -1801,6 +1801,291 @@ public:
 	}
 };
 
+// Print every key of a resolved config section, with the file that supplied it.
+// The pack's own configs live in dictionary-compressed .xdb archives, so grepping them from
+// outside is useless; this reads what the engine actually resolved, after every overlay and
+// include, and the DLTX provenance names the winning file per key. That is what makes a
+// "why does this variant behave differently" question answerable: dump both sections and diff.
+struct CCC_DumpSection : public IConsole_Command
+{
+	CCC_DumpSection(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = false; };
+
+	virtual void Execute(LPCSTR args)
+	{
+		if (!pSettings || !args || !*args)
+		{
+			// Deliberately a literal with no arguments: the two crashes this command caused came
+			// from feeding %s a value whose type was wrong, and a usage line must never be able to
+			// take the game down.
+			Msg("* [CFG] usage: r__dump_section <section>[,<section>...] | r__dump_section find <substring> [max]");
+			return;
+		}
+
+		// Section names are only useful once you can find them: the pack's item definitions live
+		// in dictionary-compressed db archives that cannot be grepped from outside, so a name
+		// search against what the engine actually resolved is the way in.
+		if (_strnicmp(args, "find ", 5) == 0)
+		{
+			char sub[128];
+			int maxn = 300;
+			xr_string rest = args + 5;
+			const size_t sp = rest.find(' ');
+			if (sp != xr_string::npos)
+			{
+				maxn = atoi(rest.c_str() + sp + 1);
+				rest = rest.substr(0, sp);
+			}
+			if (rest.size() >= sizeof(sub))
+				rest = rest.substr(0, sizeof(sub) - 1);
+			xr_strcpy(sub, rest.c_str());
+			const size_t sl = strlen(sub);
+			u32 hits = 0, scanned = 0;
+			for (const CInifile::Sect& s : pSettings->sections())
+			{
+				++scanned;
+				if (!s.Name.size())
+					continue;
+				LPCSTR nm = *s.Name;
+				const size_t nl = strlen(nm);
+				if (nl < sl)
+					continue;
+				for (size_t i = 0; i + sl <= nl; ++i)
+				{
+					if (!_strnicmp(nm + i, sub, sl))
+					{
+						Msg("* [CFG] sect '%s' keys=%u", nm, u32(s.Data.size()));
+						++hits;
+						break;
+					}
+				}
+				if (hits >= maxn)
+					break;
+			}
+			Msg("* [CFG] find '%s' -> %u of %u sections", sub, hits, scanned);
+			return;
+		}
+
+		xr_string sec;
+		LPCSTR p = args;
+		u32 dumped = 0;
+		while (*p)
+		{
+			LPCSTR e = strchr(p, ',');
+			if (!e)
+				e = p + strlen(p);
+			const size_t n = size_t(e - p);
+			if (n && n < 255)
+			{
+				sec.assign(p, n);
+				if (pSettings->section_exist(sec.c_str()))
+				{
+					const CInifile::Sect& S = pSettings->r_section(sec.c_str());
+					Msg("* [CFG] ===== '%s' : %u keys =====", sec.c_str(), u32(S.Data.size()));
+					for (const CInifile::Item& it : S.Data)
+					{
+						Msg("* [CFG] %s | %s = %s | from %s", sec.c_str(), *it.first,
+							it.second.size() ? *it.second : "(empty)",
+							it.filename.size() ? *it.filename : "(no provenance)");
+					}
+					++dumped;
+				}
+				else
+					Msg("* [CFG] section '%s' does not exist", sec.c_str());
+			}
+			if (!*e)
+				break;
+			p = e + 1;
+		}
+		Msg("* [CFG] dumped %u section(s) of '%s'", dumped, args);
+	}
+
+	virtual void Info(TInfo& I)
+	{
+		xr_strcpy(I, "<section>[,<section>...] - print every key of a resolved section with its source file");
+	}
+};
+
+// Read a file through the engine's own FS and write it into appdata\logs.
+// The pack ships its shaders and configs inside dictionary-compressed .xdb archives that no
+// external tool can open, and several mods provide the same relative path, so "what does this
+// file actually contain, and which layer won" is only answerable from inside the engine.
+//
+// Steps go to a sidecar file, not just to the log: the log is buffered and a crash loses
+// everything since the last flush, which is exactly why the first two crashes left no [FILE]
+// line at all and could only be read from the stack trace.
+static void mtcn_file_step(LPCSTR step)
+{
+	string_path p;
+	FS.update_path(p, "$logs$", "dbg_file_steps.txt");
+	FILE* f = fopen(p, "at");
+	if (!f)
+		return;
+	fprintf(f, "%s\n", step);
+	fclose(f);	// fclose flushes; no buffered step can be lost to a crash
+}
+
+struct CCC_DumpFile : public IConsole_Command
+{
+	CCC_DumpFile(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = false; };
+
+	virtual void Execute(LPCSTR args)
+	{
+		xr_string a = args ? args : "";
+		while (!a.empty() && a.front() == ' ')
+			a.erase(0, 1);
+		const size_t sp = a.find(' ');
+		if (sp == xr_string::npos)
+		{
+			Msg("* [FILE] usage: r__dump_file <fs_root> <relative\\path>   e.g. r__dump_file $game_shaders$ r3\\wd_gfy_exo_blank.ps");
+			return;
+		}
+		xr_string root = a.substr(0, sp);
+		xr_string rel = a.substr(sp + 1);
+		while (!rel.empty() && rel.front() == ' ')
+			rel.erase(0, 1);
+
+		// r__dump_file find <substring> [max] - search every registered name, loose or archived,
+		// and say which archive holds it. Guessing a path inside a 100-mod pack wastes a whole
+		// launch per wrong guess; this answers it in one.
+		if (_stricmp(root.c_str(), "find") == 0)
+		{
+			xr_string sub = rel;
+			int maxn = 200;
+			const size_t sp2 = sub.find(' ');
+			if (sp2 != xr_string::npos)
+			{
+				maxn = atoi(sub.c_str() + sp2 + 1);
+				sub = sub.substr(0, sp2);
+			}
+			const size_t sl = sub.size();
+			u32 hits = 0, scanned = 0;
+			for (const auto& f : FS.all_files())
+			{
+				++scanned;
+				if (!f.name || sl == 0)
+					continue;
+				const size_t nl = strlen(f.name);
+				if (nl < sl)
+					continue;
+				for (size_t i = 0; i + sl <= nl; ++i)
+				{
+					if (!_strnicmp(f.name + i, sub.c_str(), sl))
+					{
+						xr_string src = "loose";
+						if (f.vfs != u32(-1))
+						{
+							for (const CLocatorAPI::archive& ar : FS.m_archives)
+								if (ar.vfs_idx == f.vfs && ar.path.size())
+								{
+									src = *ar.path;
+									break;
+								}
+							if (src == "loose")
+							{
+								char tag[40];
+								xr_sprintf(tag, "vfs#%u", f.vfs);
+								src = tag;
+							}
+						}
+						Msg("* [FILE] %-70s %9u B  from %s", f.name, f.size_real, src.c_str());
+						++hits;
+						break;
+					}
+				}
+				if (hits >= u32(maxn))
+					break;
+			}
+			Msg("* [FILE] find '%s' -> %u of %u registered files", sub.c_str(), hits, scanned);
+			return;
+		}
+
+		char line[512];
+		xr_sprintf(line, "open %s + %s", root.c_str(), rel.c_str());
+		mtcn_file_step(line);
+
+		IReader* R = FS.r_open(root.c_str(), rel.c_str());
+		if (!R)
+		{
+			mtcn_file_step("open failed");
+			Msg("* [FILE] not found: %s + %s", root.c_str(), rel.c_str());
+			return;
+		}
+
+		const u32 size = u32(R->length());
+		const u32 cap = 16u * 1024u * 1024u;
+		if (size > cap)
+		{
+			// r_close() alone: it xr_delete()s the reader, and calling IReader::close() first
+			// releases what the destructor releases again. That double free is what took the game
+			// down twice - the corruption only surfaced at the next allocation, so the stack trace
+			// blamed Msg and pointed away from the real line.
+			FS.r_close(R);
+			Msg("* [FILE] %s + %s : %u bytes exceeds the %u MB dump cap", root.c_str(), rel.c_str(), size, cap / (1024u * 1024u));
+			return;
+		}
+
+		// Read through r(), never through pointer(): an archived entry is stored compressed, so
+		// pointer() addresses the COMPRESSED buffer while length() reports the uncompressed size.
+		xr_vector<u8> buf(size ? size : 1);
+		R->r(buf.data(), size);
+		FS.r_close(R);
+		mtcn_file_step("read done");
+
+		u32 crc = 2166136261u;
+		for (u32 i = 0; i < size; ++i)
+		{
+			crc ^= buf[i];
+			crc *= 16777619u;
+		}
+
+		// Name the layer that won: vfs == -1 is a loose file on disk, otherwise find the archive.
+		xr_string source = "loose";
+		string_path resolved;
+		resolved[0] = 0;
+		const CLocatorAPI::file* f = FS.exist(resolved, root.c_str(), rel.c_str());
+		if (f && f->vfs != u32(-1))
+		{
+			xr_sprintf(line, "archived vfs=%u", f->vfs);
+			mtcn_file_step(line);
+			for (const CLocatorAPI::archive& ar : FS.m_archives)
+				if (ar.vfs_idx == f->vfs && ar.path.size())
+				{
+					source = *ar.path;
+					break;
+				}
+		}
+		else
+			mtcn_file_step("provenance done (loose or unresolved)");
+
+		xr_string base = rel;
+		const size_t slash = base.find_last_of("\\/");
+		if (slash != xr_string::npos)
+			base = base.substr(slash + 1);
+		string_path out, fullpath;
+		xr_sprintf(out, "dbg_file_%s", base.c_str());
+		FS.update_path(fullpath, "$logs$", out);
+
+		bool written = false;
+		FILE* fh = fopen(fullpath, "wb");
+		if (fh)
+		{
+			written = (size == 0) || (fwrite(buf.data(), 1, size, fh) == size);
+			fclose(fh);
+		}
+		mtcn_file_step(written ? "file written" : "file write FAILED");
+
+		string_path report;
+		xr_sprintf(report, "* [FILE] %s + %s : %u bytes crc=%08x source=%s written=%s -> %s",
+			root.c_str(), rel.c_str(), size, crc, source.c_str(), written ? "yes" : "NO", out);
+		Msg("%s", report);
+	}
+
+	virtual void Info(TInfo& I)
+	{
+		xr_strcpy(I, "<fs_root> <relative path> | find <substring> [max] - dump a resolved file into appdata\\logs, or search every registered name");
+	}
+};
+
 #ifdef DEBUG
 extern void print_help(lua_State *L);
 
@@ -3045,6 +3330,9 @@ void CCC_RegisterCommands()
 	CMD3(CCC_Mask, "g_dynamic_music", &psActorFlags, AF_DYNAMIC_MUSIC);
 	psActorFlags.set(AF_IMPORTANT_SAVE, TRUE);
 	CMD3(CCC_Mask, "g_important_save", &psActorFlags, AF_IMPORTANT_SAVE);
+
+	CMD1(CCC_DumpSection, "r__dump_section");
+	CMD1(CCC_DumpFile, "r__dump_file");
 
 #ifdef DEBUG
 	CMD1(CCC_LuaHelp, "lua_help");

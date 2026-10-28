@@ -151,6 +151,12 @@ public:
 	const file* exist(string_path& fn, LPCSTR path, LPCSTR name);
 	const file* exist(string_path& fn, LPCSTR path, LPCSTR name, LPCSTR ext);
 
+	// Read-only view of the registered file table (loose files and every mounted archive's
+	// entries). exist() only answers "is this exact name there", which makes "where does this
+	// shader actually live / which mod ships it" unanswerable in a 100-mod pack whose data is
+	// archived. Callers take it with auto because files_set itself stays private.
+	files_set const& all_files() const { return m_files; }
+
 	BOOL can_write_to_folder(LPCSTR path);
 	BOOL can_write_to_alias(LPCSTR path);
 	BOOL can_modify_file(LPCSTR fname);
