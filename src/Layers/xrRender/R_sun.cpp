@@ -308,12 +308,18 @@ void CRender::render_sun_cascade(u32 cascade_ind)
         {
             bool bDeffered_Shadows = cascade.GMCascade.RGraph.mapStaticPasses[0][0].size() || cascade.GMCascade.RGraph.mapDynamicPasses[0][0].size();
             bool bForward_Shadows = cascade.GMCascade.RGraph.mapStaticPasses[1][0].size() || cascade.GMCascade.RGraph.mapDynamicPasses[1][0].size() || cascade.GMCascade.RGraph.mapStaticSorted.Sorted.size() || cascade.GMCascade.RGraph.mapDynamicSorted.Sorted.size();
+
+            // The accumulator below samples this cascade's map every frame, so the map must be
+            // reset even when the cascade captured no casters. Otherwise the previous cascade's
+            // depth survives and is read through this cascade's matrix: stale shadows that drift
+            // with the camera. Bind and clear unconditionally; only the caster draw is conditional.
+            Target->phase_smap_direct(fuckingsun, SE_SUN_FAR);
+            RCache.set_xform_world(Fidentity);
+            RCache.set_xform_view(Fidentity);
+            RCache.set_xform_project(fuckingsun->X.D.combine);
+
             if (bDeffered_Shadows || bForward_Shadows)
             {
-                Target->phase_smap_direct(fuckingsun, SE_SUN_FAR);
-                RCache.set_xform_world(Fidentity);
-                RCache.set_xform_view(Fidentity);
-                RCache.set_xform_project(fuckingsun->X.D.combine);
                 cascade.GMCascade.r_dsgraph_render_graph(0);
 
                 if (psDeviceFlags2.test(rsGrassShadow) && cascade_ind <= ps_ssfx_grass_shadows.x)
