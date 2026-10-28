@@ -1,3 +1,7 @@
+// MT-CN: written in this fork. It calls the AMD FidelityFX FSR 3.1.2 upscaler API from
+// sdk/FSR3 (AMD MIT, Third_party_notices.txt preserved), vendored through the OGSR-Engine SDK
+// checkout 8adb7cf1650120987d84fcc8be7e73ad8a6f9945 - a community D3D11 backend, NOT an
+// official AMD SDK tag (see sdk/FSR3/README.txt). Full ledger: docs/THIRD_PARTY_PROVENANCE.md.
 #pragma once
 #include "DlssD3D11.h"
 #include "../../../../sdk/FSR3/include/FidelityFX/host/ffx_fsr3upscaler.h"

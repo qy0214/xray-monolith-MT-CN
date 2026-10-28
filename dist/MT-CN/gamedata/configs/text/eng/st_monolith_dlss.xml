@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- MT-CN: written in this fork - English strings for the engine-side upscaler options. The
+     identical bytes also exist in the base install and inside the [汉化] pack folder
+     (md5 31f0ba82...), which is why no third-party author is claimed here.
+     Ledger: docs/THIRD_PARTY_PROVENANCE.md. -->
 <string_table>
     <string id="ui_mm_video_basic_upscaler"><text>Temporal upscaler</text></string>
     <string id="ui_mm_video_basic_upscaler_desc"><text>Select NVIDIA DLSS or AMD FSR 3 upscaling. Off retains the native renderer and its existing anti-aliasing settings. Both require MSAA off and the matching temporal shader override. Only the selected method runs; its quality setting is below. Apply restarts the renderer. No frame generation.</text></string>

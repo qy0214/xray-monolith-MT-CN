@@ -1,3 +1,7 @@
+-- MT-CN: copy of the [汉化] 汉化整合包 script of the same name
+-- (mods\[汉化] 汉化整合包 - A.N.T.H.O.L.O.G.Y 汉化整合包\gamedata\scripts\fix_fast_travel_markers.script);
+-- that original declares no author, so the only attributable change is ours: the
+-- clsid fallback in is_travel_target. Ledger: docs/THIRD_PARTY_PROVENANCE.md.
 -- Fix Fast Travel Markers - Bypass missing faction_quick_travel.ltx
 -- Anomaly 1.5.3 / Anthology 2.1
 --

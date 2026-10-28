@@ -1,3 +1,9 @@
+// MT-CN: written in this fork for the Anomaly engine. It drives the NVIDIA NGX SDK
+// (sdk/DLSS, "NVIDIA RTX SDKs LICENSE", SPDX LicenseRef-NvidiaProprietary - its notices must
+// not be stripped) and depends on a mod-side shader contract: the motion-vector layout comes
+// from SSFX by ascii1457 (r3\screenspace_mvectors.h, https://www.moddb.com/mods/stalker-anomaly/
+// addons/screen-space-shaders) and the screen-glass meshes named below belong to the
+// Wearable Devices mod. Full ledger: docs/THIRD_PARTY_PROVENANCE.md.
 #pragma once
 #include "DlssTemporal.h"
 #include "../../xrRender/RenderDimensions.h"

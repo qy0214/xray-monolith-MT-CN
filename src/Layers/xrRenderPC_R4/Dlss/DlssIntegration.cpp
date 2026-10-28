@@ -1,3 +1,9 @@
+// MT-CN: written in this fork for the Anomaly engine. It drives the NVIDIA NGX SDK
+// (sdk/DLSS, "NVIDIA RTX SDKs LICENSE", SPDX LicenseRef-NvidiaProprietary - its notices must
+// not be stripped) and depends on a mod-side shader contract: the motion-vector layout comes
+// from SSFX by ascii1457 (r3\screenspace_mvectors.h, https://www.moddb.com/mods/stalker-anomaly/
+// addons/screen-space-shaders) and the screen-glass meshes named below belong to the
+// Wearable Devices mod. Full ledger: docs/THIRD_PARTY_PROVENANCE.md.
 #include "stdafx.h"
 #include "DlssIntegration.h"
 #include "DlssD3D11.h"
@@ -142,6 +148,10 @@ void InitializeTargets()
     }
     useFsr = ps_r_upscaler == 2;
     string_path marker;
+    // The upscaler cannot work without these loose shaders: screenspace_mvectors.h is the SSFX
+    // (ascii1457) motion-vector convention this engine reads, the rest are this fork's own DLSS
+    // contract files, shipped in MT-CN. A missing one means the mod set changed, not that the
+    // engine is broken, so refuse the upscaler with the name instead of rendering garbage.
     for (const char* shader : {"r3\\screenspace_mvectors.h", "r3\\dlss_contract.h", "r3\\dlss_ui_depth.ps",
         "r3\\dlss_copy.ps", "r3\\dlss_sharpen.ps", "r3\\dlss_cas.h"})
     {

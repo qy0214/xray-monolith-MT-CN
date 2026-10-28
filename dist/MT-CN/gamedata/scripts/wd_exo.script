@@ -1,3 +1,8 @@
+-- MT-CN: byte copy of the Wearable Devices mod file of the same name as it sits in the merged
+-- root tree (Anomaly-1.5.3-Anthology 2.1\gamedata\scripts\wd_exo.script, md5 b2ab76be...);
+-- the mod folder own copy differs by 14 lines, so the ROOT file is the baseline here, and the
+-- upstream declares no author. Only the exo screen scoping below is ours.
+-- Ledger: docs/THIRD_PARTY_PROVENANCE.md.
 local POLL_MS = 200
 -- Load-time marker: the pack ships this module inside db\scripts\*.xdb, so the line below is the
 -- only way to tell at runtime whether the loose override is the one the engine actually loaded.
