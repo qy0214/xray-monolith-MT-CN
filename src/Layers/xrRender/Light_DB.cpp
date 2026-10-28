@@ -54,7 +54,7 @@ void CLight_DB::Load(IReader* fs)
 				// directional (base)
 				sun_original = L;
 				L->set_type(IRender_Light::DIRECT);
-				L->set_shadow(true);
+				L->set_shadow(false);
 				L->set_rotation(Ldata.direction, tmp_R);
 
 				// copy to env-sun
