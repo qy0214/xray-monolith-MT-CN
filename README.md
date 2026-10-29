@@ -126,7 +126,7 @@
 2. **PiP 政策文件**（`mod_system_pip_scope_policy.ltx` 的 `scope_lense_enabled`）**尚未解析**；现以"瞄具是否真的放大 + PiP 模块是否存在"作等价门槛。
 3. **MCM 的 live effects 开关当前无效**（`scope_lense_live_effects`）：**结构性不可达**（属隔帧时间复用架构，本引擎同帧设计不进入该路径），非单纯未实现。
 4. **`scope_lense_ads_is_pip` 晚一帧**：该值由渲染器每帧开头刷新（`compat::Tick`），比本帧 PiP 判定晚一帧到达，展示用途可接受。
-5. **部署方式（2026-10-28 定案）**：`gamedata\` 唯一来源是 MO2 的 `mods\MT-CN\`（挂载层读取优先于根目录），exe 必须物理在 `bin\`；`MODS\MT-CN\` 只留 `bin\`、`db\mods\…db0`、说明与清缓存脚本。**不要把游戏自己写的可配置文件（`axr_options.ltx`、`appdata\user.ltx`）放进挂载目录**——快照会赢下读取，把玩家之后改的选项每次启动退回。**因此必须经 MO2 启动**：2026-10-28 22:14 一次 JSGME「停用→启用」循环后，游戏根 `gamedata\` 里那批历史遗留散件（含 18 个着色器覆盖）已被清除，根目录不再存在兜底副本；绕过 MO2 直接起游戏会失去 DLSS/SSFX/穿戴设备相关着色器与脚本覆盖。
+5. **部署方式（2026-10-28 定案）**：`gamedata\` 唯一来源是 MO2 的 `mods\MT-CN\`（挂载层读取优先于根目录），exe 必须物理在 `bin\`；`MODS\MT-CN\` 只留 `bin\`、`db\mods\…db0`、说明与清缓存脚本。**不要把游戏自己写的可配置文件（`axr_options.ltx`、`appdata\user.ltx`）放进挂载目录**——快照会赢下读取，把玩家之后改的选项每次启动退回。引擎部署的唯一目标是 `C:\game\ANTHOLOGY\Anomaly-1.5.3-Anthology 2.1\MODS\MT-CN\bin\`（JSGME 源，构建产物拷这里），由 JSGME 启用 MT-CN 后再落到游戏 `bin\`；**不要手拷进游戏 `bin`**，也不要放进 MO2 的 `mods\MT-CN`（那里没有、也不该有 bin）。 **因此必须经 MO2 启动**：2026-10-28 22:14 一次 JSGME「停用→启用」循环后，游戏根 `gamedata\` 里那批历史遗留散件（含 18 个着色器覆盖）已被清除，根目录不再存在兜底副本；绕过 MO2 直接起游戏会失去 DLSS/SSFX/穿戴设备相关着色器与脚本覆盖。
 6. **`night_vision.h` 在仓库里有两份内容不同的副本，且两份都有主**：`gamedata/shaders/r3/` 那份是**上游自带**（`29633bd1`，DEMONIZED，2024-09-25 “gamedata reorganize”），`dist/MT-CN/gamedata/shaders/r3/` 那份是我们随 MT-CN 部署的 Beefs NVGs 改版。两者不是重复文件，**都不要删**；运行时生效的是 MT-CN 挂载的那份。
 
 ## 五、部署要求与运行时来源（配套归档：`dist/MT-CN/`）

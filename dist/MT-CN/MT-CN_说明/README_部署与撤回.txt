@@ -13,8 +13,10 @@ MT-CN 部署 / 撤回 说明（2026-10-28 起：gamedata 单一来源在 MO2）
 
 二、部署（换机 / 重装）
 1. MO2 profile 切到 Standart Стандарт（MT-CN 只存在于这个 profile 的 modlist，HARD / 本机里没有）。
-2. 把上面第 2 条的三个文件拷到游戏目录的同名位置（JSGME 或直接复制都行；
-   MODS\MT-CN 里已经没有 gamedata，所以不可能再覆盖脚本/配置）。
+2. 引擎部署的唯一目标是 C:\game\ANTHOLOGY\Anomaly-1.5.3-Anthology 2.1\MODS\MT-CN\bin\：
+   把构建出的 AnomalyDX11AVX.exe（以及同目录的 nvngx_dlss.dll）拷到这里；db\mods\00_modded_exes_gamedata.db0
+   放进同一处的 db\mods\。再由 JSGME 启用 MT-CN，这些文件才会落到游戏 bin\ / db\。
+   **不要手拷进游戏 bin\**，也不要放进 MO2 的 mods\MT-CN（那里没有、也不该有 bin）。
 3. 双击 游戏目录\清空着色器缓存.bat（换 exe 或换着色器都必须清）。
 4. 启动游戏。日志第一屏应出现：
    [MT-CN] engine build <日期> pipBuild=10 ...        ← exe 是 MT 版
