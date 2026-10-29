@@ -21,7 +21,7 @@
 
 ## 1A. 上游 Monolith 的承接提交（作者名在 git 里保留，落地人为本分支）
 
-本分支上「作者是他人的、由我们落地（committer=qy0214）」的提交共 **11 条**。逐条把落地板与源板（`(cherry picked from commit …)`）的 +/- 行做归一化 md5 比对，结果分两类：
+本分支上「作者是他人的、由我们落地（committer=qy0214）」的提交共 **12 条**。逐条把落地板与源板（`(cherry picked from commit …)`）的 +/- 行做归一化 md5 比对，结果分两类：
 
 | 本分支提交 | 作者 | 源提交 | 比对结果 |
 |---|---|---|---|
@@ -31,6 +31,7 @@
 | `374947615` fix floating artefacts | lulnope | `69433fa1`（**OGSR-Engine**，见 §1） | 一致 |
 | `9d7126fc4` Fix race condition in texture loading | Chad | `v0.2.2` 内 | 一致 |
 | `a3456c91d` Fix wallmarks crash | Chad | `v0.2.2` 内 | 一致 |
+| `cb90b5739` .seq 纹理去重（CTexture::Load） | Abhishek Mallepalli | `ee2102df1`（上游 mt 主线，2026-10-27 合入 PR #793） | 一致（原样承接，+48 行） |
 | `8bc95cd7f` Implement map caching (PDA stutters) | Chad | `3aaf2204…` | **改写**：仅多一行标记 `// upstream v0.2.2: PDA map caching (fixes map stutters)` |
 | `19b19090a` move discord rpc off main thread | Chad | `5a95f84a…` | **改写**：include 结构不同（我方需 `#include <thread>`，不带 `pch_script.h`），并保留本分支的 Azazel 注释行 |
 | `cb445886f` mutex for item destruction/insertion | Chad | `14ed5b3b…` | **改写**：我方额外补了 items 清理循环（`poolSI.destroy(D->G[i].items[clr])`）与 `xrCriticalSectionGuard lock(pool_mutex)` 的作用域 |
